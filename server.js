@@ -13,6 +13,11 @@ app.use(cors());
 app.use(express.json({ limit: "5mb" }));
 app.use("/uploads", express.static(path.join(__dirname, process.env.UPLOAD_DIR || "uploads")));
 
+// Root path: some managed hosting platforms probe "/" to confirm the app is up before
+// finishing custom-domain/proxy setup — without this, that check gets a 404 and can silently
+// block those flows.
+app.get("/", (req, res) => res.json({ ok: true, service: "Address Gateway Backend", health: "/api/health" }));
+
 app.get("/api/health", (req, res) => res.json({ ok: true, time: new Date().toISOString() }));
 
 app.use("/api/auth", require("./src/routes/auth.routes"));
