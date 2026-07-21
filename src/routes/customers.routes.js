@@ -63,6 +63,12 @@ router.post("/:id/employees", async (req, res) => {
   await query("INSERT INTO customer_staff (id, customer_id, name, designation) VALUES (?,?,?,?)", [empId, req.params.id, req.body.name, req.body.designation || null]);
   res.status(201).json({ id: empId });
 });
+router.patch("/:id/employees/:empId", async (req, res) => {
+  const b = req.body;
+  await query("UPDATE customer_staff SET name=COALESCE(?,name), designation=? WHERE id=? AND customer_id=?",
+    [b.name, b.designation || null, req.params.empId, req.params.id]);
+  res.json({ ok: true });
+});
 router.delete("/:id/employees/:empId", async (req, res) => {
   await query("DELETE FROM customer_staff WHERE id = ? AND customer_id = ?", [req.params.empId, req.params.id]);
   res.json({ ok: true });
@@ -73,6 +79,16 @@ router.post("/:id/employees/:empId/docs", async (req, res) => {
   await query("INSERT INTO customer_staff_docs (id, customer_staff_id, type, number, expiry, cloud_link) VALUES (?,?,?,?,?,?)",
     [docId, req.params.empId, b.type, b.number || null, b.expiry || null, b.cloudLink || null]);
   res.status(201).json({ id: docId });
+});
+router.patch("/:id/employees/:empId/docs/:docId", async (req, res) => {
+  const b = req.body;
+  await query("UPDATE customer_staff_docs SET type=COALESCE(?,type), number=?, expiry=?, cloud_link=? WHERE id=? AND customer_staff_id=?",
+    [b.type, b.number || null, b.expiry || null, b.cloudLink || null, req.params.docId, req.params.empId]);
+  res.json({ ok: true });
+});
+router.delete("/:id/employees/:empId/docs/:docId", async (req, res) => {
+  await query("DELETE FROM customer_staff_docs WHERE id = ? AND customer_staff_id = ?", [req.params.docId, req.params.empId]);
+  res.json({ ok: true });
 });
 
 // --- Per-customer dashboard: quotations / invoices+statement / job cards, matched by name ---

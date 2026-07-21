@@ -22,10 +22,12 @@ const upload = multer({
 
 router.use(requireAuth);
 
-// Users & Roles management is restricted to super_admin/admin (not admin_exec) — matches the prototype exactly.
-router.get("/", requireRole(["super_admin", "admin", "admin_exec", "hr"]), async (req, res) => {
+// HR ("roles: all" in the nav) needs every authenticated user to see the roster — only
+// create/edit/delete of Users & Roles itself stays restricted to super_admin/admin below.
+router.get("/", async (req, res) => {
   const rows = await query("SELECT id, name, email, roles, dept, initials, designation, photo_url, leave_balance, active, joined_date FROM users ORDER BY name");
-  res.json(rows);
+  const docs = await query("SELECT * FROM staff_docs");
+  res.json(rows.map((r) => ({ ...r, docs: docs.filter((d) => d.user_id === r.id) })));
 });
 
 router.post("/", requireRole(["super_admin", "admin"]), async (req, res) => {
@@ -79,6 +81,25 @@ router.post("/:id/photo", upload.single("photo"), async (req, res) => {
   const url = `/uploads/${req.file.filename}`;
   await query("UPDATE users SET photo_url = ? WHERE id = ?", [url, req.params.id]);
   res.json({ photoUrl: url });
+});
+
+// --- Staff documents (KYC-style expiry tracking for internal employees) --------------------
+router.post("/:id/docs", requireRole(["super_admin", "admin", "admin_exec", "hr"]), async (req, res) => {
+  const b = req.body;
+  const docId = nextId("EDOC");
+  await query("INSERT INTO staff_docs (id, user_id, type, number, expiry, cloud_link) VALUES (?,?,?,?,?,?)",
+    [docId, req.params.id, b.type, b.number || null, b.expiry || null, b.cloudLink || null]);
+  res.status(201).json({ id: docId });
+});
+router.patch("/:id/docs/:docId", requireRole(["super_admin", "admin", "admin_exec", "hr"]), async (req, res) => {
+  const b = req.body;
+  await query("UPDATE staff_docs SET type=COALESCE(?,type), number=?, expiry=?, cloud_link=? WHERE id=? AND user_id=?",
+    [b.type, b.number || null, b.expiry || null, b.cloudLink || null, req.params.docId, req.params.id]);
+  res.json({ ok: true });
+});
+router.delete("/:id/docs/:docId", requireRole(["super_admin", "admin", "admin_exec", "hr"]), async (req, res) => {
+  await query("DELETE FROM staff_docs WHERE id = ? AND user_id = ?", [req.params.docId, req.params.id]);
+  res.json({ ok: true });
 });
 
 module.exports = router;

@@ -87,6 +87,12 @@ router.post("/:id/approve-discount", requireRole(["sales_manager", "admin_like"]
 router.post("/:id/status", async (req, res) => {
   const { status } = req.body; // "Sent" | "Under Negotiation" | "Rejected" | "Approved" (Government Fee terminal state — see below)
   await query("UPDATE quotations SET status = ? WHERE id = ?", [status, req.params.id]);
+  // Mirror convert-to-sales-order's deal-stage sync for direct status changes (e.g. a
+  // Government Fee quotation's terminal "Approved", or a plain Rejected before any sales order exists).
+  if (status === "Approved" || status === "Rejected") {
+    const [q] = await query("SELECT deal_id FROM quotations WHERE id = ?", [req.params.id]);
+    if (q?.deal_id) await query("UPDATE deals SET stage = ? WHERE id = ?", [status === "Approved" ? "Won" : "Lost", q.deal_id]);
+  }
   res.json({ ok: true });
 });
 

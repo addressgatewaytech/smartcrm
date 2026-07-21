@@ -25,6 +25,18 @@ router.post("/plans", requireRole(["admin_like", "data_manager"]), async (req, r
   res.status(201).json({ ok: true });
 });
 
+router.patch("/plans/:name", requireRole(["admin_like"]), async (req, res) => {
+  const b = req.body;
+  const fields = [];
+  const params = [];
+  if (b.description !== undefined) { fields.push("description = ?"); params.push(b.description); }
+  if (b.terms !== undefined) { fields.push("terms = ?"); params.push(JSON.stringify(b.terms)); }
+  if (!fields.length) return res.status(400).json({ error: "Nothing to update" });
+  params.push(req.params.name);
+  await query(`UPDATE subscription_plans SET ${fields.join(", ")} WHERE name = ?`, params);
+  res.json({ ok: true });
+});
+
 router.delete("/plans/:name", requireRole(["admin_like"]), async (req, res) => {
   await query("DELETE FROM subscription_plans WHERE name = ?", [req.params.name]);
   res.json({ ok: true });
@@ -46,6 +58,11 @@ router.put("/plans/:name/tiers/:tierName", requireRole(["admin_like"]), async (r
 router.post("/plans/:name/tiers", requireRole(["admin_like"]), async (req, res) => {
   await query("INSERT INTO subscription_tiers (plan_name, tier_name, annual_fee) VALUES (?,?,0)", [req.params.name, req.body.tierName]);
   res.status(201).json({ ok: true });
+});
+
+router.delete("/plans/:name/tiers/:tierName", requireRole(["admin_like"]), async (req, res) => {
+  await query("DELETE FROM subscription_tiers WHERE plan_name = ? AND tier_name = ?", [req.params.name, req.params.tierName]);
+  res.json({ ok: true });
 });
 
 // --- Customer subscriptions -----------------------------------------------------------------
@@ -97,6 +114,26 @@ router.post("/:id/renew", async (req, res) => {
     await query(`INSERT INTO invoices (id, customer, fee_type, amount, status, due_date, subscription_id) VALUES (?,?, 'Professional Fee', ?, 'Sent', ?, ?)`,
       [nextId("INV"), sub.customer, sub.annual_fee, daysFromNow(14), req.params.id]);
   }
+  res.json({ ok: true });
+});
+
+router.patch("/:id", async (req, res) => {
+  const b = req.body;
+  const fields = [];
+  const params = [];
+  if (b.plan !== undefined) { fields.push("plan_name = ?"); params.push(b.plan); }
+  if (b.tier !== undefined) { fields.push("tier_name = ?"); params.push(b.tier); }
+  if (b.annualFee !== undefined) { fields.push("annual_fee = ?"); params.push(b.annualFee); }
+  if (b.startDate !== undefined) { fields.push("start_date = ?"); params.push(b.startDate); }
+  if (b.expiryDate !== undefined) { fields.push("expiry_date = ?"); params.push(b.expiryDate); }
+  if (!fields.length) return res.status(400).json({ error: "Nothing to update" });
+  params.push(req.params.id);
+  await query(`UPDATE customer_subscriptions SET ${fields.join(", ")} WHERE id = ?`, params);
+  res.json({ ok: true });
+});
+
+router.delete("/:id", async (req, res) => {
+  await query("DELETE FROM customer_subscriptions WHERE id = ?", [req.params.id]);
   res.json({ ok: true });
 });
 
