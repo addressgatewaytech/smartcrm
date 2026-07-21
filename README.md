@@ -29,20 +29,30 @@ npm run dev                 # starts on http://localhost:3000
 
 First login after seeding: `admin@addressgateway.com` / `ChangeMe123!` — change this immediately via `POST /api/auth/change-password`.
 
-## Deploying to Hostinger (Premium Web Hosting)
+## Deployed instance
+
+Live at **https://gatewaysmartcrm.com**, running on Hostinger's Node.js App product (GitHub-connected, auto-deploys on push to `main`).
+
+## Deploying to Hostinger
 
 1. Push this project to a GitHub repository (private is fine).
-2. In **hPanel → Databases → MySQL Databases**, create a database + user, and note the host/user/password/database name.
-3. In **hPanel → Websites → Add Website → Deploy Web App**, choose the Node.js option, connect your GitHub account, and select this repository.
-4. Set the environment variables from `.env.example` in Hostinger's Node.js app environment-variables panel (use the MySQL credentials from step 2 — `DB_HOST` is usually `localhost` on Hostinger).
-5. Set the startup file to `server.js`.
-6. After the first deploy, SSH in (or use hPanel's terminal) and run:
+2. In **hPanel → Databases → MySQL Databases**, create a database + user. Note the **Host** shown on that page (or under a "Remote MySQL" section) — it's often a specific server hostname (e.g. `srv2046.hstgr.io`), not `localhost`, if the Node.js app runs on separate infrastructure from the database (it does, on Hostinger's newer Node.js App product — check via SSH if unsure, see gotchas below).
+3. If connecting from separate infrastructure, enable **Remote MySQL** access for that database (hPanel → Databases → Remote MySQL) so the app can reach it.
+4. In **hPanel → Websites**, create/select a site, then find its **Node.js App** management (a distinct product from classic shared hosting — look for it specifically; not every plan/site has it enabled). Connect it to this GitHub repo/branch.
+5. Set the environment variables from `.env.example` in the app's **Environment Variables** panel (there's usually an "Import .env" option to paste them all at once) — use the MySQL details from steps 2–3. Do **not** set `PORT` — the platform manages that itself.
+6. After the first deploy, SSH into the app (its own SSH Access panel — separate credentials from any other hosting account on the same Hostinger account) and run:
    ```bash
    npm run db:migrate
    npm run db:seed
    ```
-7. Point `addressgateway.com` at the deployed Node.js app (hPanel handles this when you attach the domain to the website).
-8. Redeploy any time you push to the connected branch — hPanel's Node.js app supports one-click redeploy from Git.
+   (The env vars from step 5 aren't exported into a plain SSH shell — either export them inline for this one-off command, or temporarily drop a `.env` file in the app directory and delete it after.)
+7. Connect your custom domain via the app's "Connect domain" flow. Redeploys happen automatically on push if auto-deployment is enabled.
+
+### Gotchas discovered during a real deployment
+
+- **Root path**: the app needs a `GET /` handler returning 200 — some platforms probe `/` to confirm the app is healthy before finishing domain/proxy setup. Without it, custom-domain connection can silently fail with no error shown.
+- **JSON columns**: `mysql2` auto-deserializes native MySQL `JSON` columns into real JS values. Do **not** wrap them in `JSON.parse()` again when reading — this crashes every route touching a JSON column (`roles`, `items`, `checklist`, `audience`, `terms`, `extra_features`, `email_cc`) with `SyntaxError: Unexpected token ... in JSON`. Writing works fine either way (stringified or raw), since the driver serializes objects automatically.
+- **Domain-connection UI can be flaky per-domain**: if a custom domain's "Connect domain" wizard gets stuck (Confirm button does nothing, no error), it may be specific to that domain's existing DNS/mail configuration rather than a platform-wide bug — test with a fresh/unused domain to isolate before escalating to support.
 
 ## What's a stub / needs a decision before go-live
 
