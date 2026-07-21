@@ -13,6 +13,8 @@ const pool = mysql.createPool({
   connectionLimit: 10,
   queueLimit: 0,
   dateStrings: true, // return DATE/DATETIME as strings (YYYY-MM-DD[ HH:MM:SS]) — matches the JSON shape the frontend expects
+  decimalNumbers: true, // return DECIMAL/NEWDECIMAL columns as JS numbers, not strings — without this, e.g. `"5000" >= "15000.00"`
+                         // is a lexicographic string comparison (true!), not a numeric one, silently corrupting invoice payment-status logic.
 });
 
 async function query(sql, params = []) {

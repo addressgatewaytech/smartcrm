@@ -22,7 +22,7 @@ router.post("/:id/payments", async (req, res) => {
 
   const [invoice] = await query("SELECT amount FROM invoices WHERE id = ?", [req.params.id]);
   const [{ total_paid }] = await query("SELECT COALESCE(SUM(amount),0) AS total_paid FROM invoice_payments WHERE invoice_id = ?", [req.params.id]);
-  const status = total_paid >= invoice.amount ? "Paid" : total_paid > 0 ? "Partially Paid" : "Sent";
+  const status = Number(total_paid) >= Number(invoice.amount) ? "Paid" : Number(total_paid) > 0 ? "Partially Paid" : "Sent";
   await query("UPDATE invoices SET status = ? WHERE id = ?", [status, req.params.id]);
   res.json({ ok: true, status });
 });
@@ -31,7 +31,7 @@ router.delete("/:id/payments/:paymentId", async (req, res) => {
   await query("DELETE FROM invoice_payments WHERE id = ? AND invoice_id = ?", [req.params.paymentId, req.params.id]);
   const [invoice] = await query("SELECT amount FROM invoices WHERE id = ?", [req.params.id]);
   const [{ total_paid }] = await query("SELECT COALESCE(SUM(amount),0) AS total_paid FROM invoice_payments WHERE invoice_id = ?", [req.params.id]);
-  const status = total_paid >= invoice.amount ? "Paid" : total_paid > 0 ? "Partially Paid" : "Sent";
+  const status = Number(total_paid) >= Number(invoice.amount) ? "Paid" : Number(total_paid) > 0 ? "Partially Paid" : "Sent";
   await query("UPDATE invoices SET status = ? WHERE id = ?", [status, req.params.id]);
   res.json({ ok: true, status });
 });
