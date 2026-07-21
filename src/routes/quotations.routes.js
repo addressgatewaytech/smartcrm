@@ -11,9 +11,9 @@ router.use(requireAuth);
 function parseRow(r) {
   return {
     ...r,
-    items: JSON.parse(r.items || "[]"),
-    email_cc: r.email_cc ? JSON.parse(r.email_cc) : [],
-    ...quoteTotal(JSON.parse(r.items || "[]"), r.order_discount),
+    items: r.items || [],
+    email_cc: r.email_cc || [],
+    ...quoteTotal(r.items || [], r.order_discount),
   };
 }
 
@@ -129,7 +129,7 @@ router.post("/:id/convert-to-sales-order", async (req, res) => {
     }
 
     await conn.execute("UPDATE quotations SET status = 'Approved' WHERE id = ?", [q.id]);
-    const items = JSON.parse(q.items);
+    const items = q.items;
     const { total } = quoteTotal(items, q.order_discount);
     const soId = nextId("SO");
     await conn.execute(

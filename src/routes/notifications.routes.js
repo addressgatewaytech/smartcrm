@@ -9,10 +9,10 @@ router.use(requireAuth);
 router.get("/", async (req, res) => {
   const rows = await query("SELECT * FROM notifications ORDER BY created_at DESC LIMIT 200");
   const mine = rows.filter((n) => {
-    const audience = JSON.parse(n.audience);
+    const audience = n.audience;
     return req.user.roles.some((r) => audience.includes(r)) || audience.includes(req.user.id);
   });
-  res.json(mine.map((n) => ({ ...n, audience: JSON.parse(n.audience) })));
+  res.json(mine);
 });
 
 router.post("/:id/read", async (req, res) => {

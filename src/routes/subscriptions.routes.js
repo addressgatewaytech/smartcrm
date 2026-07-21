@@ -13,8 +13,8 @@ router.get("/plans", async (req, res) => {
   const tiers = await query("SELECT * FROM subscription_tiers");
   res.json(plans.map((p) => ({
     ...p,
-    terms: JSON.parse(p.terms || "[]"),
-    tiers: tiers.filter((t) => t.plan_name === p.name).map((t) => ({ ...t, extra_features: t.extra_features ? JSON.parse(t.extra_features) : [] })),
+    terms: p.terms || [],
+    tiers: tiers.filter((t) => t.plan_name === p.name).map((t) => ({ ...t, extra_features: t.extra_features || [] })),
   })));
 });
 

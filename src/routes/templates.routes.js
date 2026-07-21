@@ -31,7 +31,7 @@ router.get("/quotation-templates", async (req, res) => {
   const grouped = {};
   for (const r of rows) {
     grouped[r.service] = grouped[r.service] || {};
-    grouped[r.service][r.fee_type] = { ...r, items: JSON.parse(r.items || "[]") };
+    grouped[r.service][r.fee_type] = { ...r, items: r.items || [] };
   }
   res.json(grouped);
 });
@@ -53,7 +53,7 @@ router.put("/quotation-templates/:service/:feeType", requireRole(["admin_like", 
 router.get("/checklist-templates", async (req, res) => {
   const rows = await query("SELECT * FROM checklist_templates");
   const out = {};
-  for (const r of rows) out[r.service] = JSON.parse(r.steps || "[]");
+  for (const r of rows) out[r.service] = r.steps || [];
   res.json(out);
 });
 

@@ -25,7 +25,7 @@ router.post("/:id/onboard", async (req, res) => {
 
     const jobId = nextId("JC");
     const [[tpl]] = await conn.execute("SELECT steps FROM checklist_templates WHERE service = ?", [so.service]);
-    const steps = tpl ? JSON.parse(tpl.steps) : [];
+    const steps = tpl ? tpl.steps : [];
     const checklist = steps.map((label, i) => ({ id: `CI-${i}`, label, done: false }));
     await conn.execute(
       `INSERT INTO job_cards (id, sales_order_id, customer, service, status, priority, target_date, checklist, created_by) VALUES (?,?,?,?, 'Created', 'Normal', ?, ?, ?)`,

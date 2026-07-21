@@ -17,7 +17,7 @@ router.post("/login", async (req, res) => {
   const ok = await bcrypt.compare(password, user.password_hash);
   if (!ok) return res.status(401).json({ error: "Invalid email or password" });
 
-  const roles = JSON.parse(user.roles);
+  const roles = user.roles;
   const token = jwt.sign({ id: user.id, roles }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN || "8h" });
 
   res.json({
@@ -29,7 +29,7 @@ router.post("/login", async (req, res) => {
 router.get("/me", requireAuth, async (req, res) => {
   const [user] = await query("SELECT id, name, email, roles, dept, initials, designation, photo_url, leave_balance FROM users WHERE id = ?", [req.user.id]);
   if (!user) return res.status(404).json({ error: "User not found" });
-  res.json({ ...user, roles: JSON.parse(user.roles) });
+  res.json({ ...user, roles: user.roles });
 });
 
 // Change own password (first-login flow, or self-service).

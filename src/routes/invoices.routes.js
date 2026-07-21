@@ -11,7 +11,7 @@ router.get("/", async (req, res) => {
   const payments = await query("SELECT * FROM invoice_payments ORDER BY paid_at DESC");
   res.json(invoices.map((inv) => ({
     ...inv,
-    email_cc: inv.email_cc ? JSON.parse(inv.email_cc) : [],
+    email_cc: inv.email_cc || [],
     payments: payments.filter((p) => p.invoice_id === inv.id),
   })));
 });

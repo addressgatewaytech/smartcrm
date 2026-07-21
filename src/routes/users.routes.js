@@ -25,7 +25,7 @@ router.use(requireAuth);
 // Users & Roles management is restricted to super_admin/admin (not admin_exec) — matches the prototype exactly.
 router.get("/", requireRole(["super_admin", "admin", "admin_exec", "hr"]), async (req, res) => {
   const rows = await query("SELECT id, name, email, roles, dept, initials, designation, photo_url, leave_balance, active, joined_date FROM users ORDER BY name");
-  res.json(rows.map((r) => ({ ...r, roles: JSON.parse(r.roles) })));
+  res.json(rows);
 });
 
 router.post("/", requireRole(["super_admin", "admin"]), async (req, res) => {

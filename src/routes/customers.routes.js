@@ -89,7 +89,7 @@ router.get("/:id/dashboard", async (req, res) => {
   const totalPaid = payments.reduce((a, p) => a + Number(p.amount), 0);
 
   res.json({
-    quotations: quotations.map((q) => ({ ...q, items: JSON.parse(q.items), ...quoteTotal(JSON.parse(q.items), q.order_discount) })),
+    quotations: quotations.map((q) => ({ ...q, items: q.items, ...quoteTotal(q.items, q.order_discount) })),
     invoices: invoices.map((inv) => ({ ...inv, payments: payments.filter((p) => p.invoice_id === inv.id) })),
     jobCards,
     statement: { totalInvoiced, totalPaid, balance: totalInvoiced - totalPaid },

@@ -16,7 +16,7 @@ router.get("/business-volume", async (req, res) => {
   const rows = await query(
     `SELECT * FROM quotations WHERE fee_type = 'Professional Fee' AND DATE(created_at) BETWEEN ? AND ?`, [from, to]
   );
-  const parsed = rows.map((q) => ({ ...q, items: JSON.parse(q.items), ...quoteTotal(JSON.parse(q.items), q.order_discount) }));
+  const parsed = rows.map((q) => ({ ...q, items: q.items, ...quoteTotal(q.items, q.order_discount) }));
   const approved = parsed.filter((q) => q.status === "Approved");
   res.json({
     quotationsIssued: parsed.length,
@@ -38,7 +38,7 @@ router.get("/sales-by-person", async (req, res) => {
       `SELECT q.* FROM quotations q LEFT JOIN deals d ON d.id = q.deal_id WHERE (d.owner = ? OR q.owner = ?) AND DATE(q.created_at) BETWEEN ? AND ?`,
       [owner.id, owner.id, from, to]
     );
-    const parsedQuotes = quotes.map((q) => ({ ...q, items: JSON.parse(q.items), ...quoteTotal(JSON.parse(q.items), q.order_discount) }));
+    const parsedQuotes = quotes.map((q) => ({ ...q, items: q.items, ...quoteTotal(q.items, q.order_discount) }));
     const businessVolume = parsedQuotes.filter((q) => q.status === "Approved" && q.fee_type === "Professional Fee").reduce((a, q) => a + q.total, 0);
     const pendingQuotes = parsedQuotes.filter((q) => !["Approved", "Rejected", "Expired"].includes(q.status)).length;
     const pendingLeads = await query("SELECT COUNT(*) AS c FROM leads WHERE owner = ? AND status NOT IN ('Qualified','Unqualified')", [owner.id]);
@@ -71,7 +71,7 @@ router.get("/customers", async (req, res) => {
   const out = [];
   for (const c of customers) {
     const quotes = await query("SELECT * FROM quotations WHERE customer = ? AND status='Approved' AND fee_type='Professional Fee' AND DATE(created_at) BETWEEN ? AND ?", [c.name, from, to]);
-    const parsedQuotes = quotes.map((q) => ({ ...quoteTotal(JSON.parse(q.items), q.order_discount) }));
+    const parsedQuotes = quotes.map((q) => ({ ...quoteTotal(q.items, q.order_discount) }));
     const invoices = await query("SELECT * FROM invoices WHERE customer = ? AND fee_type='Professional Fee' AND DATE(created_at) BETWEEN ? AND ?", [c.name, from, to]);
     const payments = await query("SELECT SUM(amount) AS s FROM invoice_payments WHERE invoice_id IN (SELECT id FROM invoices WHERE customer = ?)", [c.name]);
     const jobs = await query("SELECT COUNT(*) AS c FROM job_cards WHERE customer = ? AND DATE(created_at) BETWEEN ? AND ?", [c.name, from, to]);
@@ -84,7 +84,7 @@ router.get("/customers", async (req, res) => {
 
 router.get("/user-base", async (req, res) => {
   const users = await query("SELECT * FROM users");
-  res.json(users.map((u) => ({ ...u, roles: JSON.parse(u.roles) })));
+  res.json(users);
 });
 
 router.get("/attendance-hr", async (req, res) => {

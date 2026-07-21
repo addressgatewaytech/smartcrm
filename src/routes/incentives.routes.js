@@ -34,7 +34,7 @@ router.delete("/rules/:id", requireRole(["admin_like"]), async (req, res) => {
 router.get("/earned/:userId", async (req, res) => {
   const [user] = await query("SELECT roles FROM users WHERE id = ?", [req.params.userId]);
   if (!user) return res.status(404).json({ error: "Not found" });
-  const roles = JSON.parse(user.roles);
+  const roles = user.roles;
 
   const [{ dealsWon }] = await query(
     `SELECT COUNT(*) AS dealsWon FROM deals d

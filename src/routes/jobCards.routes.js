@@ -14,7 +14,7 @@ router.get("/", async (req, res) => {
   const logs = await query("SELECT * FROM job_card_status_log ORDER BY at ASC");
   let out = rows.map((r) => ({
     ...r,
-    checklist: JSON.parse(r.checklist || "[]"),
+    checklist: r.checklist || [],
     assignees: assignees.filter((a) => a.job_card_id === r.id).map((a) => a.user_id),
     statusLog: logs.filter((l) => l.job_card_id === r.id),
   }));
@@ -29,7 +29,7 @@ router.post("/direct", requireRole(["sales_manager", "sales_exec", "ops_manager"
   const { customer, service, description } = req.body;
   const id = nextId("JC");
   const [tpl] = await query("SELECT steps FROM checklist_templates WHERE service = ?", [service]);
-  const steps = tpl ? JSON.parse(tpl.steps) : [];
+  const steps = tpl ? tpl.steps : [];
   const checklist = steps.map((label, i) => ({ id: `CI-${i}`, label, done: false }));
 
   await query(
@@ -69,7 +69,7 @@ router.post("/:id/status", async (req, res) => {
   const { status, reason } = req.body; // "On Hold" | "In Progress" | "Completed" | "Cancelled"
   if (status === "Completed") {
     const [job] = await query("SELECT checklist FROM job_cards WHERE id = ?", [req.params.id]);
-    const checklist = JSON.parse(job.checklist || "[]");
+    const checklist = job.checklist || [];
     if (checklist.length > 0 && checklist.some((c) => !c.done)) return res.status(400).json({ error: "All checklist items must be completed first" });
   }
   await query("UPDATE job_cards SET status = ?, cancel_reason = ? WHERE id = ?", [status, status === "Cancelled" ? reason : null, req.params.id]);
@@ -85,7 +85,7 @@ router.patch("/:id", async (req, res) => {
 
 router.post("/:id/checklist", async (req, res) => {
   const [job] = await query("SELECT checklist FROM job_cards WHERE id = ?", [req.params.id]);
-  const checklist = JSON.parse(job.checklist || "[]");
+  const checklist = job.checklist || [];
   if (req.body.itemId) {
     // toggle or remove
     const updated = req.body.remove
