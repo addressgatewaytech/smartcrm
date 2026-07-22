@@ -49,7 +49,7 @@ const CSS = `
 
   .agw-sidebar { width: 232px; flex-shrink: 0; background: var(--sidebar);
     color: var(--sidebar-text); display: flex; flex-direction: column; transition: width .16s ease; position: relative; }
-  .agw-brand { padding: 20px 18px 16px; border-bottom: 1px solid var(--sidebar-line); }
+  .agw-brand { padding: 20px 18px 16px; border-bottom: 1px solid var(--sidebar-line); display: flex; flex-direction: column; align-items: center; text-align: center; }
   .agw-brand-sub { font-size: 10.5px; color: var(--sidebar-text-dim); margin-top: 8px; letter-spacing: .03em;}
 
   .agw-nav { flex: 1; overflow-y: auto; padding: 10px 10px; }
@@ -744,7 +744,7 @@ export default function App() {
             ) : (
               <>
                 <div className="agw-brand-wordmark"><BrandLogo scale={0.92} onDark /></div>
-                <img src="/logo-smart-crm.png" alt="Smart CRM" className="agw-brand-sub" style={{ display: "block", height: 26, width: "auto" }} />
+                <img src="/logo-smart-crm.png" alt="Smart CRM" className="agw-brand-sub" style={{ display: "block", height: 40, width: "auto" }} />
               </>
             )}
           </div>
