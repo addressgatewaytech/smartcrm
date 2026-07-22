@@ -2250,6 +2250,28 @@ function NewCustomerModal({ dispatch, onClose, onCreated, customer=null }) {
   const [form, setForm] = useState(customer
     ? { name: customer.name, type: customer.type || "Company", contact: customer.contact || "", phone: customer.phone || "", email: customer.email || "", address: customer.address || "", companySize: customer.companySize || "" }
     : { name: "", type: "Company", contact: "", phone: "", email: "", address: "", companySize: "" });
+  const [saveError, setSaveError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  // Not fire-and-forget: a rejected dispatch was previously swallowed silently while the modal
+  // closed anyway, making a failed create/save look identical to a successful one.
+  const handleSave = async () => {
+    setSaving(true);
+    setSaveError("");
+    try {
+      if (isEdit) {
+        await dispatch({ type:"UPDATE_CUSTOMER", id: customer.id, payload: form });
+      } else {
+        await dispatch({ type:"ADD_CUSTOMER", payload: form });
+      }
+      onClose();
+      if (onCreated) onCreated(form.name.trim());
+    } catch (err) {
+      setSaveError(err instanceof ApiError ? err.message : "Couldn't save — please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
   return (
     <Modal title={isEdit ? "Edit customer" : "New customer"} sub={isEdit ? "Update this customer's profile." : "Create a customer profile — KYC documents can be added afterward."} onClose={onClose}>
       <div className="field"><label>Company / customer name</label><input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="Company or individual name" autoFocus /></div>
@@ -2274,17 +2296,12 @@ function NewCustomerModal({ dispatch, onClose, onCreated, customer=null }) {
           </select>
         </div>
       )}
+      {saveError && <div className="side-note" style={{ color:"var(--danger)" }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{saveError}</div>}
       <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop: 16 }}>
         <button className="btn" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" disabled={!form.name.trim()} onClick={()=>{
-          if (isEdit) {
-            dispatch({ type:"UPDATE_CUSTOMER", id: customer.id, payload: form });
-          } else {
-            dispatch({ type:"ADD_CUSTOMER", payload: form });
-          }
-          onClose();
-          if (onCreated) onCreated(form.name.trim());
-        }}>{isEdit ? "Save changes" : "Create customer"}</button>
+        <button className="btn btn-primary" disabled={saving || !form.name.trim()} onClick={handleSave}>
+          {saving ? "Saving…" : isEdit ? "Save changes" : "Create customer"}
+        </button>
       </div>
     </Modal>
   );
