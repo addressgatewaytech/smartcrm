@@ -35,7 +35,10 @@ router.get("/:id", async (req, res) => {
 router.get("/:id/pdf", async (req, res) => {
   const [row] = await query("SELECT * FROM quotations WHERE id = ?", [req.params.id]);
   if (!row) return res.status(404).json({ error: "Not found" });
-  generateQuotationPdf(parseRow(row), res);
+  // Quotations only store the customer's name, not their id, so the address is looked up by
+  // name at PDF-generation time rather than duplicated onto every quotation row.
+  const [customer] = await query("SELECT address FROM customers WHERE name = ?", [row.customer]);
+  generateQuotationPdf({ ...parseRow(row), customer_address: customer?.address || "" }, res);
 });
 
 router.post("/", async (req, res) => {

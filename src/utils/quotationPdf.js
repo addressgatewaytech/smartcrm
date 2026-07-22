@@ -39,7 +39,11 @@ const HAIR = "#E1E6E8";
 const LIGHT_BG = "#F5F6F6";
 
 const money2 = (n) => Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const fmtDate = (d) => (d ? String(d).slice(0, 10) : "");
+const fmtDate = (d) => {
+  if (!d) return "";
+  const [y, m, day] = String(d).slice(0, 10).split("-");
+  return `${day}-${m}-${y}`;
+};
 
 /** Draws the brand wordmark ("ADDRESS GATEWAY" in three colors, right-aligned) at (rightX, y). Returns the y after it. */
 function drawBrandHeader(doc, rightX, y) {
@@ -52,20 +56,33 @@ function drawBrandHeader(doc, rightX, y) {
     x += doc.widthOfString(t);
   });
   doc.fillColor(INK);
-  y += 18;
+  y += 16;
   doc.font("Helvetica").fontSize(8).fillColor(GRAY)
     .text("BUSINESS SERVICES", MARGIN, y, { width: rightX - MARGIN, align: "right", characterSpacing: 1.2 });
-  y = doc.y + 5;
+  y = doc.y + 4;
   doc.fontSize(8.5)
-    .text("Address Gateway Building", MARGIN, y, { width: rightX - MARGIN, align: "right" });
+    .text("Address Gateway Building, D Ring Road, Doha, Qatar", MARGIN, y, { width: rightX - MARGIN, align: "right" });
   y = doc.y;
-  doc.text("D Ring Road, Doha, Qatar", MARGIN, y, { width: rightX - MARGIN, align: "right" });
-  y = doc.y;
-  doc.text("Call: 44434912, Email: startup@addressgateway.com", MARGIN, y, { width: rightX - MARGIN, align: "right" });
-  y = doc.y;
-  doc.text("www.addressgateway.com", MARGIN, y, { width: rightX - MARGIN, align: "right" });
+  doc.text("Call: 44434912  ·  startup@addressgateway.com  ·  www.addressgateway.com", MARGIN, y, { width: rightX - MARGIN, align: "right" });
   doc.fillColor(INK);
   return doc.y;
+}
+
+/** Draws the customer name (bold) and, if present, their saved address underneath it — both
+ * right-aligned to match the on-screen "Bill To" block. Returns the y after the last line. */
+function drawBillTo(doc, quotation, rightX, y) {
+  doc.font("Helvetica-Bold").fontSize(10.5).fillColor(INK).text(quotation.customer || "", MARGIN, y, { width: rightX - MARGIN, align: "right" });
+  y = doc.y;
+  const addressLines = (quotation.customer_address || "").split("\n").map((l) => l.trim()).filter(Boolean);
+  if (addressLines.length) {
+    doc.font("Helvetica").fontSize(8.5).fillColor(GRAY);
+    addressLines.forEach((line) => {
+      doc.text(line, MARGIN, y, { width: rightX - MARGIN, align: "right" });
+      y = doc.y;
+    });
+    doc.fillColor(INK);
+  }
+  return y;
 }
 
 function drawTableHeader(doc, y, colX, tableRight) {
@@ -98,15 +115,16 @@ function generateQuotationPdf(quotation, res) {
   doc.font("Helvetica-Bold").fontSize(24).fillColor(INK).text("QUOTE", MARGIN, headerTop, { lineBreak: false });
   doc.font("Courier").fontSize(9).fillColor(GRAY).text(`Quote# AGBS/${quotation.id}`, MARGIN, headerTop + 30, { lineBreak: false });
   const brandBottomY = drawBrandHeader(doc, tableRight, headerTop);
-  let y = Math.max(headerTop + 44, brandBottomY) + 20;
+  let y = Math.max(headerTop + 44, brandBottomY) + 14;
 
-  // --- Quote Date / Bill To row -------------------------------------------------------------
+  // --- Quote Date / Bill To row (Bill To can run to several lines once the address is included,
+  // so the row height below it is driven by whichever side — date or address — is taller) -------
   doc.font("Helvetica").fontSize(9).fillColor(GRAY).text("Quote Date :", MARGIN, y);
   doc.fontSize(9).fillColor(GRAY).text("Bill To", MARGIN, y, { width: tableRight - MARGIN, align: "right" });
   y += 13;
   doc.font("Helvetica").fontSize(10).fillColor(INK).text(fmtDate(quotation.created_at) || "-", MARGIN, y);
-  doc.font("Helvetica-Bold").fontSize(10.5).fillColor(INK).text(quotation.customer || "", MARGIN, y, { width: tableRight - MARGIN, align: "right" });
-  y += 24;
+  const billToBottomY = drawBillTo(doc, quotation, tableRight, y);
+  y = Math.max(y + 11, billToBottomY) + 14;
 
   // --- Subject ---------------------------------------------------------------------------------
   doc.font("Helvetica").fontSize(9).fillColor(GRAY).text("Subject :", MARGIN, y);

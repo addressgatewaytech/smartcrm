@@ -2252,8 +2252,8 @@ const COMPANY_SIZES = ["Up to 10 Employees", "Up to 30 Employees", "Up to 100 Em
 function NewCustomerModal({ dispatch, onClose, onCreated, customer=null }) {
   const isEdit = !!customer;
   const [form, setForm] = useState(customer
-    ? { name: customer.name, type: customer.type || "Company", contact: customer.contact || "", phone: customer.phone || "", email: customer.email || "", companySize: customer.companySize || "" }
-    : { name: "", type: "Company", contact: "", phone: "", email: "", companySize: "" });
+    ? { name: customer.name, type: customer.type || "Company", contact: customer.contact || "", phone: customer.phone || "", email: customer.email || "", address: customer.address || "", companySize: customer.companySize || "" }
+    : { name: "", type: "Company", contact: "", phone: "", email: "", address: "", companySize: "" });
   return (
     <Modal title={isEdit ? "Edit customer" : "New customer"} sub={isEdit ? "Update this customer's profile." : "Create a customer profile — KYC documents can be added afterward."} onClose={onClose}>
       <div className="field"><label>Company / customer name</label><input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="Company or individual name" autoFocus /></div>
@@ -2269,6 +2269,7 @@ function NewCustomerModal({ dispatch, onClose, onCreated, customer=null }) {
         <div className="field"><label>Phone</label><input value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="+974 ..." /></div>
         <div className="field"><label>Email</label><input type="email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})} placeholder="Optional" /></div>
       </div>
+      <div className="field"><label>Full address (shown on quotations)</label><textarea rows={2} value={form.address} onChange={e=>setForm({...form,address:e.target.value})} placeholder="Optional — building, street, area, city, country" /></div>
       {form.type === "Company" && (
         <div className="field"><label>Company size (KYC category)</label>
           <select value={form.companySize} onChange={e=>setForm({...form,companySize:e.target.value})}>

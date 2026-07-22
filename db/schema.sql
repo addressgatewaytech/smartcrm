@@ -166,6 +166,7 @@ CREATE TABLE IF NOT EXISTS customers (
   contact      VARCHAR(150),
   phone        VARCHAR(50),
   email        VARCHAR(190),
+  address      VARCHAR(500),
   company_size ENUM('Up to 10 Employees','Up to 30 Employees','Up to 100 Employees','Up to 200 Employees'),
   created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;

@@ -46,7 +46,7 @@ export const mapQuotation = (q) => ({
 
 export const mapCustomer = (c) => ({
   id: c.id, name: c.name, type: c.type, contact: c.contact, phone: c.phone, email: c.email,
-  companySize: c.company_size,
+  address: c.address, companySize: c.company_size,
   docs: (c.docs || []).map((d) => ({ id: d.id, type: d.type, number: d.number, expiry: d.expiry, cloudLink: d.cloud_link || "" })),
   employees: (c.employees || []).map((e) => ({
     id: e.id, name: e.name, designation: e.designation,
