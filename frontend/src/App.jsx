@@ -1428,10 +1428,12 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
     const { tpl: pendingTpl, activityIdx, activities } = activityPrompt;
     const activityTemplateItem = pendingTpl.items[activityIdx];
     const named = activities.map(a => a.trim()).filter(Boolean);
-    const expanded = named.length
-      ? named.map((text, i) => ({ ...activityTemplateItem, note: `${i + 1} - ${text}` }))
-      : [activityTemplateItem]; // nothing entered — keep the generic single line rather than lose it
-    const newItems = [...pendingTpl.items.slice(0, activityIdx), ...expanded, ...pendingTpl.items.slice(activityIdx + 1)];
+    // One row, not one per activity — qty carries the activity count so Amount (qty × rate)
+    // still comes out correct, and every activity is listed in the note, numbered in order.
+    const activityItem = named.length
+      ? { ...activityTemplateItem, qty: named.length, note: named.map((text, i) => `${i + 1} - ${text}`).join("\n") }
+      : activityTemplateItem; // nothing entered — keep the generic single line rather than lose it
+    const newItems = [...pendingTpl.items.slice(0, activityIdx), activityItem, ...pendingTpl.items.slice(activityIdx + 1)];
     applyTemplate(pendingTpl, newItems);
     setActivityPrompt(null);
   };
