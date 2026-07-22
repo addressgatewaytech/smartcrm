@@ -481,15 +481,15 @@ const NAV = [
   { group: "Data Manager", items: [
     { key: "dataManager", label: "Data Manager", icon: Database, roles: [...ADMIN_LIKE,"data_manager","sales_manager","sales_exec"] },
   ]},
-  { group: "Subscriptions", items: [
-    { key: "subscriptions", label: "Subscriptions", icon: Repeat, roles: [...ADMIN_LIKE,"sales_manager","sales_exec","accounts"] },
-  ]},
   { group: "Finance", items: [
     { key: "orders", label: "Sales Orders", icon: ShoppingCart, roles: [...ADMIN_LIKE,"sales_manager","accounts"] },
     { key: "invoices", label: "Invoices", icon: Receipt, roles: [...ADMIN_LIKE,"accounts","sales_manager"] },
   ]},
   { group: "Operations", items: [
     { key: "jobs", label: "Job Cards", icon: ClipboardList, roles: [...ADMIN_LIKE,"ops_manager","ops_member","accounts","sales_manager","sales_exec"] },
+  ]},
+  { group: "Subscriptions", items: [
+    { key: "subscriptions", label: "Subscriptions", icon: Repeat, roles: [...ADMIN_LIKE,"sales_manager","sales_exec","accounts"] },
   ]},
   { group: "People", items: [
     { key: "incentives", label: "Incentives", icon: Coins, roles: "all" },
