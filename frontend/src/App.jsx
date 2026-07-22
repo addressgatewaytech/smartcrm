@@ -281,11 +281,11 @@ function docState(expiry) {
   return { label: "Valid", cls: "stamp-success" };
 }
 
-// The real logo file has an opaque white background, so on the dark sidebar it's wrapped in a
-// small white card rather than shown raw (which would just look like a stray white box).
+// The logo's "GATE" text is the same navy as the sidebar background, so it needs a light
+// backing to stay readable — a soft, generously-rounded pill rather than a hard-edged card.
 function BrandLogo({ scale = 1, onDark = false }) {
   return (
-    <div style={onDark ? { display: "inline-block", background: "#fff", borderRadius: 8, padding: `${6*scale}px ${10*scale}px` } : undefined}>
+    <div style={onDark ? { display: "inline-block", background: "#fff", borderRadius: 999, padding: `${9*scale}px ${18*scale}px` } : undefined}>
       <img src="/logo-address-gateway.png" alt="Address Gateway Business Services" style={{ display: "block", height: 34 * scale, width: "auto" }} />
     </div>
   );
