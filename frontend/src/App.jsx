@@ -1398,15 +1398,42 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
 
   const update = (i, field, val) => setItems(items.map((it,idx) => idx===i ? { ...it, [field]: val } : it));
 
+  // "Activity Fees" is the one template line that's genuinely different per quotation — it's
+  // priced per business activity, not a flat fee — so loading a template that has it pauses to
+  // ask which activities apply, then expands it into one numbered line per activity (matching
+  // how these are actually written up: "1 - Retail Sale of...", "2 - ...").
+  const [activityPrompt, setActivityPrompt] = useState(null); // { tpl, activityIdx, activities: string[] }
+
+  const applyTemplate = (loadedTpl, loadedItems) => {
+    setItems(loadedItems.map(it => ({ ...it })));
+    setTerms(loadedTpl.terms || "");
+    setNotes(loadedTpl.notes || "");
+    setSubject(loadedTpl.subject || "");
+    setOrderDiscount(loadedTpl.orderDiscount || 0);
+    setBank(loadedTpl.bank || "");
+    setFooterNote(loadedTpl.footerNote || "");
+  };
+
   const loadTemplate = () => {
     if (!tpl) return;
-    setItems(tpl.items.map(it => ({ ...it })));
-    setTerms(tpl.terms || "");
-    setNotes(tpl.notes || "");
-    setSubject(tpl.subject || "");
-    setOrderDiscount(tpl.orderDiscount || 0);
-    setBank(tpl.bank || "");
-    setFooterNote(tpl.footerNote || "");
+    const activityIdx = tpl.items.findIndex(it => (it.description || "").trim().toLowerCase() === "activity fees");
+    if (activityIdx !== -1) {
+      setActivityPrompt({ tpl, activityIdx, activities: [""] });
+      return;
+    }
+    applyTemplate(tpl, tpl.items);
+  };
+
+  const confirmActivities = () => {
+    const { tpl: pendingTpl, activityIdx, activities } = activityPrompt;
+    const activityTemplateItem = pendingTpl.items[activityIdx];
+    const named = activities.map(a => a.trim()).filter(Boolean);
+    const expanded = named.length
+      ? named.map((text, i) => ({ ...activityTemplateItem, note: `${i + 1} - ${text}` }))
+      : [activityTemplateItem]; // nothing entered — keep the generic single line rather than lose it
+    const newItems = [...pendingTpl.items.slice(0, activityIdx), ...expanded, ...pendingTpl.items.slice(activityIdx + 1)];
+    applyTemplate(pendingTpl, newItems);
+    setActivityPrompt(null);
   };
 
   const addItem = () => {
@@ -1461,6 +1488,31 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
           <span style={{ fontSize:12.5, color:"var(--gold)" }}><Files size={13} style={{verticalAlign:-2,marginRight:5}}/>A saved {feeType} template exists for {templateService}.</span>
           <button className="btn btn-sm" onClick={loadTemplate}>Load template</button>
         </div>
+      )}
+      {activityPrompt && (
+        <Modal title="Business activities" sub="One Activity Fees line will be added per activity, numbered in order." onClose={()=>setActivityPrompt(null)} width={480}>
+          {activityPrompt.activities.map((a, i) => (
+            <div key={i} className="field" style={{ display:"flex", gap:6, alignItems:"flex-end" }}>
+              <div style={{ flex:1 }}>
+                <label>{`Activity ${i + 1}`}</label>
+                <input value={a} autoFocus={i===0}
+                  onChange={e=>setActivityPrompt(p=>({ ...p, activities: p.activities.map((x,idx)=>idx===i?e.target.value:x) }))}
+                  placeholder="e.g. Retail Sale of Fire Protection and Safety Equipment, Tools, and Materials" />
+              </div>
+              {activityPrompt.activities.length > 1 && (
+                <button type="button" className="btn btn-sm btn-ghost" style={{ color:"var(--danger)" }}
+                  onClick={()=>setActivityPrompt(p=>({ ...p, activities: p.activities.filter((_,idx)=>idx!==i) }))}><Trash2 size={13}/></button>
+              )}
+            </div>
+          ))}
+          <button type="button" className="btn btn-sm" style={{ marginBottom: 16 }}
+            onClick={()=>setActivityPrompt(p=>({ ...p, activities: [...p.activities, ""] }))}><Plus size={13}/> Add another activity</button>
+          <div className="side-note" style={{ marginTop:0 }}>Leave blank and continue to keep the template's generic single Activity Fees line instead.</div>
+          <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop: 16 }}>
+            <button className="btn" onClick={()=>setActivityPrompt(null)}>Cancel</button>
+            <button className="btn btn-primary" onClick={confirmActivities}>Continue</button>
+          </div>
+        </Modal>
       )}
 
       <div className="field"><label>Subject</label><input value={subject} onChange={e=>setSubject(e.target.value)} placeholder="e.g. 100% FOREIGN OWNERSHIP COMPANY FORMATION - Government Fees" /></div>
