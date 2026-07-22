@@ -28,6 +28,10 @@ async function request(method, path, body, isFormData = false) {
   const res = await fetch(`/api${path}`, {
     method,
     headers,
+    // Belt-and-suspenders alongside the server's Cache-Control: no-store — some browsers
+    // (Safari especially) are more aggressive about reusing a cached GET than others, which
+    // otherwise shows up as "the list didn't update" after a create/edit elsewhere.
+    cache: "no-store",
     body: body === undefined ? undefined : isFormData ? body : JSON.stringify(body),
   });
 

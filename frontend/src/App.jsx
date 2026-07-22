@@ -30,6 +30,12 @@ const CSS = `
     color: var(--ink);
     background: var(--page);
     -webkit-font-smoothing: antialiased;
+    /* This app is light-themed only. Without this, Safari/WebKit renders native form
+       controls (select, checkbox, date picker, ...) using the OS's Dark Mode palette by
+       default — on a Mac in Dark Mode that can make a <select>'s text render in a color
+       barely distinguishable from its background, looking exactly like "the dropdown
+       doesn't work" even though it's functioning. */
+    color-scheme: light;
   }
   .agw .disp { font-family: 'Space Grotesk', 'Inter', sans-serif; }
   .agw .mono { font-family: 'IBM Plex Mono', monospace; }
@@ -181,7 +187,7 @@ const CSS = `
   .field { margin-bottom: 12px; }
   .field label { display: block; font-size: 12px; color: var(--ink-soft); margin-bottom: 5px; }
   .field input, .field select, .field textarea { width: 100%; border: 1px solid var(--hair); border-radius: 8px;
-    padding: 8px 10px; font-size: 13.5px; background: #FCFBF9; }
+    padding: 8px 10px; font-size: 13.5px; background: #FCFBF9; color: var(--ink); appearance: auto; -webkit-appearance: auto; }
   .field input:focus, .field select:focus, .field textarea:focus { outline: 2px solid var(--brand-tint); border-color: var(--brand); }
   .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
