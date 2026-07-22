@@ -127,7 +127,7 @@ CREATE TABLE IF NOT EXISTS leads (
   source         VARCHAR(100),
   service        VARCHAR(150),
   owner          VARCHAR(20),
-  status         ENUM('New','Contacted','Follow-up Scheduled','Interested','Not Interested','Qualified','Unqualified') DEFAULT 'New',
+  status         ENUM('New','Contacted','Follow-up Scheduled','Interested','Not Interested','Qualified','Unqualified','Converted') DEFAULT 'New',
   next_follow_up DATE,
   created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (owner) REFERENCES users(id) ON DELETE SET NULL

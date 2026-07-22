@@ -297,7 +297,7 @@ function Stamp({ children, tone = "neutral" }) {
 
 function statusTone(status) {
   const map = {
-    New: "info", Contacted: "info", "Follow-up Scheduled": "warning", Interested: "gold", "Not Interested": "danger", Qualified: "success", Unqualified: "neutral",
+    New: "info", Contacted: "info", "Follow-up Scheduled": "warning", Interested: "gold", "Not Interested": "danger", Qualified: "success", Unqualified: "neutral", Converted: "success",
     Open: "info", "Quotation Sent": "gold", Won: "success", Lost: "danger",
     Draft: "neutral", "Pending Manager Approval": "warning", Sent: "info",
     "Under Negotiation": "warning", Approved: "success", Expired: "danger", Rejected: "danger",
@@ -1049,7 +1049,7 @@ function Dashboard({ state, role, userId, setPage }) {
 /* LEADS                                                                   */
 /* ---------------------------------------------------------------------- */
 
-const LEAD_STATUSES = ["New","Contacted","Follow-up Scheduled","Interested","Not Interested","Qualified","Unqualified"];
+const LEAD_STATUSES = ["New","Contacted","Follow-up Scheduled","Interested","Not Interested","Qualified","Unqualified","Converted"];
 
 function LeadsPage({ state, dispatch, userId, role }) {
   const [view, setView] = useState("table");

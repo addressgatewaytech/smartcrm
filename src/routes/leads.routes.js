@@ -58,7 +58,7 @@ router.post("/:id/convert-to-deal", async (req, res) => {
   const result = await withTransaction(async (conn) => {
     const [[lead]] = await conn.execute("SELECT * FROM leads WHERE id = ?", [req.params.id]);
     if (!lead) throw new Error("Lead not found");
-    await conn.execute("UPDATE leads SET status = 'Qualified' WHERE id = ?", [req.params.id]);
+    await conn.execute("UPDATE leads SET status = 'Converted' WHERE id = ?", [req.params.id]);
     const dealId = nextId("DL");
     await conn.execute(
       `INSERT INTO deals (id, lead_id, customer, service, value, owner, stage, expected_close) VALUES (?,?,?,?,?,?,?,?)`,
