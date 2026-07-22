@@ -281,16 +281,12 @@ function docState(expiry) {
   return { label: "Valid", cls: "stamp-success" };
 }
 
+// The real logo file has an opaque white background, so on the dark sidebar it's wrapped in a
+// small white card rather than shown raw (which would just look like a stray white box).
 function BrandLogo({ scale = 1, onDark = false }) {
-  const gateColor = onDark ? "#FFFFFF" : "var(--info)";
-  const subColor = onDark ? "var(--sidebar-text)" : "var(--info)";
   return (
-    <div style={{ lineHeight: 1.05 }}>
-      <div className="disp" style={{ fontSize: 20*scale, fontWeight: 500, whiteSpace: "nowrap", letterSpacing: "-.01em" }}>
-        <span style={{ color: "var(--brand)" }}>ADDRESS</span>{" "}
-        <span style={{ color: gateColor }}>GATE</span><span style={{ color: "var(--gold)" }}>WAY</span>
-      </div>
-      <div style={{ fontSize: 9.5*scale, letterSpacing: ".16em", color: subColor, marginTop: 3*scale }}>BUSINESS SERVICES</div>
+    <div style={onDark ? { display: "inline-block", background: "#fff", borderRadius: 8, padding: `${6*scale}px ${10*scale}px` } : undefined}>
+      <img src="/logo-address-gateway.png" alt="Address Gateway Business Services" style={{ display: "block", height: 34 * scale, width: "auto" }} />
     </div>
   );
 }
@@ -748,7 +744,7 @@ export default function App() {
             ) : (
               <>
                 <div className="agw-brand-wordmark"><BrandLogo scale={0.92} onDark /></div>
-                <div className="agw-brand-sub">CRM & Workflow · V1 Prototype</div>
+                <img src="/logo-smart-crm.png" alt="Smart CRM" className="agw-brand-sub" style={{ display: "block", height: 26, width: "auto" }} />
               </>
             )}
           </div>
