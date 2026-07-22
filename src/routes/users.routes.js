@@ -34,6 +34,11 @@ router.post("/", requireRole(["super_admin", "admin"]), async (req, res) => {
   const { name, email, password, roles, dept, initials } = req.body;
   if (!name || !roles?.length) return res.status(400).json({ error: "Name and at least one role are required" });
 
+  if (email) {
+    const [existing] = await query("SELECT id FROM users WHERE email = ?", [email]);
+    if (existing) return res.status(400).json({ error: `${email} is already in use by another user` });
+  }
+
   const id = nextId("u");
   const hash = await bcrypt.hash(password || "ChangeMe123!", 10);
   const designation = roles.map((r) => ROLE_LABEL[r]).join(" + ");
@@ -49,6 +54,10 @@ router.patch("/:id", requireRole(["super_admin", "admin"]), async (req, res) => 
   const fields = [];
   const params = [];
   if (name) { fields.push("name = ?"); params.push(name); }
+  if (email) {
+    const [existing] = await query("SELECT id FROM users WHERE email = ? AND id != ?", [email, req.params.id]);
+    if (existing) return res.status(400).json({ error: `${email} is already in use by another user` });
+  }
   if (email !== undefined) { fields.push("email = ?"); params.push(email || null); }
   if (roles) {
     fields.push("roles = ?", "designation = ?");

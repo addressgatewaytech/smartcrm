@@ -4148,15 +4148,38 @@ function UsersPage({ state, dispatch }) {
   const [editUser, setEditUser] = useState(null);
   const [removeUser, setRemoveUser] = useState(null);
   const [form, setForm] = useState(blank);
+  const [saveError, setSaveError] = useState("");
+  const [saving, setSaving] = useState(false);
   const toggleRole = (r) => setForm(f => ({ ...f, roles: f.roles.includes(r) ? f.roles.filter(x=>x!==r) : [...f.roles, r] }));
 
-  const openEdit = (e) => { setEditUser(e); setForm({ name:e.name, email:e.email||"", password:"", roles:e.roles, dept:e.dept, initials:e.initials }); };
-  const closeModal = () => { setShowAdd(false); setEditUser(null); setForm(blank); };
+  const openEdit = (e) => { setEditUser(e); setForm({ name:e.name, email:e.email||"", password:"", roles:e.roles, dept:e.dept, initials:e.initials }); setSaveError(""); };
+  const closeModal = () => { setShowAdd(false); setEditUser(null); setForm(blank); setSaveError(""); };
+
+  // Not fire-and-forget: a rejected dispatch (e.g. "email already in use") used to be silently
+  // swallowed while the modal closed anyway, making a failed save look like it had succeeded.
+  const handleSave = async () => {
+    setSaving(true);
+    setSaveError("");
+    try {
+      if (editUser) {
+        const payload = { name: form.name, email: form.email, roles: form.roles, dept: form.dept, initials: form.initials };
+        await dispatch({type:"UPDATE_USER", id:editUser.id, payload});
+        if (form.password) await dispatch({type:"RESET_USER_PASSWORD", id:editUser.id, password: form.password});
+      } else {
+        await dispatch({type:"ADD_USER", payload:form});
+      }
+      closeModal();
+    } catch (err) {
+      setSaveError(err instanceof ApiError ? err.message : "Couldn't save — please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div>
       <div style={{ display:"flex", justifyContent:"flex-end", marginBottom: 14 }}>
-        <button className="btn btn-primary" onClick={()=>{ setForm(blank); setShowAdd(true); }}><UserPlus size={15}/> Add user</button>
+        <button className="btn btn-primary" onClick={()=>{ setForm(blank); setSaveError(""); setShowAdd(true); }}><UserPlus size={15}/> Add user</button>
       </div>
       <div className="agw-card" style={{ padding: 0 }}>
         <table className="agw-table">
@@ -4199,20 +4222,11 @@ function UsersPage({ state, dispatch }) {
               ))}
             </div>
           </div>
+          {saveError && <div className="side-note" style={{ color:"var(--danger)" }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{saveError}</div>}
           <div style={{ display:"flex", justifyContent:"flex-end", gap:8 }}>
             <button className="btn" onClick={closeModal}>Cancel</button>
-            <button className="btn btn-primary" disabled={!form.name || form.roles.length===0 || (!editUser && !form.email)}
-              onClick={()=>{
-                if (editUser) {
-                  const payload = { name: form.name, email: form.email, roles: form.roles, dept: form.dept, initials: form.initials };
-                  dispatch({type:"UPDATE_USER", id:editUser.id, payload});
-                  if (form.password) dispatch({type:"RESET_USER_PASSWORD", id:editUser.id, password: form.password});
-                } else {
-                  dispatch({type:"ADD_USER", payload:form});
-                }
-                closeModal();
-              }}>
-              {editUser ? "Save changes" : "Add user"}
+            <button className="btn btn-primary" disabled={saving || !form.name || form.roles.length===0 || (!editUser && !form.email)} onClick={handleSave}>
+              {saving ? "Saving…" : editUser ? "Save changes" : "Add user"}
             </button>
           </div>
         </Modal>
