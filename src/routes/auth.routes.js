@@ -3,7 +3,7 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { query } = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
-const { ROLE_LABEL } = require("../middleware/roles");
+const { ROLE_LABEL, requireRole } = require("../middleware/roles");
 const { nextId } = require("../utils/helpers");
 const { sendMail } = require("../utils/mailer");
 
@@ -32,6 +32,25 @@ router.get("/me", requireAuth, async (req, res) => {
   const [user] = await query("SELECT id, name, email, roles, dept, initials, designation, photo_url, leave_balance FROM users WHERE id = ?", [req.user.id]);
   if (!user) return res.status(404).json({ error: "User not found" });
   res.json({ ...user, roles: user.roles });
+});
+
+// --- Impersonation (admin "view as another user", for testing real per-role permissions) -----
+// Issues a real token for the target user — not a cosmetic UI relabel — so the admin sees exactly
+// what that user's role actually restricts them to. Only admin_like can call this, and it's logged
+// server-side for traceability. The frontend keeps the admin's own token cached client-side so
+// "Return to my account" is instant and never needs a fresh login.
+router.post("/impersonate/:userId", requireAuth, requireRole(["admin_like"]), async (req, res) => {
+  const [user] = await query("SELECT * FROM users WHERE id = ? AND active = 1", [req.params.userId]);
+  if (!user) return res.status(404).json({ error: "User not found" });
+
+  const roles = user.roles;
+  const token = jwt.sign({ id: user.id, roles, impersonatedBy: req.user.id }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN || "8h" });
+  console.log(`[impersonate] ${req.user.id} is now viewing as ${user.id} (${user.name})`);
+
+  res.json({
+    token,
+    user: { id: user.id, name: user.name, email: user.email, roles, roleLabels: roles.map((r) => ROLE_LABEL[r]), photoUrl: user.photo_url, dept: user.dept, initials: user.initials },
+  });
 });
 
 // Change own password (first-login flow, or self-service).

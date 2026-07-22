@@ -3,6 +3,9 @@
 // proxy (see vite.config.js) forwards /api and /uploads to localhost:3000 in development.
 
 let authToken = localStorage.getItem("agw_token") || null;
+// Set only while "viewing as" another user — holds the real admin's own token so returning to
+// it doesn't require a fresh login. Its presence is also how the UI knows impersonation is active.
+let adminToken = localStorage.getItem("agw_admin_token") || null;
 
 export function setToken(token) {
   authToken = token;
@@ -13,6 +16,32 @@ export function getToken() {
   return authToken;
 }
 
+export function isImpersonating() {
+  return !!adminToken;
+}
+// Starts (or switches) a "view as" session: stashes the real admin token the first time this is
+// called, then makes the impersonated user's token the active one.
+export function beginImpersonation(impersonatedToken) {
+  if (!adminToken) {
+    adminToken = authToken;
+    localStorage.setItem("agw_admin_token", adminToken);
+  }
+  setToken(impersonatedToken);
+}
+export function endImpersonation() {
+  if (!adminToken) return;
+  setToken(adminToken);
+  adminToken = null;
+  localStorage.removeItem("agw_admin_token");
+}
+// A real logout must discard both tokens — otherwise a stashed admin token from a previous
+// impersonation session would leak into whichever account logs in next on this browser.
+export function clearAllTokens() {
+  setToken(null);
+  adminToken = null;
+  localStorage.removeItem("agw_admin_token");
+}
+
 class ApiError extends Error {
   constructor(message, status) {
     super(message);
@@ -20,9 +49,10 @@ class ApiError extends Error {
   }
 }
 
-async function request(method, path, body, isFormData = false) {
+async function request(method, path, body, isFormData = false, tokenOverride) {
   const headers = {};
-  if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
+  const useToken = tokenOverride || authToken;
+  if (useToken) headers["Authorization"] = `Bearer ${useToken}`;
   if (!isFormData && body !== undefined) headers["Content-Type"] = "application/json";
 
   const res = await fetch(`/api${path}`, {
@@ -58,6 +88,10 @@ export const api = {
     forgotPassword: (email) => post("/auth/forgot-password", { email }),
     resetPassword: (email, otp, newPassword) => post("/auth/reset-password", { email, otp, newPassword }),
     changePassword: (currentPassword, newPassword) => post("/auth/change-password", { currentPassword, newPassword }),
+    // Uses the stashed admin token (if already impersonating someone) rather than whichever
+    // token is currently active, so switching directly from one "view as" user to another works
+    // without needing to return to the admin account first.
+    impersonate: (userId) => request("POST", `/auth/impersonate/${userId}`, {}, false, adminToken || authToken),
   },
   users: {
     list: () => get("/users"),

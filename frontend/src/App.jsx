@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from "react";
 import * as XLSX from "xlsx";
-import { api, setToken, getToken, ApiError } from "./api";
+import { api, setToken, getToken, ApiError, isImpersonating, beginImpersonation, endImpersonation, clearAllTokens } from "./api";
 import { useApiStore } from "./store";
 import {
   LayoutDashboard, Users, Handshake, FileText, UserCheck, ShoppingCart,
@@ -657,7 +657,22 @@ export default function App() {
   }, []);
 
   const handleLogin = (user) => { setCurrentUser(user); setActiveRole(user.roles[0]); };
-  const handleLogout = () => { setToken(null); setCurrentUser(null); };
+  const handleLogout = () => { clearAllTokens(); setCurrentUser(null); };
+
+  // Real impersonation (not a cosmetic relabel) — the admin gets an actual token for the target
+  // user, so the whole app (nav, data, every permission check) reflects exactly what that user's
+  // role allows. A full reload re-runs the /auth/me + data-fetch cycle cleanly under the new token.
+  const startViewAs = async (targetUserId) => {
+    if (!targetUserId) return;
+    try {
+      const { token } = await api.auth.impersonate(targetUserId);
+      beginImpersonation(token);
+      window.location.reload();
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : "Couldn't switch — please try again.");
+    }
+  };
+  const returnToMyAccount = () => { endImpersonation(); window.location.reload(); };
 
   const { state, dispatch, loading: dataLoading } = useApiStore(!!currentUser);
   const [page, setPage] = useState("dashboard");
@@ -769,7 +784,19 @@ export default function App() {
                   </select>
                 </>
               )}
-              <button className="btn btn-sm" style={{ width: "100%", marginTop: currentUser.roles.length > 1 ? 10 : 0, justifyContent: "center" }} onClick={handleLogout}>Log out</button>
+              {(isImpersonating() || ADMIN_LIKE.includes(role)) && (
+                <>
+                  <label style={{ marginTop: 10 }}>{isImpersonating() ? "Viewing as" : "View as (testing)"}</label>
+                  <select value={isImpersonating() ? userId : ""} onChange={e => startViewAs(e.target.value)}>
+                    {!isImpersonating() && <option value="">Select a user…</option>}
+                    {state.employees.filter(e => e.active !== false).map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                  </select>
+                </>
+              )}
+              {isImpersonating() && (
+                <button className="btn btn-sm" style={{ width: "100%", marginTop: 8, justifyContent: "center" }} onClick={returnToMyAccount}>Return to my account</button>
+              )}
+              <button className="btn btn-sm" style={{ width: "100%", marginTop: 10, justifyContent: "center" }} onClick={handleLogout}>Log out</button>
             </div>
           )}
         </aside>
@@ -869,6 +896,18 @@ export default function App() {
                     {currentUser.roles.map(r => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
                   </select>
                 </>
+              )}
+              {(isImpersonating() || ADMIN_LIKE.includes(role)) && (
+                <>
+                  <label style={{ marginTop: 10 }}>{isImpersonating() ? "Viewing as" : "View as (testing)"}</label>
+                  <select value={isImpersonating() ? userId : ""} onChange={e => startViewAs(e.target.value)}>
+                    {!isImpersonating() && <option value="">Select a user…</option>}
+                    {state.employees.filter(e => e.active !== false).map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                  </select>
+                </>
+              )}
+              {isImpersonating() && (
+                <button className="btn btn-sm" style={{ width: "100%", marginTop: 8, justifyContent: "center" }} onClick={returnToMyAccount}>Return to my account</button>
               )}
               <button className="btn btn-sm" style={{ width: "100%", marginTop: 10, justifyContent: "center" }} onClick={() => { handleLogout(); setShowMore(false); }}>Log out</button>
             </div>
