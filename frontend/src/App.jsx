@@ -2871,27 +2871,34 @@ function RenewSubscriptionModal({ subscription: sub, dispatch, onClose }) {
 /* ---------------------------------------------------------------------- */
 
 function OrdersPage({ state, dispatch }) {
+  // This backend onboards a sales order in one atomic step (creates the invoice AND the first
+  // job card together — see /api/sales-orders/:id/onboard) rather than the prototype's separate
+  // "Confirmed -> Invoiced -> Client Onboarded" stages, and sales_orders itself has no status
+  // column. Whether one's already been onboarded is derived from whether an invoice referencing
+  // it exists.
+  const isOnboarded = (soId) => state.invoices.some(inv => inv.salesOrderId === soId);
   return (
     <div className="agw-card" style={{ padding: 0 }}>
       {state.salesOrders.length === 0 ? <Empty icon={ShoppingCart} text="No sales orders yet — approve a quotation to create one." /> : (
       <table className="agw-table">
         <thead><tr><th>Order</th><th>Customer</th><th>Service</th><th>Fee type</th><th>Amount (QAR)</th><th>Status</th><th></th></tr></thead>
         <tbody>
-          {state.salesOrders.map(so => (
+          {state.salesOrders.map(so => {
+            const onboarded = isOnboarded(so.id);
+            return (
             <tr key={so.id}>
               <td className="mono">{so.id}</td>
               <td>{so.customer}</td>
               <td style={{maxWidth:200}}>{so.service}</td>
               <td><Stamp tone={so.feeType==="Government Fee" ? "neutral" : "success"}>{so.feeType || "Professional Fee"}</Stamp></td>
               <td className="mono">{money(so.amount)}</td>
-              <td><Stamp tone={statusTone(so.status)}>{so.status}</Stamp></td>
+              <td><Stamp tone={onboarded ? "success" : "warning"}>{onboarded ? "Onboarded" : "Pending onboarding"}</Stamp></td>
               <td style={{ display:"flex", gap:6 }}>
-                {so.status === "Confirmed" && <button className="btn btn-sm" onClick={()=>dispatch({type:"GENERATE_INVOICE", salesOrderId:so.id})}>Generate invoice</button>}
-                {so.status === "Invoiced" && <button className="btn btn-sm btn-primary" onClick={()=>dispatch({type:"ONBOARD_CLIENT", salesOrderId:so.id, by:"Sales"})}>Onboard client → create job</button>}
-                {so.status === "Client Onboarded" && <span className="pill"><BadgeCheck size={12} style={{verticalAlign:-2}}/> Job card created</span>}
+                {!onboarded && <button className="btn btn-sm btn-primary" onClick={()=>dispatch({type:"ONBOARD_CLIENT", salesOrderId:so.id})}>Onboard client → create invoice & job</button>}
+                {onboarded && <span className="pill"><BadgeCheck size={12} style={{verticalAlign:-2}}/> Invoice & job card created</span>}
               </td>
             </tr>
-          ))}
+          );})}
         </tbody>
       </table>)}
     </div>
