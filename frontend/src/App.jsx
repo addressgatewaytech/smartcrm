@@ -1618,6 +1618,7 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, customerOptions
   }));
   const [visualEdit, setVisualEdit] = useState(false);
   const [draft, setDraft] = useState(null);
+  const [downloading, setDownloading] = useState(false);
 
   const cq = { ...q, ...content };
   const subtotal = cq.items.reduce((a,it)=>a+it.qty*it.price*(1-(it.discountPct||0)/100),0);
@@ -1913,7 +1914,15 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, customerOptions
           </div>
 
           <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop: 14 }}>
-            <button className="btn btn-sm" disabled={editingNow} onClick={()=>downloadQuotationHTML(q, src, rows, pdfSubtotal, pdfTotal)}><Download size={13}/> Download quotation</button>
+            <button className="btn btn-sm" disabled={editingNow || downloading} onClick={async ()=>{
+              setDownloading(true);
+              try {
+                const blob = await api.quotations.downloadPdf(q.id);
+                downloadBlob(`Quotation-${q.id}.pdf`, blob);
+              } finally {
+                setDownloading(false);
+              }
+            }}><Download size={13}/> {downloading ? "Generating…" : "Download quotation"}</button>
           </div>
         </div>
         );
@@ -3466,151 +3475,12 @@ function exportCSV(filename, headers, rows) {
   URL.revokeObjectURL(url);
 }
 
-function downloadFile(filename, content, mime) {
-  const blob = new Blob([content], { type: mime });
+function downloadBlob(filename, blob) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url; a.download = filename;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
-}
-
-// Browser print (window.print()) is blocked inside this sandboxed preview, so "download" instead
-// produces a real, self-contained HTML file styled exactly like the PDF preview. Opening it in any
-// browser and using its own Print > Save as PDF works reliably, unlike calling window.print() here.
-function downloadQuotationHTML(q, src, rows, subtotal, total) {
-  const esc = (v) => String(v ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-  const nl2br = (t) => esc(t).replace(/\n/g,"<br/>");
-
-  const itemsHtml = rows.map(r => r.kind === "category"
-    ? `<tr><td colspan="4" style="padding:9px 10px;font-weight:600;font-size:12px;border-bottom:1px solid #E1E6E8;">${esc(r.label)}</td></tr>`
-    : `<tr style="border-bottom:1px solid #E1E6E8; page-break-inside:avoid;">
-         <td style="padding:9px 10px;vertical-align:top;">${r.number}</td>
-         <td style="padding:9px 10px;">${esc(r.it.description || r.it.service)}${r.it.note ? `<div style="font-size:11px;color:#6b7178;margin-top:2px;">${esc(r.it.note)}</div>` : ""}</td>
-         <td style="padding:9px 10px;text-align:right;vertical-align:top;font-family:'Courier New',monospace;">${Number(r.it.price).toFixed(2)}</td>
-         <td style="padding:9px 10px;text-align:right;vertical-align:top;font-family:'Courier New',monospace;">${(r.it.qty*r.it.price*(1-(r.it.discountPct||0)/100)).toFixed(2)}</td>
-       </tr>`
-  ).join("");
-
-  const noteLines = (src.notes || "").split("\n").map(t=>t.trim()).filter(Boolean);
-  const termLines = (src.terms || "").split("\n").map(t=>t.trim()).filter(Boolean);
-  const bankBlock = nl2br(src.bank || DEFAULT_BANK);
-  const footerText = esc(src.footerNote || DEFAULT_FOOTER_NOTE);
-
-  // One continuous A4-width document — no hard page breaks between sections, the browser's
-  // print engine paginates naturally wherever content actually runs out of room. The footer
-  // note is fixed-positioned so it repeats at the bottom of every printed page, not just the last.
-  const html = `<!DOCTYPE html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Quotation ${esc(q.id)}</title>
-<style>
-  * { box-sizing: border-box; }
-  @page { size: A4; margin: 16mm 14mm 20mm; }
-  html, body { font-family: Arial, Helvetica, sans-serif; color:#151A1F; margin:0; background:#F5F6F6; overflow-x:hidden; }
-  body { padding: 24px; }
-  .sheet { width: 100%; max-width: 210mm; margin: 0 auto; background:#fff; border:1px solid #E1E6E8; border-radius:8px; padding:16mm 14mm 26mm; overflow-wrap: break-word; }
-  table { width:100%; border-collapse:collapse; font-size:12.5px; table-layout: fixed; }
-  h2, h3, .section-title { page-break-after: avoid; }
-  .no-break { page-break-inside: avoid; }
-  .flex-row { display:flex; flex-wrap: wrap; justify-content:space-between; align-items:flex-start; gap:16px; }
-  .flex-row > div { min-width: 0; }
-  .flex-row > div:last-child { text-align: right; }
-  .toolbar { max-width:210mm; margin:0 auto 16px; text-align:right; }
-  .toolbar button { font-family:inherit; font-size:13px; padding:8px 14px; border-radius:8px; border:1px solid #1391AC; background:#1391AC; color:#fff; cursor:pointer; }
-  .footnote { display:none; font-size:9.5px; color:#6b7178; border-top:1px solid #E1E6E8; padding-top:6px; text-align:center; }
-  @media print {
-    html, body { background:#fff; }
-    body { padding:0; }
-    .sheet { border:none; border-radius:0; max-width:none; padding:0 0 16mm; }
-    .toolbar { display:none; }
-    .footnote { display:block; position: fixed; bottom: 0; left: 0; right: 0; background:#fff; }
-    .footnote-inline { display:none; }
-  }
-</style></head>
-<body onload="setTimeout(function(){ window.print(); }, 300);">
-  <div class="toolbar"><button onclick="window.print()">Print / Save as PDF</button></div>
-  <div class="sheet">
-    <div class="no-break flex-row" style="margin-bottom:24px;">
-      <div>
-        <div style="font-size:28px; font-weight:700; letter-spacing:-0.01em;">QUOTE</div>
-        <div style="font-family:'Courier New',monospace; font-size:12px; color:#6b7178; margin-top:4px;">Quote# AGBS/${esc(q.id)}</div>
-      </div>
-      <div>
-        <div style="font-size:18px; font-weight:700; white-space:nowrap;">ADDRESS <span style="color:#0E3350;">GATE</span><span style="color:#E8791E;">WAY</span></div>
-        <div style="font-size:10px; letter-spacing:.16em; color:#6b7178; margin-top:1px;">BUSINESS SERVICES</div>
-        <div style="font-size:11.5px; color:#6b7178; margin-top:6px; line-height:1.6;">
-          Address Gateway Building<br/>D Ring Road, Doha, Qatar<br/>Call: 44434912, Email : startup@addressgateway.com<br/>www.addressgateway.com
-        </div>
-      </div>
-    </div>
-
-    <div class="no-break flex-row" style="margin-bottom:20px;">
-      <div><div style="font-size:12px; color:#6b7178;">Quote Date :</div><div style="font-size:13px; margin-top:2px;">${esc(fmtDate(q.createdAt || daysFromNow(0)))}</div></div>
-      <div><div style="font-size:12px; color:#6b7178;">Bill To</div><div style="font-size:13.5px; font-weight:700; margin-top:2px;">${esc(q.customer)}</div></div>
-    </div>
-
-    <div class="no-break" style="margin-bottom:20px;">
-      <div style="font-size:12px; color:#6b7178; margin-bottom:2px;">Subject :</div>
-      <div style="font-size:13.5px;">${esc(src.subject || rows.find(r=>r.kind==="item")?.it.service || "Quotation")}</div>
-      ${q.feeType === "Government Fee" ? `<div style="font-size:10.5px; color:#6b7178; margin-top:4px;">Pass-through government charges — excluded from Address Gateway's business volume and incentive calculations.</div>` : ""}
-    </div>
-
-    <table>
-      <thead><tr style="background:#2A2E33;">
-        <th style="color:#fff; text-align:left; padding:9px 10px; font-weight:600; width:30px;">#</th>
-        <th style="color:#fff; text-align:left; padding:9px 10px; font-weight:600;">Item &amp; Description</th>
-        <th style="color:#fff; text-align:right; padding:9px 10px; font-weight:600; width:90px;">Rate</th>
-        <th style="color:#fff; text-align:right; padding:9px 10px; font-weight:600; width:90px;">Amount</th>
-      </tr></thead>
-      <tbody>${itemsHtml}</tbody>
-    </table>
-
-    <div class="no-break" style="display:flex; justify-content:flex-end; margin:12px 0 24px;">
-      <table style="width:auto; font-size:13px;">
-        <tr><td style="padding:4px 16px 4px 0; color:#6b7178;">Sub Total</td><td style="padding:4px 0; text-align:right; font-family:'Courier New',monospace;">${subtotal.toFixed(2)}</td></tr>
-        ${(src.orderDiscount||0) > 0 ? `<tr><td style="padding:4px 16px 4px 0; color:#6b7178;">Discount</td><td style="padding:4px 0; text-align:right; font-family:'Courier New',monospace;">(-) ${Number(src.orderDiscount).toFixed(2)}</td></tr>` : ""}
-        <tr style="background:#F5F6F6;"><td style="padding:7px 16px 7px 0; font-weight:700;">Total</td><td style="padding:7px 0; text-align:right; font-weight:700; font-family:'Courier New',monospace;">QAR${total.toFixed(2)}</td></tr>
-      </table>
-    </div>
-
-    ${noteLines.length ? `<div class="no-break" style="margin-bottom:22px; padding-top:16px; border-top:1px solid #E1E6E8;">
-      <div class="section-title" style="font-size:12px; color:#6b7178; margin-bottom:6px;">Notes</div>
-      ${noteLines.map(n=>`<div style="font-size:12px; line-height:1.7;">${esc(n)}</div>`).join("")}
-    </div>` : ""}
-
-    ${termLines.length ? `<div style="margin-bottom:24px; padding-top:16px; border-top:1px solid #E1E6E8;">
-      <div class="section-title" style="font-size:14px; font-weight:700; margin-bottom:10px;">Terms &amp; Conditions</div>
-      <ol style="margin:0; padding-left:18px; font-size:12px; line-height:1.9;">${termLines.map(t=>`<li>${esc(t)}</li>`).join("")}</ol>
-    </div>` : ""}
-
-    <div class="no-break" style="margin-bottom:24px;">
-      <div class="section-title" style="font-size:14px; font-weight:700; margin-bottom:8px;">Bank Account Details</div>
-      <div style="font-size:12px; line-height:1.8;">${bankBlock}</div>
-    </div>
-
-    <div style="font-size:11px; color:#6b7178; line-height:1.7; margin-bottom:28px;">
-      Disclaimer: Based on actuals. Rates might change anytime. If everything is clear and satisfactory, please feel free to sign the acceptance part below so we can immediately start the process. We look forward to assisting you with utmost professionalism as we envision a long-term working relationship with you and your company.
-      <br/><br/>
-      Ministry fees are subject to change and may vary depending on the time of submission and the applicable government rules and regulations in effect at that time. Approval timelines, including company formation and visa approval, are also dependent on the decisions and processing timeframes of the relevant government authorities.
-    </div>
-
-    <div class="no-break">
-      <div class="section-title" style="font-size:13px; font-weight:700; margin-bottom:10px;">ACCEPTANCE FORM:</div>
-      <div style="font-size:12px; margin-bottom:20px;">I hereby, accept the above offer and I will endeavor to complete/submit all the required documents along with the agreed payment terms.</div>
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:24px 40px; font-size:12.5px;">
-        <div>Name: <span style="display:inline-block; border-bottom:1px solid #999; width:75%;">&nbsp;</span></div>
-        <div>Date: <span style="display:inline-block; border-bottom:1px solid #999; width:75%;">&nbsp;</span></div>
-        <div>Signature: <span style="display:inline-block; border-bottom:1px solid #999; width:70%;">&nbsp;</span></div>
-        <div>Mobile No.: <span style="display:inline-block; border-bottom:1px solid #999; width:65%;">&nbsp;</span></div>
-      </div>
-    </div>
-
-    <div class="footnote-inline" style="font-size:10.5px; color:#6b7178; border-top:1px solid #E1E6E8; padding-top:10px; margin-top:24px;">${footerText}</div>
-  </div>
-
-  <div class="footnote">${footerText}</div>
-</body></html>`;
-
-  downloadFile(`Quotation-${q.id}.html`, html, "text/html;charset=utf-8;");
 }
 
 function computeIncentive(emp, state) {

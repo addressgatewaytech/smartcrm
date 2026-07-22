@@ -98,6 +98,16 @@ export const api = {
     clone: (id, customer) => post(`/quotations/${id}/clone`, { customer }),
     convertToSalesOrder: (id) => post(`/quotations/${id}/convert-to-sales-order`),
     pdfUrl: (id) => `/api/quotations/${id}/pdf`,
+    // The PDF endpoint requires the same Bearer auth as everything else, so a plain <a href>/
+    // window.open() can't be used (browsers don't attach custom headers to navigation) — fetch
+    // it as a blob instead and hand the caller something it can turn into a download.
+    downloadPdf: async (id) => {
+      const headers = {};
+      if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
+      const res = await fetch(`/api/quotations/${id}/pdf`, { headers, cache: "no-store" });
+      if (!res.ok) throw new ApiError("Failed to generate PDF", res.status);
+      return res.blob();
+    },
   },
   salesOrders: {
     list: () => get("/sales-orders"),

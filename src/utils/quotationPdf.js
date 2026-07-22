@@ -1,8 +1,10 @@
 // Server-side A4 PDF generation for quotations (PDFKit — no headless browser needed, which
-// keeps this friendly to Hostinger shared hosting). Replaces the prototype's HTML+print-dialog
-// workaround per the build brief (§2 Quotations, §7).
+// keeps this friendly to Hostinger shared hosting). Mirrors the "PDF preview" tab in the
+// Quotation detail modal (frontend/src/App.jsx, QuoteDetailModal's view==="pdf" branch) field
+// for field, so what a user sees on screen is what downloads — logo wordmark, dark table header,
+// Bank Account Details, disclaimer and Acceptance Form included.
 const PDFDocument = require("pdfkit");
-const { quoteTotal, money } = require("./helpers");
+const { quoteTotal } = require("./helpers");
 
 const DEFAULT_BANK = [
   "ADDRESS GATEWAY BUSINESS SERVICES",
@@ -14,25 +16,67 @@ const DEFAULT_BANK = [
 ].join("\n");
 
 const DEFAULT_FOOTER_NOTE =
-  "This quotation is valid until the date stated above and is subject to Address Gateway Business Services' standard terms and conditions. " +
-  "Prices are quoted in Qatari Riyal (QAR) and exclude any government fees unless explicitly listed as a line item.";
+  "This quotation is provided for estimation purposes only and does not constitute legal or " +
+  "financial advice; signature is not required.";
+
+const DISCLAIMER_1 =
+  "Disclaimer: Based on actuals. Rates might change anytime. If everything is clear and satisfactory, please feel free to sign the " +
+  "acceptance part below so we can immediately start the process. We look forward to assisting you with utmost professionalism as we " +
+  "envision a long-term working relationship with you and your company.";
+const DISCLAIMER_2 =
+  "Ministry fees are subject to change and may vary depending on the time of submission and the applicable government rules and " +
+  "regulations in effect at that time. Approval timelines, including company formation and visa approval, are also dependent on the " +
+  "decisions and processing timeframes of the relevant government authorities.";
 
 const MARGIN = 40;
+const TEAL = "#1391AC";
+const NAVY = "#0E3350";
+const GOLD = "#E8791E";
+const GRAY = "#6b7178";
+const INK = "#151A1F";
+const DARK_BG = "#2A2E33";
+const HAIR = "#E1E6E8";
+const LIGHT_BG = "#F5F6F6";
 
-// Compact number format for table cells (no "QAR " prefix — the column header states the
-// currency once, which avoids the value wrapping onto a second line and overlapping the row below).
-const moneyShort = (n) => Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const money2 = (n) => Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtDate = (d) => (d ? String(d).slice(0, 10) : "");
+
+/** Draws the brand wordmark ("ADDRESS GATEWAY" in three colors, right-aligned) at (rightX, y). Returns the y after it. */
+function drawBrandHeader(doc, rightX, y) {
+  doc.font("Helvetica-Bold").fontSize(15);
+  const parts = [["ADDRESS ", TEAL], ["GATE", NAVY], ["WAY", GOLD]];
+  const totalWidth = parts.reduce((w, [t]) => w + doc.widthOfString(t), 0);
+  let x = rightX - totalWidth;
+  parts.forEach(([t, color]) => {
+    doc.fillColor(color).text(t, x, y, { lineBreak: false });
+    x += doc.widthOfString(t);
+  });
+  doc.fillColor(INK);
+  y += 18;
+  doc.font("Helvetica").fontSize(8).fillColor(GRAY)
+    .text("BUSINESS SERVICES", MARGIN, y, { width: rightX - MARGIN, align: "right", characterSpacing: 1.2 });
+  y = doc.y + 5;
+  doc.fontSize(8.5)
+    .text("Address Gateway Building", MARGIN, y, { width: rightX - MARGIN, align: "right" });
+  y = doc.y;
+  doc.text("D Ring Road, Doha, Qatar", MARGIN, y, { width: rightX - MARGIN, align: "right" });
+  y = doc.y;
+  doc.text("Call: 44434912, Email: startup@addressgateway.com", MARGIN, y, { width: rightX - MARGIN, align: "right" });
+  y = doc.y;
+  doc.text("www.addressgateway.com", MARGIN, y, { width: rightX - MARGIN, align: "right" });
+  doc.fillColor(INK);
+  return doc.y;
+}
 
 function drawTableHeader(doc, y, colX, tableRight) {
-  doc.font("Helvetica-Bold").fontSize(9).fillColor("#000");
-  doc.text("#", colX.idx, y, { width: 20 });
-  doc.text("Description", colX.desc, y, { width: colX.qty - colX.desc - 5 });
-  doc.text("Qty", colX.qty, y, { width: colX.price - colX.qty - 5, align: "right" });
-  doc.text("Price (QAR)", colX.price, y, { width: colX.disc - colX.price - 5, align: "right" });
-  doc.text("Disc%", colX.disc, y, { width: colX.total - colX.disc - 5, align: "right" });
-  doc.text("Total (QAR)", colX.total, y, { width: tableRight - colX.total, align: "right" });
-  doc.moveTo(MARGIN, y + 14).lineTo(tableRight, y + 14).strokeColor("#cccccc").stroke();
-  return y + 20;
+  doc.rect(MARGIN, y, tableRight - MARGIN, 22).fill(DARK_BG);
+  doc.font("Helvetica-Bold").fontSize(9).fillColor("#FFFFFF");
+  doc.text("#", colX.idx, y + 7, { width: colX.desc - colX.idx - 5 });
+  doc.text("Item & Description", colX.desc, y + 7, { width: colX.rate - colX.desc - 5 });
+  doc.text("Rate", colX.rate, y + 7, { width: colX.amount - colX.rate - 5, align: "right" });
+  doc.text("Amount", colX.amount, y + 7, { width: tableRight - colX.amount - 5, align: "right" });
+  doc.fillColor(INK);
+  return y + 22;
 }
 
 /** Streams a real A4 PDF for `quotation` (already parsed: items is an array) directly to `res`. */
@@ -43,90 +87,187 @@ function generateQuotationPdf(quotation, res) {
 
   const doc = new PDFDocument({ size: "A4", margin: MARGIN, bufferPages: true });
   res.setHeader("Content-Type", "application/pdf");
-  res.setHeader("Content-Disposition", `inline; filename="${quotation.id}.pdf"`);
+  res.setHeader("Content-Disposition", `attachment; filename="Quotation-${quotation.id}.pdf"`);
   doc.pipe(res);
 
   const tableRight = doc.page.width - MARGIN;
-  const colX = { idx: MARGIN, desc: MARGIN + 25, qty: MARGIN + 275, price: MARGIN + 315, disc: MARGIN + 385, total: MARGIN + 430 };
+  const colX = { idx: MARGIN, desc: MARGIN + 25, rate: MARGIN + 340, amount: MARGIN + 430 };
 
-  // --- Header -------------------------------------------------------------------------------
-  doc.font("Helvetica-Bold").fontSize(16).text("ADDRESS GATEWAY BUSINESS SERVICES", MARGIN, MARGIN);
-  doc.font("Helvetica").fontSize(9).fillColor("#555555")
-    .text("Company Formation | PRO Services | Bank Account Assistance | Office Space | Doha, Qatar", MARGIN, doc.y);
-  doc.fillColor("#000000").moveDown(1);
+  // --- Header: "QUOTE" title + quote# on the left, brand wordmark + address on the right -------
+  const headerTop = MARGIN;
+  doc.font("Helvetica-Bold").fontSize(24).fillColor(INK).text("QUOTE", MARGIN, headerTop, { lineBreak: false });
+  doc.font("Courier").fontSize(9).fillColor(GRAY).text(`Quote# AGBS/${quotation.id}`, MARGIN, headerTop + 30, { lineBreak: false });
+  const brandBottomY = drawBrandHeader(doc, tableRight, headerTop);
+  let y = Math.max(headerTop + 44, brandBottomY) + 20;
 
-  doc.font("Helvetica-Bold").fontSize(13).text(`Quotation ${quotation.id}`, MARGIN, doc.y);
-  doc.font("Helvetica").fontSize(9);
-  doc.text(`Date: ${String(quotation.created_at || "").slice(0, 10)}`, MARGIN, doc.y);
-  doc.text(`Valid Till: ${quotation.valid_till || "-"}`, MARGIN, doc.y);
-  doc.text(`Fee Type: ${quotation.fee_type}`, MARGIN, doc.y);
-  doc.text(`Customer: ${quotation.customer}`, MARGIN, doc.y);
-  if (quotation.subject) doc.text(`Subject: ${quotation.subject}`, MARGIN, doc.y);
-  doc.moveDown(0.75);
+  // --- Quote Date / Bill To row -------------------------------------------------------------
+  doc.font("Helvetica").fontSize(9).fillColor(GRAY).text("Quote Date :", MARGIN, y);
+  doc.fontSize(9).fillColor(GRAY).text("Bill To", MARGIN, y, { width: tableRight - MARGIN, align: "right" });
+  y += 13;
+  doc.font("Helvetica").fontSize(10).fillColor(INK).text(fmtDate(quotation.created_at) || "-", MARGIN, y);
+  doc.font("Helvetica-Bold").fontSize(10.5).fillColor(INK).text(quotation.customer || "", MARGIN, y, { width: tableRight - MARGIN, align: "right" });
+  y += 24;
 
-  // --- Line items table -----------------------------------------------------------------------
-  let y = drawTableHeader(doc, doc.y, colX, tableRight);
-  doc.font("Helvetica").fontSize(9);
-  items.forEach((it, i) => {
-    const lineTotal = (Number(it.qty) || 0) * (Number(it.price) || 0) * (1 - (Number(it.discountPct) || 0) / 100);
-    const descLines = [it.category, it.service, it.description, it.note].filter(Boolean).join(" — ");
-    const descWidth = colX.qty - colX.desc - 5;
-    const rowHeight = Math.max(16, doc.heightOfString(descLines || "-", { width: descWidth }) + 6);
+  // --- Subject ---------------------------------------------------------------------------------
+  doc.font("Helvetica").fontSize(9).fillColor(GRAY).text("Subject :", MARGIN, y);
+  y = doc.y + 1;
+  doc.font("Helvetica").fontSize(10).fillColor(INK).text(quotation.subject || items[0]?.service || "Quotation", MARGIN, y, { width: tableRight - MARGIN });
+  y = doc.y + (quotation.fee_type === "Government Fee" ? 4 : 14);
+  if (quotation.fee_type === "Government Fee") {
+    doc.font("Helvetica").fontSize(8).fillColor(GRAY)
+      .text("Pass-through government charges — excluded from Address Gateway's business volume and incentive calculations.", MARGIN, y, { width: tableRight - MARGIN });
+    y = doc.y + 14;
+  }
 
-    if (y + rowHeight > doc.page.height - MARGIN - 90) {
+  // --- Line items table (grouped by category, matching the on-screen PDF preview) --------------
+  // Table-only page breaks re-draw the dark column header; every section after the table just
+  // needs a plain page break (this distinction is what page 2 was missing — the acceptance form
+  // was re-triggering the item table header because it reused the table's break helper).
+  const ensureRoom = (needed) => {
+    if (y + needed > doc.page.height - MARGIN - 40) {
+      doc.addPage();
+      y = MARGIN;
+    }
+  };
+  const ensureTableRoom = (needed) => {
+    if (y + needed > doc.page.height - MARGIN - 40) {
       doc.addPage();
       y = drawTableHeader(doc, MARGIN, colX, tableRight);
     }
-
-    doc.text(String(i + 1), colX.idx, y, { width: 20 });
-    doc.text(descLines || "-", colX.desc, y, { width: descWidth });
-    doc.text(String(it.qty ?? ""), colX.qty, y, { width: colX.price - colX.qty - 5, align: "right" });
-    doc.text(moneyShort(it.price), colX.price, y, { width: colX.disc - colX.price - 5, align: "right" });
-    doc.text(it.discountPct ? `${it.discountPct}%` : "-", colX.disc, y, { width: colX.total - colX.disc - 5, align: "right" });
-    doc.text(moneyShort(lineTotal), colX.total, y, { width: tableRight - colX.total, align: "right" });
-    y += rowHeight;
-  });
-
-  y += 6;
-  doc.moveTo(MARGIN, y).lineTo(tableRight, y).strokeColor("#cccccc").stroke();
-  y += 10;
-
-  if (y > doc.page.height - MARGIN - 160) {
-    doc.addPage();
-    y = MARGIN;
-  }
-
-  doc.font("Helvetica").fontSize(9).text(`Subtotal: ${money(subtotal)}`, MARGIN, y, { width: tableRight - MARGIN, align: "right" });
-  y = doc.y + 2;
-  if (orderDiscount > 0) {
-    doc.text(`Order Discount: -${money(orderDiscount)}`, MARGIN, y, { width: tableRight - MARGIN, align: "right" });
-    y = doc.y + 2;
-  }
-  doc.font("Helvetica-Bold").fontSize(12).text(`Total: ${money(total)}`, MARGIN, y, { width: tableRight - MARGIN, align: "right" });
-  y = doc.y + 20;
-
-  // --- Notes / Terms / Bank -------------------------------------------------------------------
-  const section = (label, body) => {
-    if (!body) return;
-    if (y > doc.page.height - MARGIN - 100) { doc.addPage(); y = MARGIN; }
-    doc.font("Helvetica-Bold").fontSize(10).fillColor("#000000").text(label, MARGIN, y, { width: tableRight - MARGIN });
-    y = doc.y + 2;
-    doc.font("Helvetica").fontSize(9).text(body, MARGIN, y, { width: tableRight - MARGIN });
-    y = doc.y + 12;
   };
 
-  section("Notes", quotation.notes);
-  section("Terms & Conditions", quotation.terms);
-  section("Bank Details", quotation.bank || DEFAULT_BANK);
+  y = drawTableHeader(doc, y, colX, tableRight);
+  let lastCategory = null;
+  let rowNumber = 0;
+  items.forEach((it) => {
+    if ((it.category || "") && it.category !== lastCategory) {
+      ensureTableRoom(20);
+      doc.font("Helvetica-Bold").fontSize(9.5).fillColor(INK).text(it.category, MARGIN, y + 6, { width: tableRight - MARGIN });
+      y = doc.y + 4;
+      doc.moveTo(MARGIN, y).lineTo(tableRight, y).strokeColor(HAIR).stroke();
+      y += 4;
+      lastCategory = it.category;
+    }
+    rowNumber++;
+    const descText = it.description || it.service || "";
+    const descWidth = colX.rate - colX.desc - 5;
+    const descHeight = doc.font("Helvetica").fontSize(9.5).heightOfString(descText, { width: descWidth });
+    const noteHeight = it.note ? doc.font("Helvetica").fontSize(8).heightOfString(it.note, { width: descWidth }) + 3 : 0;
+    const rowHeight = Math.max(18, descHeight + noteHeight + 8);
+
+    ensureTableRoom(rowHeight);
+    doc.font("Helvetica").fontSize(9.5).fillColor(INK).text(String(rowNumber), colX.idx, y + 6, { width: colX.desc - colX.idx - 5 });
+    doc.text(descText, colX.desc, y + 6, { width: descWidth });
+    if (it.note) {
+      doc.font("Helvetica").fontSize(8).fillColor(GRAY).text(it.note, colX.desc, doc.y + 1, { width: descWidth });
+    }
+    doc.font("Courier").fontSize(9.5).fillColor(INK).text(money2(it.price), colX.rate, y + 6, { width: colX.amount - colX.rate - 5, align: "right" });
+    const lineAmount = (Number(it.qty) || 0) * (Number(it.price) || 0) * (1 - (Number(it.discountPct) || 0) / 100);
+    doc.text(money2(lineAmount), colX.amount, y + 6, { width: tableRight - colX.amount - 5, align: "right" });
+    y += rowHeight;
+    doc.moveTo(MARGIN, y).lineTo(tableRight, y).strokeColor(HAIR).stroke();
+  });
+  y += 12;
+
+  // --- Sub Total / Discount / Total (right-aligned mini table, Total row shaded) ---------------
+  ensureRoom(70);
+  const totalsWidth = 220;
+  const totalsX = tableRight - totalsWidth;
+  doc.font("Helvetica").fontSize(9.5).fillColor(GRAY).text("Sub Total", totalsX, y, { width: 110 });
+  doc.font("Courier").fontSize(9.5).fillColor(INK).text(money2(subtotal), totalsX + 110, y, { width: totalsWidth - 110, align: "right" });
+  y += 16;
+  if (orderDiscount > 0) {
+    doc.font("Helvetica").fontSize(9.5).fillColor(GRAY).text("Discount", totalsX, y, { width: 110 });
+    doc.font("Courier").fontSize(9.5).fillColor(INK).text(`(-) ${money2(orderDiscount)}`, totalsX + 110, y, { width: totalsWidth - 110, align: "right" });
+    y += 16;
+  }
+  doc.rect(totalsX, y - 2, totalsWidth, 20).fill(LIGHT_BG);
+  doc.font("Helvetica-Bold").fontSize(10.5).fillColor(INK).text("Total", totalsX + 6, y + 3, { width: 104 });
+  doc.font("Courier-Bold").fontSize(10.5).text(`QAR${money2(total)}`, totalsX + 110, y + 3, { width: totalsWidth - 116, align: "right" });
+  y += 30;
+
+  // --- Notes / Terms & Conditions / Bank Account Details ----------------------------------------
+  const noteLines = (quotation.notes || "").split("\n").map((t) => t.trim()).filter(Boolean);
+  const termLines = (quotation.terms || "").split("\n").map((t) => t.trim()).filter(Boolean);
+
+  if (noteLines.length) {
+    ensureRoom(30);
+    doc.moveTo(MARGIN, y).lineTo(tableRight, y).strokeColor(HAIR).stroke();
+    y += 12;
+    doc.font("Helvetica").fontSize(9).fillColor(GRAY).text("Notes", MARGIN, y);
+    y = doc.y + 4;
+    noteLines.forEach((line) => {
+      ensureRoom(16);
+      doc.font("Helvetica").fontSize(9).fillColor(INK).text(line, MARGIN, y, { width: tableRight - MARGIN });
+      y = doc.y + 3;
+    });
+    y += 10;
+  }
+
+  if (termLines.length) {
+    ensureRoom(40);
+    doc.moveTo(MARGIN, y).lineTo(tableRight, y).strokeColor(HAIR).stroke();
+    y += 12;
+    doc.font("Helvetica-Bold").fontSize(11).fillColor(INK).text("Terms & Conditions", MARGIN, y);
+    y = doc.y + 8;
+    termLines.forEach((line, i) => {
+      const width = tableRight - MARGIN - 16;
+      const h = doc.font("Helvetica").fontSize(9).heightOfString(line, { width });
+      ensureRoom(h + 6);
+      doc.font("Helvetica").fontSize(9).fillColor(INK).text(`${i + 1}.`, MARGIN, y, { width: 14 });
+      doc.text(line, MARGIN + 16, y, { width });
+      y = doc.y + 6;
+    });
+    y += 6;
+  }
+
+  ensureRoom(60);
+  doc.font("Helvetica-Bold").fontSize(11).fillColor(INK).text("Bank Account Details", MARGIN, y);
+  y = doc.y + 8;
+  const bankLines = (quotation.bank || DEFAULT_BANK).split("\n").map((t) => t.trim()).filter(Boolean);
+  bankLines.forEach((line) => {
+    ensureRoom(14);
+    doc.font("Helvetica").fontSize(9).fillColor(INK).text(line, MARGIN, y, { width: tableRight - MARGIN });
+    y = doc.y + 3;
+  });
+  y += 14;
+
+  // --- Disclaimer --------------------------------------------------------------------------------
+  ensureRoom(60);
+  doc.font("Helvetica").fontSize(8).fillColor(GRAY).text(DISCLAIMER_1, MARGIN, y, { width: tableRight - MARGIN });
+  y = doc.y + 8;
+  ensureRoom(40);
+  doc.font("Helvetica").fontSize(8).fillColor(GRAY).text(DISCLAIMER_2, MARGIN, y, { width: tableRight - MARGIN });
+  y = doc.y + 20;
+
+  // --- Acceptance form ---------------------------------------------------------------------------
+  ensureRoom(90);
+  doc.font("Helvetica-Bold").fontSize(10).fillColor(INK).text("ACCEPTANCE FORM:", MARGIN, y);
+  y = doc.y + 6;
+  doc.font("Helvetica").fontSize(9).fillColor(INK)
+    .text("I hereby, accept the above offer and I will endeavor to complete/submit all the required documents along with the agreed payment terms.", MARGIN, y, { width: tableRight - MARGIN });
+  y = doc.y + 20;
+
+  const colWidth = (tableRight - MARGIN - 30) / 2;
+  const drawField = (label, x, yy, w) => {
+    doc.font("Helvetica").fontSize(9.5).fillColor(INK).text(label, x, yy, { lineBreak: false });
+    const labelWidth = doc.widthOfString(label) + 4;
+    doc.moveTo(x + labelWidth, yy + 11).lineTo(x + w, yy + 11).strokeColor("#999999").stroke();
+  };
+  drawField("Name:", MARGIN, y, colWidth);
+  drawField("Date:", MARGIN + colWidth + 30, y, colWidth);
+  y += 30;
+  drawField("Signature:", MARGIN, y, colWidth);
+  drawField("Mobile No.:", MARGIN + colWidth + 30, y, colWidth);
 
   // --- Footer note, repeated on every page (per spec: must repeat, editable per template/quotation) ---
   const footerText = quotation.footer_note || DEFAULT_FOOTER_NOTE;
   const range = doc.bufferedPageRange();
   for (let i = range.start; i < range.start + range.count; i++) {
     doc.switchToPage(i);
-    doc.font("Helvetica").fontSize(7).fillColor("#777777")
+    doc.font("Helvetica").fontSize(7).fillColor(GRAY)
       .text(footerText, MARGIN, doc.page.height - MARGIN - 24, { width: doc.page.width - MARGIN * 2, align: "center" });
-    doc.fillColor("#000000");
+    doc.fillColor(INK);
   }
 
   doc.end();
