@@ -478,9 +478,6 @@ const NAV = [
     { key: "quotationTemplates", label: "Quotation Templates", icon: Files, roles: [...ADMIN_LIKE,"sales_manager"] },
     { key: "customers", label: "Customers & KYC", icon: UserCheck, roles: [...ADMIN_LIKE,"sales_manager","sales_exec","accounts"] },
   ]},
-  { group: "Data Manager", items: [
-    { key: "dataManager", label: "Data Manager", icon: Database, roles: [...ADMIN_LIKE,"data_manager","sales_manager","sales_exec"] },
-  ]},
   { group: "Finance", items: [
     { key: "orders", label: "Sales Orders", icon: ShoppingCart, roles: [...ADMIN_LIKE,"sales_manager","accounts"] },
     { key: "invoices", label: "Invoices", icon: Receipt, roles: [...ADMIN_LIKE,"accounts","sales_manager"] },
@@ -496,6 +493,9 @@ const NAV = [
     { key: "hr", label: "HR", icon: Briefcase, roles: "all" },
     { key: "users", label: "Users & Roles", icon: UserCog, roles: ["super_admin","admin"] },
     { key: "templates", label: "Checklist Templates", icon: ListChecks, roles: [...ADMIN_LIKE,"ops_manager"] },
+  ]},
+  { group: "Data Manager", items: [
+    { key: "dataManager", label: "Data Manager", icon: Database, roles: [...ADMIN_LIKE,"data_manager","sales_manager","sales_exec"] },
   ]},
   { group: "Insights", items: [
     { key: "reports", label: "Reports", icon: BarChart3, roles: [...ADMIN_LIKE,"sales_manager","accounts","executive"] },
