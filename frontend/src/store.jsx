@@ -102,7 +102,7 @@ export function useApiStore(enabled) {
       case "UPDATE_APP_SETTINGS": await api.settings.update(action.payload); return refresh(["appSettings"]);
 
       // --- Leads ----------------------------------------------------------------------------
-      case "ADD_LEAD": await api.leads.create(action.payload); return refresh(["leads", "notifications"]);
+      case "ADD_LEAD": { const r = await api.leads.create(action.payload); await refresh(["leads", "notifications", "customers"]); return r; }
       case "SET_LEAD_STATUS": await api.leads.update(action.id, { status: action.status }); return refresh(["leads"]);
       case "LOG_FOLLOWUP": await api.leads.followUp(action.id, { note: action.note, status: action.status, nextFollowUp: action.nextFollowUp }); return refresh(["leads"]);
       case "UPDATE_LEAD": await api.leads.update(action.id, action.payload); return refresh(["leads"]);

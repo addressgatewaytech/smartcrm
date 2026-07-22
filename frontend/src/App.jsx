@@ -1066,6 +1066,28 @@ function LeadsPage({ state, dispatch, userId, role }) {
   const blankForm = { name:"", company:"", phone:"", email:"", reference:"", source:"Website", service: SERVICES[0] };
   const [form, setForm] = useState(blankForm);
   const [dealValue, setDealValue] = useState(15000);
+  const [saveError, setSaveError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const handleSaveLead = async () => {
+    setSaving(true);
+    setSaveError("");
+    try {
+      if (editLead) {
+        await dispatch({type:"UPDATE_LEAD", id:editLead.id, payload:form});
+      } else {
+        const result = await dispatch({type:"ADD_LEAD", payload:{...form, owner: userId}});
+        if (result?.duplicateOf) {
+          alert(`Note: no new customer was created — "${form.company}"'s phone/email already matches an existing customer, "${result.duplicateOf}". The lead was linked to that customer instead.`);
+        }
+      }
+      setShowAdd(false); setEditLead(null); setForm(blankForm);
+    } catch (err) {
+      setSaveError(err instanceof ApiError ? err.message : "Couldn't save — please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const owned = ["sales_exec"].includes(role) ? state.leads.filter(l => l.owner === userId) : state.leads;
 
@@ -1217,18 +1239,11 @@ function LeadsPage({ state, dispatch, userId, role }) {
               {state.services.map(s=><option key={s}>{s}</option>)}
             </select>
           </div>
+          {saveError && <div className="side-note" style={{ color:"var(--danger)" }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{saveError}</div>}
           <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop: 16 }}>
-            <button className="btn" onClick={()=>{ setShowAdd(false); setEditLead(null); }}>Cancel</button>
-            <button className="btn btn-primary" disabled={!form.name || !form.company}
-              onClick={()=>{
-                if (editLead) {
-                  dispatch({type:"UPDATE_LEAD", id:editLead.id, payload:form});
-                } else {
-                  dispatch({type:"ADD_LEAD", payload:{...form, owner: userId}});
-                }
-                setShowAdd(false); setEditLead(null); setForm(blankForm);
-              }}>
-              {editLead ? "Save changes" : "Add lead"}
+            <button className="btn" onClick={()=>{ setShowAdd(false); setEditLead(null); setSaveError(""); }}>Cancel</button>
+            <button className="btn btn-primary" disabled={saving || !form.name || !form.company} onClick={handleSaveLead}>
+              {saving ? "Saving…" : editLead ? "Save changes" : "Add lead"}
             </button>
           </div>
         </Modal>

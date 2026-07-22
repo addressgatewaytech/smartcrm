@@ -17,6 +17,30 @@ router.get("/", async (req, res) => {
   res.json(rows.map((r) => ({ ...r, followUps: followUps.filter((f) => f.lead_id === r.id) })));
 });
 
+// Finds a Customer that already matches this lead (by company name, or by phone/email
+// belonging to a different-named customer) rather than creating a duplicate profile; only
+// creates a new Customer when nothing matches. Returns { customerId, duplicateOf } — duplicateOf
+// is set (existing customer name) only when the match came from phone/email, not name, so the
+// frontend can surface "this looks like an existing customer" instead of silently merging.
+async function findOrCreateCustomerForLead(b) {
+  const [byName] = await query("SELECT id, name FROM customers WHERE LOWER(name) = LOWER(?)", [b.company]);
+  if (byName) return { customerId: byName.id, duplicateOf: null };
+
+  const dupConditions = [];
+  const dupParams = [];
+  if (b.phone) { dupConditions.push("phone = ?"); dupParams.push(b.phone); }
+  if (b.email) { dupConditions.push("email = ?"); dupParams.push(b.email); }
+  if (dupConditions.length) {
+    const [byContact] = await query(`SELECT id, name FROM customers WHERE ${dupConditions.join(" OR ")} LIMIT 1`, dupParams);
+    if (byContact) return { customerId: byContact.id, duplicateOf: byContact.name };
+  }
+
+  const customerId = nextId("CU");
+  await query("INSERT INTO customers (id, name, type, contact, phone, email) VALUES (?,?,?,?,?,?)",
+    [customerId, b.company, "Company", b.name || null, b.phone || null, b.email || null]);
+  return { customerId, duplicateOf: null };
+}
+
 router.post("/", async (req, res) => {
   const id = nextId("LD");
   const b = req.body;
@@ -30,7 +54,11 @@ router.post("/", async (req, res) => {
   // Data Manager integration: notify if this lead matches an existing outreach data record.
   await checkExistingData({ id, company: b.company, email: b.email, phone: b.phone });
 
-  res.status(201).json({ id });
+  // Every lead gets a Customer profile from day one — reusing an existing one (matched by
+  // name, or by phone/email under a different name) instead of creating a duplicate.
+  const { customerId, duplicateOf } = await findOrCreateCustomerForLead(b);
+
+  res.status(201).json({ id, customerId, duplicateOf });
 });
 
 router.patch("/:id", async (req, res) => {
