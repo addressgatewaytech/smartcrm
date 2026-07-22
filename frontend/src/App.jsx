@@ -1708,6 +1708,25 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, customerOptions
   const [visualEdit, setVisualEdit] = useState(false);
   const [draft, setDraft] = useState(null);
   const [downloading, setDownloading] = useState(false);
+  const [actionBusy, setActionBusy] = useState(false);
+  const [actionError, setActionError] = useState("");
+
+  // Every status-transition button (Send to client, Approve discount, Create sales order, ...)
+  // used to fire dispatch() without awaiting it and close the modal immediately regardless of
+  // outcome — so a failed call (e.g. "create sales order" erroring) looked identical to a
+  // successful one, with nothing left to show for it. Route them all through this instead.
+  const runAction = async (action, { keepOpen = false } = {}) => {
+    setActionBusy(true);
+    setActionError("");
+    try {
+      await dispatch(action);
+      if (!keepOpen) onClose();
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "Couldn't complete this action — please try again.");
+    } finally {
+      setActionBusy(false);
+    }
+  };
 
   const cq = { ...q, ...content };
   const subtotal = cq.items.reduce((a,it)=>a+it.qty*it.price*(1-(it.discountPct||0)/100),0);
@@ -1787,29 +1806,30 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, customerOptions
             />
           )}
 
+          {actionError && <div className="side-note" style={{ color:"var(--danger)", marginTop:12, marginBottom:0 }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{actionError}</div>}
           <div style={{ display:"flex", gap:8, marginTop: 12, flexWrap:"wrap" }}>
             {q.status === "Draft" && hasDiscount &&
-              <button className="btn btn-primary" onClick={()=>{ dispatch({type:"SUBMIT_QUOTATION_FOR_APPROVAL", id:q.id}); onClose(); }}>Submit for Manager approval</button>}
+              <button className="btn btn-primary" disabled={actionBusy} onClick={()=>runAction({type:"SUBMIT_QUOTATION_FOR_APPROVAL", id:q.id})}>Submit for Manager approval</button>}
             {q.status === "Draft" && !hasDiscount &&
-              <button className="btn btn-primary" onClick={()=>{ dispatch({type:"SEND_QUOTATION", id:q.id}); onClose(); }}>Send to client</button>}
+              <button className="btn btn-primary" disabled={actionBusy} onClick={()=>runAction({type:"SEND_QUOTATION", id:q.id})}>Send to client</button>}
             {q.status === "Pending Manager Approval" && canApprove &&
-              <button className="btn btn-primary" onClick={()=>{ dispatch({type:"APPROVE_QUOTATION_DISCOUNT", id:q.id, by:"Sales Manager"}); onClose(); }}><Check size={14}/> Approve discount & send</button>}
+              <button className="btn btn-primary" disabled={actionBusy} onClick={()=>runAction({type:"APPROVE_QUOTATION_DISCOUNT", id:q.id, by:"Sales Manager"})}><Check size={14}/> Approve discount & send</button>}
             {q.status === "Pending Manager Approval" && !canApprove &&
               <div className="side-note" style={{marginTop:0}}>Waiting on Sales Manager approval for the applied discount.</div>}
             {q.status === "Sent" && <>
-              <button className="btn" onClick={()=>{ dispatch({type:"SET_QUOTATION_STATUS", id:q.id, status:"Under Negotiation"}); }}>Mark under negotiation</button>
+              <button className="btn" disabled={actionBusy} onClick={()=>runAction({type:"SET_QUOTATION_STATUS", id:q.id, status:"Under Negotiation"}, { keepOpen: true })}>Mark under negotiation</button>
               {q.feeType === "Government Fee" ? (
-                <button className="btn btn-primary" onClick={()=>{ dispatch({type:"SET_QUOTATION_STATUS", id:q.id, status:"Approved"}); onClose(); }}>Client accepted — mark approved</button>
+                <button className="btn btn-primary" disabled={actionBusy} onClick={()=>runAction({type:"SET_QUOTATION_STATUS", id:q.id, status:"Approved"})}>Client accepted — mark approved</button>
               ) : (
-                <button className="btn btn-primary" onClick={()=>{ dispatch({type:"CONVERT_TO_SALES_ORDER", quotationId:q.id}); onClose(); }}>Client accepted — create sales order</button>
+                <button className="btn btn-primary" disabled={actionBusy} onClick={()=>runAction({type:"CONVERT_TO_SALES_ORDER", quotationId:q.id})}>{actionBusy ? "Creating…" : "Client accepted — create sales order"}</button>
               )}
-              <button className="btn" style={{color:"var(--danger)"}} onClick={()=>{ dispatch({type:"SET_QUOTATION_STATUS", id:q.id, status:"Rejected"}); onClose(); }}>Mark rejected</button>
+              <button className="btn" style={{color:"var(--danger)"}} disabled={actionBusy} onClick={()=>runAction({type:"SET_QUOTATION_STATUS", id:q.id, status:"Rejected"})}>Mark rejected</button>
             </>}
             {q.status === "Under Negotiation" && (
               q.feeType === "Government Fee" ? (
-                <button className="btn btn-primary" onClick={()=>{ dispatch({type:"SET_QUOTATION_STATUS", id:q.id, status:"Approved"}); onClose(); }}>Client accepted — mark approved</button>
+                <button className="btn btn-primary" disabled={actionBusy} onClick={()=>runAction({type:"SET_QUOTATION_STATUS", id:q.id, status:"Approved"})}>Client accepted — mark approved</button>
               ) : (
-                <button className="btn btn-primary" onClick={()=>{ dispatch({type:"CONVERT_TO_SALES_ORDER", quotationId:q.id}); onClose(); }}>Client accepted — create sales order</button>
+                <button className="btn btn-primary" disabled={actionBusy} onClick={()=>runAction({type:"CONVERT_TO_SALES_ORDER", quotationId:q.id})}>{actionBusy ? "Creating…" : "Client accepted — create sales order"}</button>
               )
             )}
           </div>
