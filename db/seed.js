@@ -111,6 +111,9 @@ async function main() {
     ["Business Introduction", DEFAULT_EMAIL_BODY, DEFAULT_WHATSAPP_BODY]
   );
 
+  console.log("Seeding app-wide settings...");
+  await conn.execute(`INSERT IGNORE INTO app_settings (id) VALUES (1)`);
+
   console.log("\nDone. First login: admin@addressgateway.com / ChangeMe123!  — change this immediately.");
   await conn.end();
 }

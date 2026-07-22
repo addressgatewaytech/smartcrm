@@ -417,6 +417,12 @@ CREATE TABLE IF NOT EXISTS data_export_history (
   format       VARCHAR(20)
 ) ENGINE=InnoDB;
 
+-- Singleton app-wide settings row (id always = 1)
+CREATE TABLE IF NOT EXISTS app_settings (
+  id                            INT PRIMARY KEY DEFAULT 1,
+  email_notifications_enabled  TINYINT(1) DEFAULT 1
+) ENGINE=InnoDB;
+
 -- Singleton settings row (id always = 1)
 CREATE TABLE IF NOT EXISTS data_settings (
   id                      INT PRIMARY KEY DEFAULT 1,

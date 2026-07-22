@@ -8,7 +8,7 @@ import {
   Plus, X, Check, ChevronRight, AlertTriangle, CircleDollarSign,
   UserPlus, ShieldCheck, Ban, Clock, ArrowRight, Search, Mail,
   BadgeCheck, CalendarClock, Briefcase, Copy, Files, Link2, Pencil, Trash2, Repeat, BarChart3, Download, MoreHorizontal, ChevronsLeft, ChevronsRight, Camera, Star,
-  Database, Upload, MessageCircle, Recycle, ArchiveX, ShieldAlert
+  Database, Upload, MessageCircle, Recycle, ArchiveX, ShieldAlert, Settings as SettingsIcon
 } from "lucide-react";
 
 /* ---------------------------------------------------------------------- */
@@ -504,7 +504,10 @@ const NAV = [
   { group: "Insights", items: [
     { key: "reports", label: "Reports", icon: BarChart3, roles: [...ADMIN_LIKE,"sales_manager","accounts","executive"] },
   ]},
-  { group: "", items: [{ key: "notifications", label: "Notifications", icon: Bell, roles: "all" }] },
+  { group: "", items: [
+    { key: "notifications", label: "Notifications", icon: Bell, roles: "all" },
+    { key: "settings", label: "Settings", icon: SettingsIcon, roles: ["super_admin","admin"] },
+  ]},
 ];
 
 /* ---------------------------------------------------------------------- */
@@ -708,6 +711,7 @@ export default function App() {
     templates: ["Checklist Templates", "Configure the job checklist for each service"],
     reports: ["Reports", "Business volume, collections, customers, incentives and operations — all Professional Fee based"],
     notifications: ["Notifications", "Everything the platform has flagged for you"],
+    settings: ["Settings", "Platform-wide configuration"],
   };
 
   return (
@@ -815,6 +819,7 @@ export default function App() {
             {page === "templates" && <TemplatesPage {...ctx} />}
             {page === "reports" && <ReportsPage {...ctx} />}
             {page === "notifications" && <NotificationsPage {...ctx} myNotifs={myNotifs} />}
+            {page === "settings" && <SettingsPage {...ctx} />}
           </div>
         </main>
       </div>
@@ -4405,6 +4410,26 @@ function NotificationsPage({ state, dispatch, myNotifs }) {
           </div>
         </Modal>
       )}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------- */
+/* SETTINGS                                                                */
+/* ---------------------------------------------------------------------- */
+
+function SettingsPage({ state, dispatch }) {
+  const enabled = state.appSettings.emailNotificationsEnabled;
+  return (
+    <div className="agw-card" style={{ maxWidth: 560 }}>
+      <strong style={{ fontSize:14 }}>Email sending</strong>
+      <label style={{ display:"flex", alignItems:"center", gap:8, fontSize:13, marginTop:10 }}>
+        <input type="checkbox" checked={enabled} onChange={(e)=>dispatch({type:"UPDATE_APP_SETTINGS", payload:{ emailNotificationsEnabled: e.target.checked }})} />
+        Send emails (notifications, data manager outreach, etc.)
+      </label>
+      <div className="side-note" style={{ marginTop:10 }}>
+        Turning this off stops all outgoing emails except password-reset codes — those always send, so nobody ever gets locked out of their account.
+      </div>
     </div>
   );
 }

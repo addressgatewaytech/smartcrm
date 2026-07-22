@@ -101,6 +101,8 @@ export const mapDataSettings = (s) => ({
 
 export const mapExportHistoryEntry = (e) => ({ id: e.id, exportedBy: e.exported_by, exportDate: e.export_date, count: e.record_count, purpose: e.purpose, format: e.format });
 
+export const mapAppSettings = (s) => ({ emailNotificationsEnabled: !!s.email_notifications_enabled });
+
 export const mapTier = (t) => ({
   name: t.tier_name, annualFee: Number(t.annual_fee), companySize: t.company_size,
   transactionsIncluded: t.transactions_included, hukoomiServices: t.hukoomi_services,

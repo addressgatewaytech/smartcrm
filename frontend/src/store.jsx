@@ -4,6 +4,7 @@ import {
   mapUser, mapLead, mapDeal, mapQuotation, mapCustomer, mapSalesOrder, mapInvoice, mapJobCard,
   mapNotification, mapDataRecord, mapDataSettings, mapExportHistoryEntry, mapSubscriptionPlans,
   mapSubscription, mapQuotationTemplates, mapIncentiveRule, mapLeaveRequest, mapPunchRequest, mapAttendance,
+  mapAppSettings,
 } from "./mappers";
 
 const emptyState = () => ({
@@ -12,6 +13,7 @@ const emptyState = () => ({
   checklistTemplates: {}, incentiveRules: [], leaveRequests: [], punchRequests: [],
   subscriptionPlans: {}, subscriptions: [], dataRecords: [], dataExportHistory: [],
   dataSettings: { dailyEmailTarget: 25, dailyWhatsappTarget: 25, emailIntervalMinutes: 5, whatsappIntervalMinutes: 10, recyclingEnabled: true, recyclingDays: 30, emailTemplate: { subject: "", body: "" }, whatsappTemplate: { body: "" } },
+  appSettings: { emailNotificationsEnabled: true },
   activity: [],
 });
 
@@ -50,6 +52,7 @@ export function useApiStore(enabled) {
       dataRecords: async () => ({ dataRecords: (await api.dataManager.list()).map(mapDataRecord) }),
       dataExportHistory: async () => ({ dataExportHistory: (await api.dataManager.exportHistory()).map(mapExportHistoryEntry) }),
       dataSettings: async () => ({ dataSettings: mapDataSettings(await api.dataManager.settings()) }),
+      appSettings: async () => ({ appSettings: mapAppSettings(await api.settings.get()) }),
     };
     const list = keys || Object.keys(tasks);
     const results = await Promise.all(list.map((k) => tasks[k]()));
@@ -96,6 +99,7 @@ export function useApiStore(enabled) {
       case "RETURN_UNUSED_COMPANY_DATA": { const r = await api.dataManager.endOfDayReturn(); await refresh(["dataRecords"]); pushLocalActivity(setState, `End-of-day return — ${r.returned} unused Company Data record(s) returned`); return; }
       case "LOG_DATA_EXPORT": return refresh(["dataExportHistory"]); // GET /export already logs server-side
       case "UPDATE_DATA_SETTINGS": await api.dataManager.updateSettings(action.payload); return refresh(["dataSettings"]);
+      case "UPDATE_APP_SETTINGS": await api.settings.update(action.payload); return refresh(["appSettings"]);
 
       // --- Leads ----------------------------------------------------------------------------
       case "ADD_LEAD": await api.leads.create(action.payload); return refresh(["leads", "notifications"]);

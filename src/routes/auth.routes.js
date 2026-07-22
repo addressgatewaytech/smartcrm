@@ -76,6 +76,7 @@ router.post("/forgot-password", async (req, res) => {
     to: email,
     subject: "Address Gateway CRM — Password Reset Code",
     text: `Hi ${user.name},\n\nYour password reset code is: ${otp}\n\nThis code expires in 15 minutes. If you didn't request this, you can safely ignore this email.`,
+    critical: true, // always send, regardless of the Settings email toggle — this is the account-recovery path
   });
   res.json(genericResponse);
 });

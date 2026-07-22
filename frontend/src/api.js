@@ -216,6 +216,10 @@ export const api = {
     list: () => get("/checklist-templates"),
     update: (service, steps) => request("PUT", `/checklist-templates/${encodeURIComponent(service)}`, { steps }),
   },
+  settings: {
+    get: () => get("/settings"),
+    update: (payload) => patch("/settings", payload),
+  },
 };
 
 export { ApiError };
