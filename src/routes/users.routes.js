@@ -45,10 +45,11 @@ router.post("/", requireRole(["super_admin", "admin"]), async (req, res) => {
 });
 
 router.patch("/:id", requireRole(["super_admin", "admin"]), async (req, res) => {
-  const { name, roles, dept, initials } = req.body;
+  const { name, email, roles, dept, initials } = req.body;
   const fields = [];
   const params = [];
   if (name) { fields.push("name = ?"); params.push(name); }
+  if (email !== undefined) { fields.push("email = ?"); params.push(email || null); }
   if (roles) {
     fields.push("roles = ?", "designation = ?");
     params.push(JSON.stringify(roles), roles.map((r) => ROLE_LABEL[r]).join(" + "));
@@ -58,6 +59,16 @@ router.patch("/:id", requireRole(["super_admin", "admin"]), async (req, res) => 
   if (!fields.length) return res.status(400).json({ error: "Nothing to update" });
   params.push(req.params.id);
   await query(`UPDATE users SET ${fields.join(", ")} WHERE id = ?`, params);
+  res.json({ ok: true });
+});
+
+// Admin-set password reset — unlike /api/auth/change-password, doesn't require knowing the
+// current password (that's the point: this is for an admin resetting someone else's).
+router.post("/:id/reset-password", requireRole(["super_admin", "admin"]), async (req, res) => {
+  const { password } = req.body;
+  if (!password || password.length < 8) return res.status(400).json({ error: "New password must be at least 8 characters" });
+  const hash = await bcrypt.hash(password, 10);
+  await query("UPDATE users SET password_hash = ? WHERE id = ?", [hash, req.params.id]);
   res.json({ ok: true });
 });
 

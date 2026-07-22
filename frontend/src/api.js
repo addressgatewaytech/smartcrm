@@ -58,6 +58,7 @@ export const api = {
     create: (payload) => post("/users", payload),
     update: (id, payload) => patch(`/users/${id}`, payload),
     toggleActive: (id) => post(`/users/${id}/toggle-active`),
+    resetPassword: (id, password) => post(`/users/${id}/reset-password`, { password }),
     remove: (id) => del(`/users/${id}`),
     uploadPhoto: (id, file) => { const fd = new FormData(); fd.append("photo", file); return postForm(`/users/${id}/photo`, fd); },
     addDoc: (id, doc) => post(`/users/${id}/docs`, doc),

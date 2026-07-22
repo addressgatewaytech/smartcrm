@@ -190,6 +190,7 @@ export function useApiStore(enabled) {
       case "ADD_USER": await api.users.create(action.payload); return refresh(["employees"]);
       case "TOGGLE_USER_ACTIVE": await api.users.toggleActive(action.id); return refresh(["employees"]);
       case "UPDATE_USER": await api.users.update(action.id, action.payload); return refresh(["employees"]);
+      case "RESET_USER_PASSWORD": return api.users.resetPassword(action.id, action.password);
       case "DELETE_USER": await api.users.remove(action.id); return refresh(["employees"]);
 
       // --- Incentives -----------------------------------------------------------------------

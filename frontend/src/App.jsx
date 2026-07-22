@@ -4137,14 +4137,14 @@ function StaffDocsModal({ employee: e, dispatch, onClose }) {
 /* ---------------------------------------------------------------------- */
 
 function UsersPage({ state, dispatch }) {
-  const blank = { name:"", roles:["sales_exec"], dept:"Sales", initials:"" };
+  const blank = { name:"", email:"", password:"", roles:["sales_exec"], dept:"Sales", initials:"" };
   const [showAdd, setShowAdd] = useState(false);
   const [editUser, setEditUser] = useState(null);
   const [removeUser, setRemoveUser] = useState(null);
   const [form, setForm] = useState(blank);
   const toggleRole = (r) => setForm(f => ({ ...f, roles: f.roles.includes(r) ? f.roles.filter(x=>x!==r) : [...f.roles, r] }));
 
-  const openEdit = (e) => { setEditUser(e); setForm({ name:e.name, roles:e.roles, dept:e.dept, initials:e.initials }); };
+  const openEdit = (e) => { setEditUser(e); setForm({ name:e.name, email:e.email||"", password:"", roles:e.roles, dept:e.dept, initials:e.initials }); };
   const closeModal = () => { setShowAdd(false); setEditUser(null); setForm(blank); };
 
   return (
@@ -4178,6 +4178,10 @@ function UsersPage({ state, dispatch }) {
             <div className="field"><label>Full name</label><input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} /></div>
             <div className="field"><label>Initials</label><input maxLength={2} value={form.initials} onChange={e=>setForm({...form,initials:e.target.value.toUpperCase()})} /></div>
           </div>
+          <div className="row2">
+            <div className="field"><label>Email (required to log in)</label><input type="email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})} placeholder="name@addressgateway.com" /></div>
+            <div className="field"><label>{editUser ? "Reset password (optional)" : "Password (optional)"}</label><input type="password" value={form.password} onChange={e=>setForm({...form,password:e.target.value})} placeholder={editUser ? "Leave blank to keep current" : "Leave blank for default: ChangeMe123!"} /></div>
+          </div>
           <div className="field"><label>Department</label><input value={form.dept} onChange={e=>setForm({...form,dept:e.target.value})} /></div>
           <div className="field">
             <label>Roles</label>
@@ -4191,10 +4195,15 @@ function UsersPage({ state, dispatch }) {
           </div>
           <div style={{ display:"flex", justifyContent:"flex-end", gap:8 }}>
             <button className="btn" onClick={closeModal}>Cancel</button>
-            <button className="btn btn-primary" disabled={!form.name || form.roles.length===0}
+            <button className="btn btn-primary" disabled={!form.name || form.roles.length===0 || (!editUser && !form.email)}
               onClick={()=>{
-                if (editUser) dispatch({type:"UPDATE_USER", id:editUser.id, payload:form});
-                else dispatch({type:"ADD_USER", payload:form});
+                if (editUser) {
+                  const payload = { name: form.name, email: form.email, roles: form.roles, dept: form.dept, initials: form.initials };
+                  dispatch({type:"UPDATE_USER", id:editUser.id, payload});
+                  if (form.password) dispatch({type:"RESET_USER_PASSWORD", id:editUser.id, password: form.password});
+                } else {
+                  dispatch({type:"ADD_USER", payload:form});
+                }
                 closeModal();
               }}>
               {editUser ? "Save changes" : "Add user"}
