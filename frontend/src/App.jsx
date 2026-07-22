@@ -515,9 +515,13 @@ function LoadingScreen() {
 }
 
 function Login({ onLogin }) {
+  const [mode, setMode] = useState("login"); // "login" | "forgot-email" | "forgot-reset" | "forgot-done"
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [otp, setOtp] = useState("");
+  const [newPassword, setNewPassword] = useState("");
   const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
   const [busy, setBusy] = useState(false);
 
   const submit = async (e) => {
@@ -535,22 +539,95 @@ function Login({ onLogin }) {
     }
   };
 
+  const sendCode = async (e) => {
+    e.preventDefault();
+    setError(""); setBusy(true);
+    try {
+      const res = await api.auth.forgotPassword(email);
+      setInfo(res.message);
+      setMode("forgot-reset");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Something went wrong — please try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const resetPassword = async (e) => {
+    e.preventDefault();
+    setError(""); setBusy(true);
+    try {
+      await api.auth.resetPassword(email, otp, newPassword);
+      setMode("forgot-done");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Something went wrong — please try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const backToLogin = () => { setMode("login"); setError(""); setInfo(""); setOtp(""); setNewPassword(""); setPassword(""); };
+
   return (
     <div className="agw" style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--page)" }}>
       <style>{CSS}</style>
       <link rel="preconnect" href="https://fonts.googleapis.com" />
       <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
-      <form onSubmit={submit} className="agw-card" style={{ width: 360, padding: "28px 26px" }}>
-        <div style={{ marginBottom: 22 }}><BrandLogo scale={1.05} /></div>
-        <h3 style={{ marginBottom: 4 }}>Sign in</h3>
-        <p className="modal-sub">Use your Address Gateway account.</p>
-        <div className="field"><label>Email</label><input type="email" value={email} onChange={e=>setEmail(e.target.value)} autoFocus required /></div>
-        <div className="field"><label>Password</label><input type="password" value={password} onChange={e=>setPassword(e.target.value)} required /></div>
-        {error && <div className="side-note" style={{ borderColor:"var(--danger)", color:"var(--danger)", marginTop:0 }}>{error}</div>}
-        <button className="btn btn-primary" type="submit" disabled={busy} style={{ width: "100%", justifyContent: "center", marginTop: 8 }}>
-          {busy ? "Signing in…" : "Sign in"}
-        </button>
-      </form>
+
+      {mode === "login" && (
+        <form onSubmit={submit} className="agw-card" style={{ width: 360, padding: "28px 26px" }}>
+          <div style={{ marginBottom: 22 }}><BrandLogo scale={1.05} /></div>
+          <h3 style={{ marginBottom: 4 }}>Sign in</h3>
+          <p className="modal-sub">Use your Address Gateway account.</p>
+          <div className="field"><label>Email</label><input type="email" value={email} onChange={e=>setEmail(e.target.value)} autoFocus required /></div>
+          <div className="field"><label>Password</label><input type="password" value={password} onChange={e=>setPassword(e.target.value)} required /></div>
+          {error && <div className="side-note" style={{ borderColor:"var(--danger)", color:"var(--danger)", marginTop:0 }}>{error}</div>}
+          <button className="btn btn-primary" type="submit" disabled={busy} style={{ width: "100%", justifyContent: "center", marginTop: 8 }}>
+            {busy ? "Signing in…" : "Sign in"}
+          </button>
+          <button type="button" className="btn btn-ghost btn-sm" style={{ width: "100%", justifyContent: "center", marginTop: 10 }}
+            onClick={() => { setMode("forgot-email"); setError(""); }}>Forgot password?</button>
+        </form>
+      )}
+
+      {mode === "forgot-email" && (
+        <form onSubmit={sendCode} className="agw-card" style={{ width: 360, padding: "28px 26px" }}>
+          <div style={{ marginBottom: 22 }}><BrandLogo scale={1.05} /></div>
+          <h3 style={{ marginBottom: 4 }}>Forgot password</h3>
+          <p className="modal-sub">Enter your account email — we'll send a 6-digit reset code.</p>
+          <div className="field"><label>Email</label><input type="email" value={email} onChange={e=>setEmail(e.target.value)} autoFocus required /></div>
+          {error && <div className="side-note" style={{ borderColor:"var(--danger)", color:"var(--danger)", marginTop:0 }}>{error}</div>}
+          <button className="btn btn-primary" type="submit" disabled={busy} style={{ width: "100%", justifyContent: "center", marginTop: 8 }}>
+            {busy ? "Sending…" : "Send reset code"}
+          </button>
+          <button type="button" className="btn btn-ghost btn-sm" style={{ width: "100%", justifyContent: "center", marginTop: 10 }} onClick={backToLogin}>Back to sign in</button>
+        </form>
+      )}
+
+      {mode === "forgot-reset" && (
+        <form onSubmit={resetPassword} className="agw-card" style={{ width: 360, padding: "28px 26px" }}>
+          <div style={{ marginBottom: 22 }}><BrandLogo scale={1.05} /></div>
+          <h3 style={{ marginBottom: 4 }}>Enter reset code</h3>
+          <p className="modal-sub">{info || `A code was sent to ${email} if that account exists.`}</p>
+          <div className="field"><label>6-digit code</label><input value={otp} onChange={e=>setOtp(e.target.value)} maxLength={6} autoFocus required /></div>
+          <div className="field"><label>New password</label><input type="password" value={newPassword} onChange={e=>setNewPassword(e.target.value)} placeholder="At least 8 characters" required /></div>
+          {error && <div className="side-note" style={{ borderColor:"var(--danger)", color:"var(--danger)", marginTop:0 }}>{error}</div>}
+          <button className="btn btn-primary" type="submit" disabled={busy} style={{ width: "100%", justifyContent: "center", marginTop: 8 }}>
+            {busy ? "Resetting…" : "Reset password"}
+          </button>
+          <button type="button" className="btn btn-ghost btn-sm" style={{ width: "100%", justifyContent: "center", marginTop: 10 }}
+            onClick={() => { setMode("forgot-email"); setError(""); }}>Didn't get a code? Try again</button>
+        </form>
+      )}
+
+      {mode === "forgot-done" && (
+        <div className="agw-card" style={{ width: 360, padding: "28px 26px", textAlign: "center" }}>
+          <div style={{ marginBottom: 22 }}><BrandLogo scale={1.05} /></div>
+          <h3 style={{ marginBottom: 4 }}>Password reset</h3>
+          <p className="modal-sub">Your password has been changed. Sign in with your new password.</p>
+          <button className="btn btn-primary" style={{ width: "100%", justifyContent: "center" }} onClick={backToLogin}>Back to sign in</button>
+        </div>
+      )}
     </div>
   );
 }

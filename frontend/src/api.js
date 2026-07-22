@@ -51,6 +51,8 @@ export const api = {
   auth: {
     login: (email, password) => post("/auth/login", { email, password }),
     me: () => get("/auth/me"),
+    forgotPassword: (email) => post("/auth/forgot-password", { email }),
+    resetPassword: (email, otp, newPassword) => post("/auth/reset-password", { email, otp, newPassword }),
     changePassword: (currentPassword, newPassword) => post("/auth/change-password", { currentPassword, newPassword }),
   },
   users: {

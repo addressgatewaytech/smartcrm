@@ -25,6 +25,17 @@ CREATE TABLE IF NOT EXISTS users (
   created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
+-- Forgot-password flow: emailed 6-digit codes, short-lived and single-use.
+CREATE TABLE IF NOT EXISTS password_reset_otps (
+  id          VARCHAR(20) PRIMARY KEY,
+  user_id     VARCHAR(20) NOT NULL,
+  otp_code    VARCHAR(10) NOT NULL,
+  expires_at  TIMESTAMP NOT NULL,
+  used        TINYINT(1) DEFAULT 0,
+  created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
 CREATE TABLE IF NOT EXISTS attendance (
   id          VARCHAR(30) PRIMARY KEY,
   user_id     VARCHAR(20) NOT NULL,
