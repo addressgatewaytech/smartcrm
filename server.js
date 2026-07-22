@@ -13,11 +13,6 @@ app.use(cors());
 app.use(express.json({ limit: "5mb" }));
 app.use("/uploads", express.static(path.join(__dirname, process.env.UPLOAD_DIR || "uploads")));
 
-// Root path: some managed hosting platforms probe "/" to confirm the app is up before
-// finishing custom-domain/proxy setup — without this, that check gets a 404 and can silently
-// block those flows.
-app.get("/", (req, res) => res.json({ ok: true, service: "Address Gateway Backend", health: "/api/health" }));
-
 app.get("/api/health", (req, res) => res.json({ ok: true, time: new Date().toISOString() }));
 
 app.use("/api/auth", require("./src/routes/auth.routes"));
@@ -36,6 +31,17 @@ app.use("/api/notifications", require("./src/routes/notifications.routes"));
 app.use("/api/reports", require("./src/routes/reports.routes"));
 app.use("/api/data-manager", require("./src/routes/dataManager.routes"));
 app.use("/api", require("./src/routes/templates.routes")); // /api/services, /api/quotation-templates, /api/checklist-templates
+
+// --- Frontend (built React app) ------------------------------------------------------------
+// Served from the same Express app/domain as the API, so there's no separate hosting target
+// and no CORS to configure. `frontend:build` (npm --prefix frontend run build) produces this.
+// Also doubles as the "/" health probe some managed hosting platforms use before finishing
+// custom-domain/proxy setup — without SOME 200 response at "/", that check can silently block.
+const frontendDist = path.join(__dirname, "frontend", "dist");
+app.use(express.static(frontendDist));
+app.get(/^(?!\/api|\/uploads).*/, (req, res, next) => {
+  res.sendFile(path.join(frontendDist, "index.html"), (err) => { if (err) next(); });
+});
 
 // Central error handler — keeps stack traces out of API responses in production.
 app.use((err, req, res, next) => {

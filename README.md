@@ -1,6 +1,6 @@
-# Address Gateway CRM & Workflow Platform — Backend
+# Address Gateway CRM & Workflow Platform
 
-Node.js + Express + MySQL backend implementing the full business logic from `Address-Gateway-Backend-Requirements.md`. This is the API layer only — pair it with a frontend (the existing prototype's components can be adapted, or build a fresh one against this API).
+Node.js + Express + MySQL backend implementing the full business logic from `Address-Gateway-Backend-Requirements.md`, plus a React frontend (adapted from the original single-file prototype) wired to the real API and served by the same Express app.
 
 ## What's implemented
 
@@ -16,6 +16,7 @@ Node.js + Express + MySQL backend implementing the full business logic from `Add
 - **Data Manager module**: duplicate prevention (mandatory, server-side, on every entry path), Excel/CSV import, Company Data Pool + auto-assignment, timed send limits (25/day + cooldown, enforced server-side), archiving, recycling, export + export history, and the required integration point with Leads (existing-data detection).
 - **Scheduled jobs** (`node-cron`): daily auto-assignment (07:00), end-of-day return (23:00), recycling (01:00) — replacing the prototype's manual trigger buttons.
 - **PDF generation**: `GET /api/quotations/:id/pdf` streams a real A4 PDF (PDFKit — no headless browser needed, so it runs fine on Hostinger shared hosting) with a footer note that repeats on every page. See `src/utils/quotationPdf.js`.
+- **Frontend** (`frontend/`): the original prototype's UI/CSS reused almost verbatim, with its in-memory `useReducer` mock store replaced by a real API-backed data layer (`frontend/src/store.jsx`) and its "Viewing as" role-switcher replaced by real JWT login. See "Frontend architecture" below.
 
 ## Local setup
 
@@ -24,10 +25,19 @@ npm install
 cp .env.example .env        # then fill in real DB credentials + JWT secret
 npm run db:migrate          # creates all tables
 npm run db:seed             # seeds services, Growth Partner Program, Office Space Assistance, and one admin user
-npm run dev                 # starts on http://localhost:3000
+npm run dev                 # starts the API on http://localhost:3000
 ```
 
 First login after seeding: `admin@addressgateway.com` / `ChangeMe123!` — change this immediately via `POST /api/auth/change-password`.
+
+### Frontend
+
+```bash
+npm run frontend:dev         # Vite dev server on http://localhost:5173, proxies /api and /uploads to :3000
+npm run frontend:build       # builds frontend/dist — commit this after any frontend change (see below)
+```
+
+For local development, run the API (`npm run dev`) and the frontend dev server (`npm run frontend:dev`) side by side — `frontend/vite.config.js` proxies API calls to `:3000`. To test the exact production setup, run `npm run frontend:build` then `npm start` and open `http://localhost:3000` — the Express server serves `frontend/dist` directly.
 
 ## Deployed instance
 
@@ -50,9 +60,26 @@ Live at **https://gatewaysmartcrm.com**, running on Hostinger's Node.js App prod
 
 ### Gotchas discovered during a real deployment
 
-- **Root path**: the app needs a `GET /` handler returning 200 — some platforms probe `/` to confirm the app is healthy before finishing domain/proxy setup. Without it, custom-domain connection can silently fail with no error shown.
+- **Root path**: the app needs a `GET /` handler returning 200 — some platforms probe `/` to confirm the app is healthy before finishing domain/proxy setup. Without it, custom-domain connection can silently fail with no error shown. (Now serves the frontend's `index.html` instead — see below.)
 - **JSON columns**: `mysql2` auto-deserializes native MySQL `JSON` columns into real JS values. Do **not** wrap them in `JSON.parse()` again when reading — this crashes every route touching a JSON column (`roles`, `items`, `checklist`, `audience`, `terms`, `extra_features`, `email_cc`) with `SyntaxError: Unexpected token ... in JSON`. Writing works fine either way (stringified or raw), since the driver serializes objects automatically.
+- **DECIMAL columns come back as strings**: without `decimalNumbers: true` on the mysql2 pool config, comparing two DECIMAL-sourced values (e.g. `total_paid >= invoice.amount`) is a *lexicographic string comparison* — `"5000" >= "15000.00"` is `true`. This silently corrupted invoice payment-status logic (a partial payment was marking invoices fully "Paid"). Fixed in `src/config/db.js`; still worth wrapping genuinely cross-value numeric comparisons in `Number(...)` defensively.
 - **Domain-connection UI can be flaky per-domain**: if a custom domain's "Connect domain" wizard gets stuck (Confirm button does nothing, no error), it may be specific to that domain's existing DNS/mail configuration rather than a platform-wide bug — test with a fresh/unused domain to isolate before escalating to support.
+
+## Frontend architecture
+
+`frontend/src/App.jsx` is the original prototype almost unchanged — same components, same CSS, same UX. Three things were replaced:
+
+1. **State**: the prototype's `initialState()` (hardcoded mock data) + `reducer()` (~80 client-side business-logic cases) were deleted entirely. `frontend/src/store.jsx`'s `useApiStore()` hook now fetches real data from every endpoint on load and exposes an async `dispatch(action)` that recognizes the *same action types* the components already call (`ADD_LEAD`, `CONVERT_TO_SALES_ORDER`, etc.) — but instead of mutating local state, each case calls the matching API endpoint and refetches the affected slice(s) from the server. Business logic (Government Fee rules, discount routing, checklist gating, ...) lives only on the backend now — the frontend does not duplicate it.
+2. **Data shape**: the backend returns raw DB rows (snake_case: `next_follow_up`, `fee_type`, `order_discount`, ...). `frontend/src/mappers.js` converts every entity to the camelCase shape the prototype's components already expect (`nextFollowUp`, `feeType`, `orderDiscount`, ...), so the JSX itself needed almost no changes.
+3. **Auth**: the "Viewing as" / "Acting as" user-switcher (there was no real login in the prototype) was replaced with a real login screen (`frontend/src/api.js` + the `Login` component in `App.jsx`) that calls `POST /api/auth/login`, stores the JWT, and gates the whole app on it. "Acting as" is kept for users with multiple roles (a real feature from the spec), but there's no more picking *which employee* you are.
+
+A few backend endpoints didn't exist yet and were added while wiring this up (staff document CRUD, customer-employee update, subscription plan/tier edit+delete — see the git history around "Add endpoints the frontend needs"). A couple of prototype-only conveniences don't have a real backend equivalent and were simplified in the frontend to match what the API actually supports (e.g. Sales Orders → Invoice + Job Card is one atomic `/onboard` call here, not two separate steps).
+
+**After changing anything under `frontend/`**, rebuild and commit the output — there's no confirmed build hook on the Hostinger side, so the built `frontend/dist` is committed directly and served by `server.js`:
+```bash
+npm run frontend:build
+git add frontend/dist
+```
 
 ## What's a stub / needs a decision before go-live
 
@@ -74,4 +101,9 @@ src/utils/helpers.js             — ID generation, date/normalization helpers, 
 src/utils/mailer.js              — email sending (SMTP or console-log fallback)
 src/services/dataManagerJobs.js  — shared logic for cron + on-demand Data Manager actions
 src/routes/*.routes.js           — one file per module (see list above)
+frontend/src/App.jsx             — the whole UI (prototype's original component tree, adapted)
+frontend/src/store.jsx           — API-backed replacement for the prototype's useReducer store
+frontend/src/api.js              — fetch client for every backend endpoint
+frontend/src/mappers.js          — snake_case (DB) -> camelCase (UI) shape conversion
+frontend/dist/                   — built frontend, committed, served by server.js
 ```
