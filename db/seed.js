@@ -4,15 +4,7 @@
 require("dotenv").config();
 const mysql = require("mysql2/promise");
 const bcrypt = require("bcryptjs");
-
-const SERVICES = [
-  "100% Foreign Ownership Company Formation",
-  "Company Formation with Qatari Partner",
-  "Growth Partner Program",
-  "Bank Account Opening",
-  "PRO Services",
-  "Office Space Assistance",
-];
+const { SERVICES, QUOTATION_TEMPLATES, CHECKLIST_TEMPLATES } = require("./defaultTemplates");
 
 const DEFAULT_EMAIL_BODY = `Greetings from Address Gateway.
 
@@ -42,7 +34,18 @@ async function main() {
   console.log("Seeding services...");
   for (const s of SERVICES) {
     await conn.execute("INSERT IGNORE INTO services (name) VALUES (?)", [s]);
-    await conn.execute("INSERT IGNORE INTO checklist_templates (service, steps) VALUES (?, ?)", [s, JSON.stringify([])]);
+    await conn.execute("INSERT IGNORE INTO checklist_templates (service, steps) VALUES (?, ?)", [s, JSON.stringify(CHECKLIST_TEMPLATES[s] || [])]);
+  }
+
+  console.log("Seeding default quotation templates (from the original prototype)...");
+  for (const [service, feeTypes] of Object.entries(QUOTATION_TEMPLATES)) {
+    for (const [feeType, t] of Object.entries(feeTypes)) {
+      await conn.execute(
+        `INSERT IGNORE INTO quotation_templates (service, fee_type, subject, items, notes, terms, order_discount, bank, footer_note)
+         VALUES (?,?,?,?,?,?,?,?,?)`,
+        [service, feeType, t.subject, JSON.stringify(t.items), t.notes, t.terms, t.orderDiscount || 0, t.bank || null, null]
+      );
+    }
   }
 
   console.log("Seeding first Admin user (change this password immediately after first login)...");
