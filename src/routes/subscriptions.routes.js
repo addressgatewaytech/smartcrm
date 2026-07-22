@@ -87,12 +87,23 @@ router.post("/", async (req, res) => {
   const b = req.body;
   const id = nextId("SUB");
   const [tier] = await query("SELECT annual_fee FROM subscription_tiers WHERE plan_name = ? AND tier_name = ?", [b.plan, b.tier]);
+  if (!tier) return res.status(400).json({ error: "Unknown plan/tier" });
+
+  // customer_id is a required FK — resolve it from the customer name if the caller didn't
+  // already have an id (the UI's customer field is a free-text/autocomplete combobox).
+  let customerId = b.customerId;
+  if (!customerId) {
+    const [existing] = await query("SELECT id FROM customers WHERE name = ?", [b.customer]);
+    if (!existing) return res.status(400).json({ error: `No customer named "${b.customer}" exists yet — create them first.` });
+    customerId = existing.id;
+  }
+
   const startDate = b.startDate || daysFromNow(0);
   const expiryDate = new Date(new Date(startDate).setFullYear(new Date(startDate).getFullYear() + 1)).toISOString().slice(0, 10);
 
   await query(
     `INSERT INTO customer_subscriptions (id, customer_id, customer, plan_name, tier_name, annual_fee, start_date, expiry_date, status) VALUES (?,?,?,?,?,?,?,?, 'Active')`,
-    [id, b.customerId, b.customer, b.plan, b.tier, tier.annual_fee, startDate, expiryDate]
+    [id, customerId, b.customer, b.plan, b.tier, tier.annual_fee, startDate, expiryDate]
   );
 
   if (b.alsoInvoice) {
