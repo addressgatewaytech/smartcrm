@@ -1,8 +1,8 @@
 // Server-side A4 PDF generation for quotations (PDFKit — no headless browser needed, which
-// keeps this friendly to Hostinger shared hosting). Mirrors the "PDF preview" tab in the
-// Quotation detail modal (frontend/src/App.jsx, QuoteDetailModal's view==="pdf" branch) field
-// for field, so what a user sees on screen is what downloads — logo wordmark, dark table header,
-// Bank Account Details, disclaimer and Acceptance Form included.
+// keeps this friendly to Hostinger shared hosting). Mirrors the original Address Gateway
+// quotation format (see AGBSQ000752.pdf reference) — same Inter font, same header layout,
+// same dark table header, Bank Account Details, disclaimer and Acceptance Form.
+const path = require("path");
 const PDFDocument = require("pdfkit");
 const { quoteTotal } = require("./helpers");
 
@@ -38,6 +38,16 @@ const DARK_BG = "#2A2E33";
 const HAIR = "#E1E6E8";
 const LIGHT_BG = "#F5F6F6";
 
+const FONTS_DIR = path.join(__dirname, "../assets/fonts");
+// Real Inter font files (same family the web app itself uses) registered once per PDFDocument —
+// PDFKit's built-in fonts (Helvetica, Courier, ...) don't match the original quotation format.
+function registerFonts(doc) {
+  doc.registerFont("Inter", path.join(FONTS_DIR, "inter-400.ttf"));
+  doc.registerFont("Inter-Medium", path.join(FONTS_DIR, "inter-500.ttf"));
+  doc.registerFont("Inter-SemiBold", path.join(FONTS_DIR, "inter-600.ttf"));
+  doc.registerFont("Inter-Bold", path.join(FONTS_DIR, "inter-700.ttf"));
+}
+
 const money2 = (n) => Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtDate = (d) => {
   if (!d) return "";
@@ -47,7 +57,7 @@ const fmtDate = (d) => {
 
 /** Draws the brand wordmark ("ADDRESS GATEWAY" in three colors, right-aligned) at (rightX, y). Returns the y after it. */
 function drawBrandHeader(doc, rightX, y) {
-  doc.font("Helvetica-Bold").fontSize(15);
+  doc.font("Inter-Bold").fontSize(19);
   const parts = [["ADDRESS ", TEAL], ["GATE", NAVY], ["WAY", GOLD]];
   const totalWidth = parts.reduce((w, [t]) => w + doc.widthOfString(t), 0);
   let x = rightX - totalWidth;
@@ -56,14 +66,18 @@ function drawBrandHeader(doc, rightX, y) {
     x += doc.widthOfString(t);
   });
   doc.fillColor(INK);
-  y += 16;
-  doc.font("Helvetica").fontSize(8).fillColor(GRAY)
+  y += 21;
+  doc.font("Inter").fontSize(8).fillColor(GRAY)
     .text("BUSINESS SERVICES", MARGIN, y, { width: rightX - MARGIN, align: "right", characterSpacing: 1.2 });
-  y = doc.y + 4;
-  doc.fontSize(8.5)
-    .text("Address Gateway Building, D Ring Road, Doha, Qatar", MARGIN, y, { width: rightX - MARGIN, align: "right" });
+  y = doc.y + 5;
+  doc.fontSize(9)
+    .text("Address Gateway Building", MARGIN, y, { width: rightX - MARGIN, align: "right" });
   y = doc.y;
-  doc.text("Call: 44434912  ·  startup@addressgateway.com  ·  www.addressgateway.com", MARGIN, y, { width: rightX - MARGIN, align: "right" });
+  doc.text("D Ring Road, Doha, Qatar", MARGIN, y, { width: rightX - MARGIN, align: "right" });
+  y = doc.y;
+  doc.text("Call: 44434912, Email : startup@addressgateway.com", MARGIN, y, { width: rightX - MARGIN, align: "right" });
+  y = doc.y;
+  doc.text("www.addressgateway.com", MARGIN, y, { width: rightX - MARGIN, align: "right" });
   doc.fillColor(INK);
   return doc.y;
 }
@@ -71,11 +85,11 @@ function drawBrandHeader(doc, rightX, y) {
 /** Draws the customer name (bold) and, if present, their saved address underneath it — both
  * right-aligned to match the on-screen "Bill To" block. Returns the y after the last line. */
 function drawBillTo(doc, quotation, rightX, y) {
-  doc.font("Helvetica-Bold").fontSize(10.5).fillColor(INK).text(quotation.customer || "", MARGIN, y, { width: rightX - MARGIN, align: "right" });
+  doc.font("Inter-SemiBold").fontSize(10.5).fillColor(INK).text(quotation.customer || "", MARGIN, y, { width: rightX - MARGIN, align: "right" });
   y = doc.y;
   const addressLines = (quotation.customer_address || "").split("\n").map((l) => l.trim()).filter(Boolean);
   if (addressLines.length) {
-    doc.font("Helvetica").fontSize(8.5).fillColor(GRAY);
+    doc.font("Inter").fontSize(8.5).fillColor(GRAY);
     addressLines.forEach((line) => {
       doc.text(line, MARGIN, y, { width: rightX - MARGIN, align: "right" });
       y = doc.y;
@@ -87,7 +101,7 @@ function drawBillTo(doc, quotation, rightX, y) {
 
 function drawTableHeader(doc, y, colX, tableRight) {
   doc.rect(MARGIN, y, tableRight - MARGIN, 22).fill(DARK_BG);
-  doc.font("Helvetica-Bold").fontSize(9).fillColor("#FFFFFF");
+  doc.font("Inter-SemiBold").fontSize(9).fillColor("#FFFFFF");
   doc.text("#", colX.idx, y + 7, { width: colX.desc - colX.idx - 5 });
   doc.text("Item & Description", colX.desc, y + 7, { width: colX.rate - colX.desc - 5 });
   doc.text("Rate", colX.rate, y + 7, { width: colX.amount - colX.rate - 5, align: "right" });
@@ -103,6 +117,7 @@ function generateQuotationPdf(quotation, res) {
   const { subtotal, total } = quoteTotal(items, orderDiscount);
 
   const doc = new PDFDocument({ size: "A4", margin: MARGIN, bufferPages: true });
+  registerFonts(doc);
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Disposition", `attachment; filename="Quotation-${quotation.id}.pdf"`);
   doc.pipe(res);
@@ -112,27 +127,26 @@ function generateQuotationPdf(quotation, res) {
 
   // --- Header: "QUOTE" title + quote# on the left, brand wordmark + address on the right -------
   const headerTop = MARGIN;
-  doc.font("Helvetica-Bold").fontSize(24).fillColor(INK).text("QUOTE", MARGIN, headerTop, { lineBreak: false });
-  doc.font("Courier").fontSize(9).fillColor(GRAY).text(`Quote# AGBS/${quotation.id}`, MARGIN, headerTop + 30, { lineBreak: false });
+  doc.font("Inter-Bold").fontSize(30).fillColor(INK).text("QUOTE", MARGIN, headerTop, { lineBreak: false });
+  doc.font("Inter").fontSize(9).fillColor(GRAY).text(`Quote# AGBS/${quotation.id}`, MARGIN, headerTop + 34, { lineBreak: false });
   const brandBottomY = drawBrandHeader(doc, tableRight, headerTop);
-  let y = Math.max(headerTop + 44, brandBottomY) + 14;
+  let y = Math.max(headerTop + 50, brandBottomY) + 20;
 
-  // --- Quote Date / Bill To row (Bill To can run to several lines once the address is included,
-  // so the row height below it is driven by whichever side — date or address — is taller) -------
-  doc.font("Helvetica").fontSize(9).fillColor(GRAY).text("Quote Date :", MARGIN, y);
-  doc.fontSize(9).fillColor(GRAY).text("Bill To", MARGIN, y, { width: tableRight - MARGIN, align: "right" });
-  y += 13;
-  doc.font("Helvetica").fontSize(10).fillColor(INK).text(fmtDate(quotation.created_at) || "-", MARGIN, y);
-  const billToBottomY = drawBillTo(doc, quotation, tableRight, y);
-  y = Math.max(y + 11, billToBottomY) + 14;
+  // --- Quote Date / Bill To row — date label and value share one line (matches the original
+  // format); Bill To stacks the customer name and, if saved, their address underneath -----------
+  doc.font("Inter").fontSize(9).fillColor(GRAY).text("Quote Date :", MARGIN, y);
+  doc.font("Inter").fontSize(9).fillColor(INK).text(fmtDate(quotation.created_at) || "-", MARGIN + 80, y);
+  doc.font("Inter").fontSize(9).fillColor(GRAY).text("Bill To", MARGIN, y, { width: tableRight - MARGIN, align: "right" });
+  const billToBottomY = drawBillTo(doc, quotation, tableRight, doc.y + 2);
+  y = Math.max(y + 14, billToBottomY) + 16;
 
   // --- Subject ---------------------------------------------------------------------------------
-  doc.font("Helvetica").fontSize(9).fillColor(GRAY).text("Subject :", MARGIN, y);
+  doc.font("Inter").fontSize(9).fillColor(GRAY).text("Subject :", MARGIN, y);
   y = doc.y + 1;
-  doc.font("Helvetica").fontSize(10).fillColor(INK).text(quotation.subject || items[0]?.service || "Quotation", MARGIN, y, { width: tableRight - MARGIN });
+  doc.font("Inter").fontSize(10).fillColor(INK).text(quotation.subject || items[0]?.service || "Quotation", MARGIN, y, { width: tableRight - MARGIN });
   y = doc.y + (quotation.fee_type === "Government Fee" ? 4 : 14);
   if (quotation.fee_type === "Government Fee") {
-    doc.font("Helvetica").fontSize(8).fillColor(GRAY)
+    doc.font("Inter").fontSize(8).fillColor(GRAY)
       .text("Pass-through government charges — excluded from Address Gateway's business volume and incentive calculations.", MARGIN, y, { width: tableRight - MARGIN });
     y = doc.y + 14;
   }
@@ -160,7 +174,7 @@ function generateQuotationPdf(quotation, res) {
   items.forEach((it) => {
     if ((it.category || "") && it.category !== lastCategory) {
       ensureTableRoom(20);
-      doc.font("Helvetica-Bold").fontSize(9.5).fillColor(INK).text(it.category, MARGIN, y + 6, { width: tableRight - MARGIN });
+      doc.font("Inter-SemiBold").fontSize(9.5).fillColor(INK).text(it.category, MARGIN, y + 6, { width: tableRight - MARGIN });
       y = doc.y + 4;
       doc.moveTo(MARGIN, y).lineTo(tableRight, y).strokeColor(HAIR).stroke();
       y += 4;
@@ -169,17 +183,17 @@ function generateQuotationPdf(quotation, res) {
     rowNumber++;
     const descText = it.description || it.service || "";
     const descWidth = colX.rate - colX.desc - 5;
-    const descHeight = doc.font("Helvetica").fontSize(9.5).heightOfString(descText, { width: descWidth });
-    const noteHeight = it.note ? doc.font("Helvetica").fontSize(8).heightOfString(it.note, { width: descWidth }) + 3 : 0;
+    const descHeight = doc.font("Inter").fontSize(9.5).heightOfString(descText, { width: descWidth });
+    const noteHeight = it.note ? doc.font("Inter").fontSize(8).heightOfString(it.note, { width: descWidth }) + 3 : 0;
     const rowHeight = Math.max(18, descHeight + noteHeight + 8);
 
     ensureTableRoom(rowHeight);
-    doc.font("Helvetica").fontSize(9.5).fillColor(INK).text(String(rowNumber), colX.idx, y + 6, { width: colX.desc - colX.idx - 5 });
+    doc.font("Inter").fontSize(9.5).fillColor(INK).text(String(rowNumber), colX.idx, y + 6, { width: colX.desc - colX.idx - 5 });
     doc.text(descText, colX.desc, y + 6, { width: descWidth });
     if (it.note) {
-      doc.font("Helvetica").fontSize(8).fillColor(GRAY).text(it.note, colX.desc, doc.y + 1, { width: descWidth });
+      doc.font("Inter").fontSize(8).fillColor(GRAY).text(it.note, colX.desc, doc.y + 1, { width: descWidth });
     }
-    doc.font("Courier").fontSize(9.5).fillColor(INK).text(money2(it.price), colX.rate, y + 6, { width: colX.amount - colX.rate - 5, align: "right" });
+    doc.font("Inter").fontSize(9.5).fillColor(INK).text(money2(it.price), colX.rate, y + 6, { width: colX.amount - colX.rate - 5, align: "right" });
     const lineAmount = (Number(it.qty) || 0) * (Number(it.price) || 0) * (1 - (Number(it.discountPct) || 0) / 100);
     doc.text(money2(lineAmount), colX.amount, y + 6, { width: tableRight - colX.amount - 5, align: "right" });
     y += rowHeight;
@@ -191,17 +205,17 @@ function generateQuotationPdf(quotation, res) {
   ensureRoom(70);
   const totalsWidth = 220;
   const totalsX = tableRight - totalsWidth;
-  doc.font("Helvetica").fontSize(9.5).fillColor(GRAY).text("Sub Total", totalsX, y, { width: 110 });
-  doc.font("Courier").fontSize(9.5).fillColor(INK).text(money2(subtotal), totalsX + 110, y, { width: totalsWidth - 110, align: "right" });
+  doc.font("Inter").fontSize(9.5).fillColor(GRAY).text("Sub Total", totalsX, y, { width: 110 });
+  doc.font("Inter").fontSize(9.5).fillColor(INK).text(money2(subtotal), totalsX + 110, y, { width: totalsWidth - 110, align: "right" });
   y += 16;
   if (orderDiscount > 0) {
-    doc.font("Helvetica").fontSize(9.5).fillColor(GRAY).text("Discount", totalsX, y, { width: 110 });
-    doc.font("Courier").fontSize(9.5).fillColor(INK).text(`(-) ${money2(orderDiscount)}`, totalsX + 110, y, { width: totalsWidth - 110, align: "right" });
+    doc.font("Inter").fontSize(9.5).fillColor(GRAY).text("Discount", totalsX, y, { width: 110 });
+    doc.font("Inter").fontSize(9.5).fillColor(INK).text(`(-) ${money2(orderDiscount)}`, totalsX + 110, y, { width: totalsWidth - 110, align: "right" });
     y += 16;
   }
   doc.rect(totalsX, y - 2, totalsWidth, 20).fill(LIGHT_BG);
-  doc.font("Helvetica-Bold").fontSize(10.5).fillColor(INK).text("Total", totalsX + 6, y + 3, { width: 104 });
-  doc.font("Courier-Bold").fontSize(10.5).text(`QAR${money2(total)}`, totalsX + 110, y + 3, { width: totalsWidth - 116, align: "right" });
+  doc.font("Inter-SemiBold").fontSize(10.5).fillColor(INK).text("Total", totalsX + 6, y + 3, { width: 104 });
+  doc.font("Inter-Bold").fontSize(10.5).text(`QAR${money2(total)}`, totalsX + 110, y + 3, { width: totalsWidth - 116, align: "right" });
   y += 30;
 
   // --- Notes / Terms & Conditions / Bank Account Details ----------------------------------------
@@ -212,11 +226,11 @@ function generateQuotationPdf(quotation, res) {
     ensureRoom(30);
     doc.moveTo(MARGIN, y).lineTo(tableRight, y).strokeColor(HAIR).stroke();
     y += 12;
-    doc.font("Helvetica").fontSize(9).fillColor(GRAY).text("Notes", MARGIN, y);
+    doc.font("Inter").fontSize(9).fillColor(GRAY).text("Notes", MARGIN, y);
     y = doc.y + 4;
     noteLines.forEach((line) => {
       ensureRoom(16);
-      doc.font("Helvetica").fontSize(9).fillColor(INK).text(line, MARGIN, y, { width: tableRight - MARGIN });
+      doc.font("Inter").fontSize(9).fillColor(INK).text(line, MARGIN, y, { width: tableRight - MARGIN });
       y = doc.y + 3;
     });
     y += 10;
@@ -226,13 +240,13 @@ function generateQuotationPdf(quotation, res) {
     ensureRoom(40);
     doc.moveTo(MARGIN, y).lineTo(tableRight, y).strokeColor(HAIR).stroke();
     y += 12;
-    doc.font("Helvetica-Bold").fontSize(11).fillColor(INK).text("Terms & Conditions", MARGIN, y);
+    doc.font("Inter-SemiBold").fontSize(11).fillColor(INK).text("Terms & Conditions", MARGIN, y);
     y = doc.y + 8;
     termLines.forEach((line, i) => {
       const width = tableRight - MARGIN - 16;
-      const h = doc.font("Helvetica").fontSize(9).heightOfString(line, { width });
+      const h = doc.font("Inter").fontSize(9).heightOfString(line, { width });
       ensureRoom(h + 6);
-      doc.font("Helvetica").fontSize(9).fillColor(INK).text(`${i + 1}.`, MARGIN, y, { width: 14 });
+      doc.font("Inter").fontSize(9).fillColor(INK).text(`${i + 1}.`, MARGIN, y, { width: 14 });
       doc.text(line, MARGIN + 16, y, { width });
       y = doc.y + 6;
     });
@@ -240,35 +254,35 @@ function generateQuotationPdf(quotation, res) {
   }
 
   ensureRoom(60);
-  doc.font("Helvetica-Bold").fontSize(11).fillColor(INK).text("Bank Account Details", MARGIN, y);
+  doc.font("Inter-SemiBold").fontSize(11).fillColor(INK).text("Bank Account Details", MARGIN, y);
   y = doc.y + 8;
   const bankLines = (quotation.bank || DEFAULT_BANK).split("\n").map((t) => t.trim()).filter(Boolean);
   bankLines.forEach((line) => {
     ensureRoom(14);
-    doc.font("Helvetica").fontSize(9).fillColor(INK).text(line, MARGIN, y, { width: tableRight - MARGIN });
+    doc.font("Inter").fontSize(9).fillColor(INK).text(line, MARGIN, y, { width: tableRight - MARGIN });
     y = doc.y + 3;
   });
   y += 14;
 
   // --- Disclaimer --------------------------------------------------------------------------------
   ensureRoom(60);
-  doc.font("Helvetica").fontSize(8).fillColor(GRAY).text(DISCLAIMER_1, MARGIN, y, { width: tableRight - MARGIN });
+  doc.font("Inter").fontSize(8).fillColor(GRAY).text(DISCLAIMER_1, MARGIN, y, { width: tableRight - MARGIN });
   y = doc.y + 8;
   ensureRoom(40);
-  doc.font("Helvetica").fontSize(8).fillColor(GRAY).text(DISCLAIMER_2, MARGIN, y, { width: tableRight - MARGIN });
+  doc.font("Inter").fontSize(8).fillColor(GRAY).text(DISCLAIMER_2, MARGIN, y, { width: tableRight - MARGIN });
   y = doc.y + 20;
 
   // --- Acceptance form ---------------------------------------------------------------------------
   ensureRoom(90);
-  doc.font("Helvetica-Bold").fontSize(10).fillColor(INK).text("ACCEPTANCE FORM:", MARGIN, y);
+  doc.font("Inter-SemiBold").fontSize(10).fillColor(INK).text("ACCEPTANCE FORM:", MARGIN, y);
   y = doc.y + 6;
-  doc.font("Helvetica").fontSize(9).fillColor(INK)
+  doc.font("Inter").fontSize(9).fillColor(INK)
     .text("I hereby, accept the above offer and I will endeavor to complete/submit all the required documents along with the agreed payment terms.", MARGIN, y, { width: tableRight - MARGIN });
   y = doc.y + 20;
 
   const colWidth = (tableRight - MARGIN - 30) / 2;
   const drawField = (label, x, yy, w) => {
-    doc.font("Helvetica").fontSize(9.5).fillColor(INK).text(label, x, yy, { lineBreak: false });
+    doc.font("Inter").fontSize(9.5).fillColor(INK).text(label, x, yy, { lineBreak: false });
     const labelWidth = doc.widthOfString(label) + 4;
     doc.moveTo(x + labelWidth, yy + 11).lineTo(x + w, yy + 11).strokeColor("#999999").stroke();
   };
@@ -283,7 +297,7 @@ function generateQuotationPdf(quotation, res) {
   const range = doc.bufferedPageRange();
   for (let i = range.start; i < range.start + range.count; i++) {
     doc.switchToPage(i);
-    doc.font("Helvetica").fontSize(7).fillColor(GRAY)
+    doc.font("Inter").fontSize(7).fillColor(GRAY)
       .text(footerText, MARGIN, doc.page.height - MARGIN - 24, { width: doc.page.width - MARGIN * 2, align: "center" });
     doc.fillColor(INK);
   }
