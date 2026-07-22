@@ -1505,7 +1505,10 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
 /* ---------------------------------------------------------------------- */
 
 function QuotationsPage({ state, dispatch, role, userId }) {
-  const [open, setOpen] = useState(null);
+  const [openId, setOpenId] = useState(null);
+  // Derived, not a frozen snapshot — so in-modal actions (favorite toggle, etc.) that refresh
+  // state.quotations are reflected immediately instead of only after closing and reopening.
+  const open = openId ? state.quotations.find(q => q.id === openId) : null;
   const [newQuote, setNewQuote] = useState(false);
   const [cloneFor, setCloneFor] = useState(null);
   const [editQuote, setEditQuote] = useState(null);
@@ -1536,7 +1539,7 @@ function QuotationsPage({ state, dispatch, role, userId }) {
           <thead><tr><th></th><th>Quotation</th><th>Customer</th><th>Fee type</th><th>Amount (QAR)</th><th>Valid till</th><th>Status</th><th></th><th></th></tr></thead>
           <tbody>
             {rows.map(q => (
-              <tr key={q.id} onClick={()=>setOpen(q)}>
+              <tr key={q.id} onClick={()=>setOpenId(q.id)}>
                 <td>
                   <button className="btn btn-sm btn-ghost" title={q.favorite ? "Remove from favorites" : "Mark as favorite"}
                     onClick={(e)=>{ e.stopPropagation(); dispatch({type:"TOGGLE_QUOTATION_FAVORITE", id:q.id}); }}>
@@ -1561,7 +1564,7 @@ function QuotationsPage({ state, dispatch, role, userId }) {
           </tbody>
         </table>)}
       </div>
-      {open && <QuoteDetailModal quotation={open} state={state} dispatch={dispatch} role={role} customerOptions={customerOptions} templates={state.quotationTemplates} onClose={()=>setOpen(null)} />}
+      {open && <QuoteDetailModal quotation={open} state={state} dispatch={dispatch} role={role} customerOptions={customerOptions} templates={state.quotationTemplates} onClose={()=>setOpenId(null)} />}
       {newQuote && <QuoteBuilderModal editableCustomer customerOptions={customerOptions} defaultService={state.services[0]} services={state.services} dispatch={dispatch} templates={state.quotationTemplates} onClose={()=>setNewQuote(false)} />}
       {cloneFor && <CloneQuoteModal quotation={cloneFor} customerOptions={customerOptions} dispatch={dispatch} onClose={()=>setCloneFor(null)} />}
       {editQuote && <QuoteBuilderModal editQuotation={editQuote} customerOptions={customerOptions} services={state.services} dispatch={dispatch} templates={state.quotationTemplates} onClose={()=>setEditQuote(null)} />}
@@ -2070,7 +2073,10 @@ function matchesExpiryFilter(customer, filterKey) {
 }
 
 function CustomersPage({ state, dispatch }) {
-  const [open, setOpen] = useState(null);
+  const [openId, setOpenId] = useState(null);
+  // Derived, not a frozen snapshot — see the identical fix on JobsPage/QuotationsPage: in-modal
+  // actions (doc/employee edits) refresh state.customers, and the modal needs to reflect that live.
+  const open = openId ? state.customers.find(c => c.id === openId) : null;
   const [query, setQuery] = useState("");
   const [sizeFilter, setSizeFilter] = useState("");
   const [expiryFilter, setExpiryFilter] = useState("");
@@ -2106,7 +2112,7 @@ function CustomersPage({ state, dispatch }) {
         {filtered.map(c => {
           const flagged = [...c.docs, ...c.employees.flatMap(e=>e.docs)].filter(d => docState(d.expiry).label !== "Valid").length;
           return (
-            <div className="agw-card" key={c.id} style={{ cursor:"pointer" }} onClick={()=>setOpen(c)}>
+            <div className="agw-card" key={c.id} style={{ cursor:"pointer" }} onClick={()=>setOpenId(c.id)}>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
                 <div>
                   <strong style={{ fontSize: 14.5 }}>{c.name}</strong>
@@ -2131,7 +2137,7 @@ function CustomersPage({ state, dispatch }) {
         {filtered.length===0 && state.customers.length>0 && <Empty icon={Search} text="No customers match these filters." />}
         {state.customers.length===0 && <Empty icon={UserCheck} text="No customers yet — add one directly, or they'll appear once a quotation converts to a sales order." />}
       </div>
-      {open && <CustomerDetailModal customer={open} state={state} dispatch={dispatch} onClose={()=>setOpen(null)} />}
+      {open && <CustomerDetailModal customer={open} state={state} dispatch={dispatch} onClose={()=>setOpenId(null)} />}
       {editCustomer && <NewCustomerModal customer={editCustomer} dispatch={dispatch} onClose={()=>setEditCustomer(null)} />}
       {removeCustomer && <ConfirmModal title={`Remove ${removeCustomer.name}?`} body="This deletes the customer profile, their KYC documents, and any employee records on file. This can't be undone." onConfirm={()=>dispatch({type:"DELETE_CUSTOMER", id:removeCustomer.id})} onClose={()=>setRemoveCustomer(null)} />}
       {showAdd && <NewCustomerModal dispatch={dispatch} onClose={()=>setShowAdd(false)} />}
@@ -3102,8 +3108,11 @@ function PaymentHistoryModal({ invoice: inv, dispatch, onClose }) {
 function JobsPage({ state, dispatch, role, userId }) {
   const [view, setView] = useState("kanban");
   const [assignFor, setAssignFor] = useState(null);
-  const [detail, setDetail] = useState(null);
+  const [detailId, setDetailId] = useState(null);
   const [detailCancelOnOpen, setDetailCancelOnOpen] = useState(false);
+  // Derived (not a frozen snapshot) so toggling a checklist item — which refreshes state.jobCards
+  // from the server — is reflected in the open modal immediately, instead of only after re-opening it.
+  const detail = detailId ? state.jobCards.find(j => j.id === detailId) : null;
   const [draggedJobId, setDraggedJobId] = useState(null);
   const [dragOverCol, setDragOverCol] = useState(null);
   const [newJob, setNewJob] = useState(false);
@@ -3113,7 +3122,7 @@ function JobsPage({ state, dispatch, role, userId }) {
 
   const visible = role === "ops_member" ? state.jobCards.filter(j => j.assignees.includes(userId)) : state.jobCards;
 
-  const openDetail = (j, cancelOnOpen=false) => { setDetail(j); setDetailCancelOnOpen(cancelOnOpen); };
+  const openDetail = (j, cancelOnOpen=false) => { setDetailId(j.id); setDetailCancelOnOpen(cancelOnOpen); };
 
   const handleDrop = (col) => {
     setDragOverCol(null);
@@ -3213,7 +3222,7 @@ function JobsPage({ state, dispatch, role, userId }) {
 
       {assignFor && <AssignModal job={assignFor} dispatch={dispatch} employees={state.employees} onClose={()=>setAssignFor(null)} />}
       {detail && <JobDetailModal job={detail} dispatch={dispatch} role={role} employees={state.employees} initialShowCancel={detailCancelOnOpen}
-        onClose={()=>{ setDetail(null); setDetailCancelOnOpen(false); }} onReassign={()=>{ setAssignFor(detail); setDetail(null); }} />}
+        onClose={()=>{ setDetailId(null); setDetailCancelOnOpen(false); }} onReassign={()=>{ setAssignFor(detail); setDetailId(null); }} />}
       {newJob && <NewJobCardModal state={state} dispatch={dispatch} onClose={()=>setNewJob(false)} />}
     </div>
   );
