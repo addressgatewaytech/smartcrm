@@ -6,6 +6,14 @@
 SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
 
+-- Backs the branded, sequential Lead/Deal/Quotation IDs (AGBSLS10100, AGBSDS10100, AGBSQS10100,
+-- ...) — a dedicated row per entity with SELECT ... FOR UPDATE gives atomic increments under
+-- concurrent requests, unlike an in-process counter (which also resets on every redeploy).
+CREATE TABLE IF NOT EXISTS id_counters (
+  entity     VARCHAR(20) PRIMARY KEY,
+  next_value INT NOT NULL
+) ENGINE=InnoDB;
+
 -- ---------------------------------------------------------------------------
 -- USERS / STAFF / ROLES
 -- ---------------------------------------------------------------------------

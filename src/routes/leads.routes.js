@@ -2,7 +2,7 @@ const express = require("express");
 const { query, withTransaction } = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
 const { isAdminLike } = require("../middleware/roles");
-const { nextId, today } = require("../utils/helpers");
+const { nextId, nextSequentialId, today } = require("../utils/helpers");
 const { checkExistingData } = require("./dataManager.routes").internal;
 
 const router = express.Router();
@@ -42,8 +42,8 @@ async function findOrCreateCustomerForLead(b) {
 }
 
 router.post("/", async (req, res) => {
-  const id = nextId("LD");
   const b = req.body;
+  const id = await withTransaction((conn) => nextSequentialId(conn, "AGBSLS", "lead"));
   await query(
     `INSERT INTO leads (id, name, company, phone, email, reference, source, service, owner, status, next_follow_up)
      VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
@@ -87,7 +87,7 @@ router.post("/:id/convert-to-deal", async (req, res) => {
     const [[lead]] = await conn.execute("SELECT * FROM leads WHERE id = ?", [req.params.id]);
     if (!lead) throw new Error("Lead not found");
     await conn.execute("UPDATE leads SET status = 'Converted' WHERE id = ?", [req.params.id]);
-    const dealId = nextId("DL");
+    const dealId = await nextSequentialId(conn, "AGBSDS", "deal");
     await conn.execute(
       `INSERT INTO deals (id, lead_id, customer, service, value, owner, stage, expected_close) VALUES (?,?,?,?,?,?,?,?)`,
       [dealId, lead.id, lead.company, lead.service, value || 0, lead.owner, "Open", (() => { const d = new Date(); d.setDate(d.getDate() + 21); return d.toISOString().slice(0, 10); })()]

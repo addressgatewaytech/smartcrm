@@ -2,7 +2,7 @@ const express = require("express");
 const { query, withTransaction } = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
 const { requireRole, isAdminLike } = require("../middleware/roles");
-const { nextId, daysFromNow, quoteTotal } = require("../utils/helpers");
+const { nextId, nextSequentialId, daysFromNow, quoteTotal } = require("../utils/helpers");
 const { generateQuotationPdf } = require("../utils/quotationPdf");
 
 const router = express.Router();
@@ -43,7 +43,7 @@ router.get("/:id/pdf", async (req, res) => {
 
 router.post("/", async (req, res) => {
   const b = req.body;
-  const id = nextId("QT");
+  const id = await withTransaction((conn) => nextSequentialId(conn, "AGBSQS", "quotation"));
   const hasDiscount = (b.items || []).some((it) => it.discountPct > 0) || (b.orderDiscount || 0) > 0;
   const status = hasDiscount ? "Pending Manager Approval" : "Draft";
 
@@ -113,7 +113,7 @@ router.post("/:id/emailed", async (req, res) => {
 router.post("/:id/clone", async (req, res) => {
   const [src] = await query("SELECT * FROM quotations WHERE id = ?", [req.params.id]);
   if (!src) return res.status(404).json({ error: "Not found" });
-  const id = nextId("QT");
+  const id = await withTransaction((conn) => nextSequentialId(conn, "AGBSQS", "quotation"));
   const customer = req.body.customer || src.customer;
   const dealId = req.body.customer && req.body.customer !== src.customer ? null : src.deal_id;
   await query(

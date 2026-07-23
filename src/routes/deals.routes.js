@@ -1,7 +1,7 @@
 const express = require("express");
-const { query } = require("../config/db");
+const { query, withTransaction } = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
-const { nextId } = require("../utils/helpers");
+const { nextSequentialId } = require("../utils/helpers");
 
 const router = express.Router();
 router.use(requireAuth);
@@ -12,8 +12,8 @@ router.get("/", async (req, res) => {
 });
 
 router.post("/", async (req, res) => {
-  const id = nextId("DL");
   const b = req.body;
+  const id = await withTransaction((conn) => nextSequentialId(conn, "AGBSDS", "deal"));
   await query(
     `INSERT INTO deals (id, lead_id, customer, service, value, owner, stage, expected_close) VALUES (?,?,?,?,?,?,?,?)`,
     [id, b.leadId || null, b.customer, b.service || null, b.value || 0, b.owner || req.user.id, b.stage || "Open", b.expectedClose || null]

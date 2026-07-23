@@ -13,6 +13,19 @@ function nextId(prefix) {
   return `${prefix}-${time}${rand}`;
 }
 
+/**
+ * Branded sequential IDs for Leads/Deals/Quotations (AGBSLS10100, AGBSDS10100, AGBSQS10100, ...).
+ * Must run inside a transaction — the row lock (FOR UPDATE) on id_counters is what makes the
+ * increment atomic under concurrent requests; a plain SELECT+UPDATE without the transaction/lock
+ * would let two simultaneous creates read the same next_value and collide.
+ */
+async function nextSequentialId(conn, prefix, entity) {
+  const [[row]] = await conn.execute("SELECT next_value FROM id_counters WHERE entity = ? FOR UPDATE", [entity]);
+  const value = row.next_value;
+  await conn.execute("UPDATE id_counters SET next_value = next_value + 1 WHERE entity = ?", [entity]);
+  return `${prefix}${value}`;
+}
+
 const today = () => new Date().toISOString().slice(0, 10);
 const daysFromNow = (n) => {
   const d = new Date();
@@ -32,4 +45,4 @@ function quoteTotal(items, orderDiscount = 0) {
   return { subtotal, total: Math.max(0, subtotal - (orderDiscount || 0)) };
 }
 
-module.exports = { nextId, today, daysFromNow, normPhone, normEmail, normCompany, money, quoteTotal };
+module.exports = { nextId, nextSequentialId, today, daysFromNow, normPhone, normEmail, normCompany, money, quoteTotal };
