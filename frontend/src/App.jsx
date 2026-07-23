@@ -1592,7 +1592,7 @@ function DealsPage({ state, dispatch, setPage, onViewQuotation }) {
       </div>
       )}
 
-      {quoteFor && <QuoteBuilderModal dealId={quoteFor.id} customerName={quoteFor.customer} defaultService={quoteFor.service} defaultValue={quoteFor.value} services={state.services} dispatch={dispatch} templates={state.quotationTemplates} onClose={()=>setQuoteFor(null)} />}
+      {quoteFor && <QuoteBuilderModal dealId={quoteFor.id} customerName={quoteFor.customer} defaultService={quoteFor.service} services={state.services} dispatch={dispatch} templates={state.quotationTemplates} onClose={()=>setQuoteFor(null)} />}
       {editDeal && <EditDealModal deal={editDeal} state={state} dispatch={dispatch} onClose={()=>setEditDeal(null)} />}
       {removeDeal && <ConfirmModal title={`Remove deal ${removeDeal.id}?`} body={`${removeDeal.customer} — ${money(removeDeal.value)}. This can't be undone.`} onConfirm={()=>dispatch({type:"DELETE_DEAL", id:removeDeal.id})} onClose={()=>setRemoveDeal(null)} />}
     </div>
@@ -1628,14 +1628,17 @@ function EditDealModal({ deal: d, state, dispatch, onClose }) {
   );
 }
 
-function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVICES[0], defaultValue=10000, editableCustomer=false, customerOptions=[], services=SERVICES, dispatch, templates, onClose, editQuotation=null }) {
+function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVICES[0], editableCustomer=false, customerOptions=[], services=SERVICES, dispatch, templates, onClose, editQuotation=null }) {
   const [showNewService, setShowNewService] = useState(false);
   const [customer, setCustomer] = useState(editQuotation ? editQuotation.customer : customerName);
   const [showNewCustomer, setShowNewCustomer] = useState(false);
   const [templateService, setTemplateService] = useState(editQuotation ? (editQuotation.items[0]?.service || defaultService) : defaultService);
   const [feeType, setFeeType] = useState(editQuotation ? (editQuotation.feeType || "Professional Fee") : "Professional Fee");
   const [subject, setSubject] = useState(editQuotation ? (editQuotation.subject || "") : "");
-  const [items, setItems] = useState(editQuotation ? editQuotation.items.map(it=>({...it})) : [{ category: "", service: defaultService, description: "", note: "", qty: 1, price: defaultValue || 10000, discountPct: 0 }]);
+  // Deliberately starts at 0, not the deal's estimated value — that figure is just a sales-stage
+  // guess entered when converting the lead, not the real fee, which should come from loading the
+  // service's fee template below (or be typed in manually) so it's never mistaken for one.
+  const [items, setItems] = useState(editQuotation ? editQuotation.items.map(it=>({...it})) : [{ category: "", service: defaultService, description: "", note: "", qty: 1, price: 0, discountPct: 0 }]);
   const [orderDiscount, setOrderDiscount] = useState(editQuotation ? (editQuotation.orderDiscount || 0) : 0);
   const [bank, setBank] = useState(editQuotation ? (editQuotation.bank || "") : "");
   const [footerNote, setFooterNote] = useState(editQuotation ? (editQuotation.footerNote || "") : "");

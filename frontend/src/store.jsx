@@ -55,8 +55,14 @@ export function useApiStore(enabled) {
       appSettings: async () => ({ appSettings: mapAppSettings(await api.settings.get()) }),
     };
     const list = keys || Object.keys(tasks);
-    const results = await Promise.all(list.map((k) => tasks[k]()));
-    setState((s) => Object.assign({ ...s }, ...results));
+    // allSettled, not all — some tasks (e.g. Data Manager export history) are admin/data_manager-only
+    // and 403 for every other role. With Promise.all, that one rejection used to blow up the whole
+    // batch and leave every role except admin looking at a completely empty app (no leads, no deals,
+    // nothing), since setState was only ever reached after every promise resolved.
+    const settled = await Promise.allSettled(list.map((k) => tasks[k]()));
+    const results = settled.filter((r) => r.status === "fulfilled").map((r) => r.value);
+    settled.forEach((r, i) => { if (r.status === "rejected") console.error(`Failed to load "${list[i]}":`, r.reason); });
+    if (results.length) setState((s) => Object.assign({ ...s }, ...results));
   }, []);
 
   // Attendance is per-employee (no "all attendance" endpoint) — fetch once per employee for
