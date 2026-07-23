@@ -3181,7 +3181,7 @@ function SubscriptionsPage({ state, dispatch, role }) {
                     <td className="mono">{money(sub.annualFee)}</td>
                     <td className="mono" style={{fontSize:12}}>{fmtDate(sub.startDate)}</td>
                     <td className="mono" style={{fontSize:12}}>{fmtDate(sub.expiryDate)}</td>
-                    <td style={{fontSize:12, color: over ? "var(--danger)" : "inherit"}}>{used}/{tierDef?.transactionsIncluded ?? "—"} job cards{over && " ⚠"}</td>
+                    <td style={{fontSize:12, color: over ? "var(--danger)" : "inherit"}}>{tierDef?.transactionsIncluded != null ? `${used}/${tierDef.transactionsIncluded} job cards${over ? " ⚠" : ""}` : "—"}</td>
                     <td><Stamp tone={subStatusTone(status)}>{status}</Stamp></td>
                     <td><RowActions onEdit={isAdmin ? ()=>{ setEditSub(sub); } : null} onRemove={isAdmin ? ()=>setRemoveSub(sub) : null} /></td>
                   </tr>
@@ -3519,6 +3519,28 @@ function SubscriptionDetailModal({ subscription: sub, state, dispatch, isAdmin, 
   const txUsed = subTransactionsUsed(sub, state);
   const txOver = tier && txUsed > tier.transactionsIncluded;
   const linkedJobs = state.jobCards.filter(j => j.customer === sub.customer && j.status !== "Cancelled" && (j.statusLog?.[0]?.at || sub.startDate) >= sub.startDate);
+  // Office Space Assistance (and any future plan without transaction/training/etc. allowances)
+  // has no meaningful "usage" to meter — its tier row is all nulls apart from the fee. Showing
+  // the Job Card meter there just reads as a permanently-stuck "0/—" with no real signal.
+  const hasUsageMeters = tier && tier.transactionsIncluded != null;
+
+  const customer = state.customers.find(c => c.name === sub.customer);
+  const daysToRenewal = daysBetween(daysFromNow(0), sub.expiryDate);
+  const kycDocs = customer?.docs || [];
+  // Both open the reviewer's own email/WhatsApp app with the message pre-filled, mirroring the
+  // wa.me pattern already used elsewhere in the app (Data Manager outreach) — there's no ad-hoc
+  // customer email/SMS pipeline through the backend, so this is sent by the staff member directly
+  // rather than silently claiming to send on their behalf.
+  const renewalMessage = `Hi ${customer?.contact || sub.customer}, this is a reminder that your ${sub.plan} (${sub.tier}) subscription with Address Gateway renews on ${fmtDate(sub.expiryDate)}. Let us know if you'd like help with the renewal.`;
+  const sendEmail = () => {
+    if (!customer?.email) { alert("No email on file for this customer — add one on their profile first."); return; }
+    window.open(`mailto:${customer.email}?subject=${encodeURIComponent(`${sub.plan} renewal — ${sub.customer}`)}&body=${encodeURIComponent(renewalMessage)}`, "_blank");
+  };
+  const sendWhatsapp = () => {
+    const mobile = customer?.contactMobile || customer?.phone;
+    if (!mobile) { alert("No mobile number on file for this customer — add one on their profile first."); return; }
+    window.open(`https://wa.me/${normPhone(mobile)}?text=${encodeURIComponent(renewalMessage)}`, "_blank");
+  };
 
   const meter = (label, used, included, danger) => {
     const pct = included > 0 ? Math.min(100, Math.round((used/included)*100)) : 0;
@@ -3541,14 +3563,14 @@ function SubscriptionDetailModal({ subscription: sub, state, dispatch, isAdmin, 
         <Stamp tone={subStatusTone(status)}>{status}</Stamp>
       </div>
 
-      {tier && (
+      {hasUsageMeters && (
         <div className="agw-card" style={{ marginBottom: 16 }}>
           <strong style={{ fontSize:13, display:"block", marginBottom:10 }}>Usage this cycle</strong>
           {meter("Transactions (Job Cards)", txUsed, tier.transactionsIncluded, txOver)}
           <div style={{ fontSize:11, color:"var(--ink-soft)", marginTop:-6, marginBottom:12 }}>Counted automatically — one Job Card created for this customer since {fmtDate(sub.startDate)} = one transaction. {linkedJobs.length} job card{linkedJobs.length!==1?"s":""} linked.</div>
-          {meter("Training sessions", sub.trainingSessionsUsed, tier.trainingSessions)}
+          {tier.trainingSessions != null && meter("Training sessions", sub.trainingSessionsUsed, tier.trainingSessions)}
           {tier.legalAdvising > 0 && meter("Legal advising", sub.legalAdvisingUsed, tier.legalAdvising)}
-          {meter("Translation pages", sub.translationPagesUsed, tier.translationPages)}
+          {tier.translationPages != null && meter("Translation pages", sub.translationPagesUsed, tier.translationPages)}
         </div>
       )}
       {txOver && (
@@ -3557,14 +3579,40 @@ function SubscriptionDetailModal({ subscription: sub, state, dispatch, isAdmin, 
         </div>
       )}
 
-      {isAdmin && (
+      <div className="agw-card" style={{ marginBottom: 16 }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+          <strong style={{ fontSize:13 }}>Company KYC & renewal</strong>
+          <span style={{ fontSize:11.5, color: daysToRenewal <= 30 ? "var(--danger)" : "var(--ink-soft)" }}>
+            Next renewal: <strong className="mono">{fmtDate(sub.expiryDate)}</strong>{daysToRenewal >= 0 ? ` (${daysToRenewal}d)` : " (overdue)"}
+          </span>
+        </div>
+        {kycDocs.length === 0 ? (
+          <div style={{ fontSize:12.5, color:"var(--ink-soft)" }}>No KYC documents on file for {sub.customer} yet.</div>
+        ) : (
+          kycDocs.map(d => {
+            const st = docState(d.expiry);
+            return (
+              <div key={d.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"6px 0", borderBottom:"1px solid var(--hair)", fontSize:12.5 }}>
+                <span>{d.type}</span>
+                <Stamp tone={st.cls.replace("stamp-","")}>{st.label}</Stamp>
+              </div>
+            );
+          })
+        )}
+        <div style={{ display:"flex", gap:8, marginTop: 12 }}>
+          <button className="btn btn-sm" onClick={sendEmail}><Mail size={13}/> Send email</button>
+          <button className="btn btn-sm" onClick={sendWhatsapp}><MessageCircle size={13}/> Send WhatsApp</button>
+        </div>
+      </div>
+
+      {isAdmin && hasUsageMeters && (
         <div className="agw-card" style={{ marginBottom: 16 }}>
           <strong style={{ fontSize:13, display:"block", marginBottom:8 }}>Log usage</strong>
           <p className="modal-sub" style={{ marginTop:0, marginBottom:8 }}>Transactions are tracked automatically from Job Cards — only these still need manual logging.</p>
           <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-            <button className="btn btn-sm" onClick={()=>dispatch({type:"LOG_SUBSCRIPTION_USAGE", id:sub.id, field:"trainingSessionsUsed", amount:1})}>+1 training session</button>
-            {tier?.legalAdvising > 0 && <button className="btn btn-sm" onClick={()=>dispatch({type:"LOG_SUBSCRIPTION_USAGE", id:sub.id, field:"legalAdvisingUsed", amount:1})}>+1 legal advising</button>}
-            <button className="btn btn-sm" onClick={()=>dispatch({type:"LOG_SUBSCRIPTION_USAGE", id:sub.id, field:"translationPagesUsed", amount:1})}>+1 translation page</button>
+            {tier.trainingSessions != null && <button className="btn btn-sm" onClick={()=>dispatch({type:"LOG_SUBSCRIPTION_USAGE", id:sub.id, field:"trainingSessionsUsed", amount:1})}>+1 training session</button>}
+            {tier.legalAdvising > 0 && <button className="btn btn-sm" onClick={()=>dispatch({type:"LOG_SUBSCRIPTION_USAGE", id:sub.id, field:"legalAdvisingUsed", amount:1})}>+1 legal advising</button>}
+            {tier.translationPages != null && <button className="btn btn-sm" onClick={()=>dispatch({type:"LOG_SUBSCRIPTION_USAGE", id:sub.id, field:"translationPagesUsed", amount:1})}>+1 translation page</button>}
           </div>
         </div>
       )}
