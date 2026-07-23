@@ -229,6 +229,20 @@ const CSS = `
 
   .side-note { font-size: 12px; color: var(--ink-soft); background: #F7F6F1; border: 1px dashed var(--hair);
     border-radius: 8px; padding: 9px 11px; margin-top: 10px; }
+
+  .agw-loader { height: 100%; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(circle at 50% 40%, #123a5c 0%, var(--sidebar) 62%); }
+  .agw-loader-mark { position: relative; width: 132px; height: 132px; display: flex; align-items: center; justify-content: center; }
+  .agw-loader-ring { position: absolute; inset: 0; border-radius: 50%; border: 3px solid rgba(232,121,30,0.16);
+    border-top-color: var(--gold); animation: agw-spin 1s linear infinite; }
+  .agw-loader-logo { width: 76px; height: 76px; border-radius: 50%; background: #fff; display: flex; align-items: center;
+    justify-content: center; box-shadow: 0 6px 24px rgba(0,0,0,0.28); animation: agw-pulse 1.8s ease-in-out infinite; }
+  .agw-loader-logo img { width: 52px; height: auto; display: block; }
+  .agw-loader-sub { margin-top: 22px; }
+  .agw-loader-sub img { height: 22px; width: auto; display: block; opacity: 0.92; }
+  .agw-loader-text { margin-top: 14px; font-size: 12.5px; letter-spacing: .04em; color: var(--sidebar-text-dim); }
+  @keyframes agw-spin { to { transform: rotate(360deg); } }
+  @keyframes agw-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.045); } }
 `;
 
 /* ---------------------------------------------------------------------- */
@@ -620,9 +634,18 @@ const NAV = [
 
 function LoadingScreen() {
   return (
-    <div className="agw" style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+    <div className="agw agw-loader">
       <style>{CSS}</style>
-      <div style={{ color: "var(--ink-soft)", fontSize: 14 }}>Loading…</div>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+        <div className="agw-loader-mark">
+          <div className="agw-loader-ring" />
+          <div className="agw-loader-logo">
+            <img src="/logo-address-gateway.png" alt="Address Gateway" />
+          </div>
+        </div>
+        <div className="agw-loader-sub"><img src="/logo-smart-crm.png" alt="Smart CRM" /></div>
+        <div className="agw-loader-text">Loading your workspace…</div>
+      </div>
     </div>
   );
 }
@@ -786,7 +809,7 @@ export default function App() {
   // scroll to that specific row instead of leaving the user to hunt for it in the full list.
   const [highlightQuotationId, setHighlightQuotationId] = useState(null);
 
-  if (!authChecked) return null;
+  if (!authChecked) return <LoadingScreen />;
   if (!currentUser) return <Login onLogin={handleLogin} />;
   if (dataLoading) return <LoadingScreen />;
 
