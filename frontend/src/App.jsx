@@ -2766,8 +2766,8 @@ const COMPANY_SIZES = ["Up to 10 Employees", "Up to 30 Employees", "Up to 100 Em
 function NewCustomerModal({ dispatch, onClose, onCreated, customer=null }) {
   const isEdit = !!customer;
   const [form, setForm] = useState(customer
-    ? { name: customer.name, type: customer.type || "Company", contact: customer.contact || "", phone: customer.phone || "", email: customer.email || "", address: customer.address || "", companySize: customer.companySize || "" }
-    : { name: "", type: "Company", contact: "", phone: "", email: "", address: "", companySize: "" });
+    ? { name: customer.name, type: customer.type || "Company", contact: customer.contact || "", phone: customer.phone || "", landline: customer.landline || "", contactMobile: customer.contactMobile || "", email: customer.email || "", address: customer.address || "", companySize: customer.companySize || "" }
+    : { name: "", type: "Company", contact: "", phone: "", landline: "", contactMobile: "", email: "", address: "", companySize: "" });
   const [saveError, setSaveError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -2799,7 +2799,11 @@ function NewCustomerModal({ dispatch, onClose, onCreated, customer=null }) {
             <option>Company</option><option>Individual</option>
           </select>
         </div>
-        <div className="field"><label>Contact person</label><input value={form.contact} onChange={e=>setForm({...form,contact:e.target.value})} placeholder="Optional" /></div>
+        <div className="field"><label>Contact person name</label><input value={form.contact} onChange={e=>setForm({...form,contact:e.target.value})} placeholder="Optional" /></div>
+      </div>
+      <div className="row2">
+        <div className="field"><label>Contact person mobile</label><input value={form.contactMobile} onChange={e=>setForm({...form,contactMobile:e.target.value})} placeholder="+974 ..." /></div>
+        <div className="field"><label>Landline number</label><input value={form.landline} onChange={e=>setForm({...form,landline:e.target.value})} placeholder="Optional" /></div>
       </div>
       <div className="row2">
         <div className="field"><label>Phone</label><input value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="+974 ..." /></div>
@@ -2898,6 +2902,11 @@ function CustomerDetailModal({ customer: c, state, dispatch, onClose }) {
 
       {tab === "profile" && (
       <>
+      <div className="agw-grid" style={{ gridTemplateColumns: "repeat(3,1fr)", marginBottom: 16 }}>
+        <div className="agw-card"><div className="kpi-label">Contact person</div><div style={{ fontSize:14, fontWeight:500, marginTop:4 }}>{c.contact || "—"}</div></div>
+        <div className="agw-card"><div className="kpi-label">Contact mobile</div><div style={{ fontSize:14, fontWeight:500, marginTop:4 }}>{c.contactMobile || "—"}</div></div>
+        <div className="agw-card"><div className="kpi-label">Landline</div><div style={{ fontSize:14, fontWeight:500, marginTop:4 }}>{c.landline || "—"}</div></div>
+      </div>
       <table className="agw-table">
         <thead><tr><th>Document</th><th>Number</th><th>Expiry</th><th>Status</th><th>Cloud copy</th><th></th></tr></thead>
         <tbody>

@@ -173,6 +173,8 @@ CREATE TABLE IF NOT EXISTS customers (
   type         ENUM('Company','Individual') DEFAULT 'Company',
   contact      VARCHAR(150),
   phone        VARCHAR(50),
+  landline     VARCHAR(50),
+  contact_mobile VARCHAR(50),
   email        VARCHAR(190),
   address      VARCHAR(500),
   company_size ENUM('Up to 10 Employees','Up to 30 Employees','Up to 100 Employees','Up to 200 Employees'),

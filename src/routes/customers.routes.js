@@ -21,15 +21,15 @@ router.get("/", async (req, res) => {
 router.post("/", async (req, res) => {
   const id = nextId("CU");
   const b = req.body;
-  await query("INSERT INTO customers (id, name, type, contact, phone, email, address, company_size) VALUES (?,?,?,?,?,?,?,?)",
-    [id, b.name, b.type || "Company", b.contact || null, b.phone || null, b.email || null, b.address || null, b.companySize || null]);
+  await query("INSERT INTO customers (id, name, type, contact, phone, landline, contact_mobile, email, address, company_size) VALUES (?,?,?,?,?,?,?,?,?,?)",
+    [id, b.name, b.type || "Company", b.contact || null, b.phone || null, b.landline || null, b.contactMobile || null, b.email || null, b.address || null, b.companySize || null]);
   res.status(201).json({ id });
 });
 
 router.patch("/:id", async (req, res) => {
   const b = req.body;
-  await query("UPDATE customers SET name=COALESCE(?,name), type=COALESCE(?,type), contact=?, phone=?, email=?, address=?, company_size=? WHERE id=?",
-    [b.name, b.type, b.contact || null, b.phone || null, b.email || null, b.address || null, b.companySize || null, req.params.id]);
+  await query("UPDATE customers SET name=COALESCE(?,name), type=COALESCE(?,type), contact=?, phone=?, landline=?, contact_mobile=?, email=?, address=?, company_size=? WHERE id=?",
+    [b.name, b.type, b.contact || null, b.phone || null, b.landline || null, b.contactMobile || null, b.email || null, b.address || null, b.companySize || null, req.params.id]);
   res.json({ ok: true });
 });
 
