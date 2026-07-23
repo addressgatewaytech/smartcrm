@@ -50,9 +50,13 @@ app.use("/api", require("./src/routes/templates.routes")); // /api/services, /ap
 // Safari in particular, which is why this showed up as "different result on Mac"), a device can
 // keep loading an old shell pointing at deleted assets indefinitely, long after a new deploy.
 const frontendDist = path.join(__dirname, "frontend", "dist");
+// sw.js and the manifest must never be cached either — the same staleness risk as index.html
+// applies to the service worker script in particular, since a stuck old SW is even harder for a
+// user to self-recover from than a stuck old page.
+const NEVER_CACHE = ["index.html", "sw.js", "manifest.webmanifest"];
 app.use(express.static(frontendDist, {
   setHeaders: (res, filePath) => {
-    res.set("Cache-Control", filePath.endsWith("index.html") ? "no-store" : "public, max-age=31536000, immutable");
+    res.set("Cache-Control", NEVER_CACHE.some((f) => filePath.endsWith(f)) ? "no-store" : "public, max-age=31536000, immutable");
   },
 }));
 app.get(/^(?!\/api|\/uploads).*/, (req, res, next) => {
