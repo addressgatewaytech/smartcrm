@@ -447,6 +447,49 @@ function BarChart({ data, height = 22 }) {
   );
 }
 
+// Per-salesperson breakdown for the Dashboard Charts tab — three proportional bars (leads/deals/
+// quotations, all on the same 0..max scale so they're comparable at a glance) plus collected vs.
+// pending payment figures underneath. Used both for the admin/sales-manager team view (one row per
+// salesperson) and for an individual sales_exec's own dashboard (a single row, same layout).
+function SalesPersonBars({ rows }) {
+  const max = Math.max(1, ...rows.flatMap(r => [r.leadsCount, r.dealsCount, r.quotesCount]));
+  const metrics = [
+    { key: "leadsCount", label: "Leads", color: "var(--info)" },
+    { key: "dealsCount", label: "Deals", color: "var(--gold)" },
+    { key: "quotesCount", label: "Quotations", color: "var(--success)" },
+  ];
+  return (
+    <div>
+      <div style={{ display:"flex", gap:14, fontSize:11, color:"var(--ink-soft)", marginBottom:14 }}>
+        {metrics.map(m => (
+          <span key={m.key}><span style={{ display:"inline-block", width:8, height:8, borderRadius:2, background:m.color, marginRight:4 }}/>{m.label}</span>
+        ))}
+      </div>
+      {rows.map(r => (
+        <div key={r.owner.id} style={{ marginBottom: 16 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:6 }}>
+            <span style={{ fontSize:13, fontWeight:500, display:"flex", alignItems:"center", gap:6 }}>
+              <span className="avatar">{r.owner.initials}</span>{r.owner.name}
+            </span>
+            <span style={{ fontSize:11.5, color:"var(--ink-soft)" }}>
+              <span style={{ color:"var(--success)" }}>{money(r.collected)} collected</span>
+              {r.pendingCollection > 0 && <span style={{ color:"var(--danger)", marginLeft:8 }}>{money(r.pendingCollection)} pending</span>}
+            </span>
+          </div>
+          {metrics.map(m => (
+            <div key={m.key} style={{ display:"flex", alignItems:"center", gap:7, marginBottom:3 }}>
+              <div style={{ flex:1, height:6, background:"var(--page)", borderRadius:3, overflow:"hidden" }}>
+                <div style={{ width:`${(r[m.key]/max)*100}%`, height:"100%", background:m.color, borderRadius:3, transition:"width .3s" }} />
+              </div>
+              <span style={{ fontSize:11, color:"var(--ink-soft)", width:16, textAlign:"right" }}>{r[m.key]}</span>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function Modal({ title, sub, onClose, children, width }) {
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -1084,6 +1127,32 @@ function Dashboard({ state, role, userId, setPage }) {
   periodQuotes.forEach(q => { byCustomer[q.customer] = (byCustomer[q.customer]||0) + quoteAmount(q); });
   const topCustomers = Object.entries(byCustomer).sort((a,b)=>b[1]-a[1]).slice(0,6);
 
+  // Per-salesperson leads/deals/quotations/collections breakdown — admin and sales managers see the
+  // whole team; a sales_exec sees the exact same layout scoped to just themselves, so "their own
+  // dashboard follows the same type" as the team view instead of getting a different design.
+  const isSalesRole = ADMIN_LIKE.includes(role) || role === "sales_manager" || role === "sales_exec";
+  const salesOwners = role === "sales_exec"
+    ? state.employees.filter(e => e.id === userId)
+    : state.employees.filter(e => e.roles.includes("sales_exec") || e.roles.includes("sales_manager"));
+  const salesPersonRows = !isSalesRole ? [] : salesOwners.map(owner => {
+    const leads = state.leads.filter(l => l.owner===owner.id && inRange(l.createdAt, range));
+    const allOwnedDealIds = new Set(state.deals.filter(d => d.owner===owner.id).map(d => d.id));
+    const deals = state.deals.filter(d => d.owner===owner.id && inRange(d.createdAt, range));
+    const dealsWon = deals.filter(d => d.stage==="Won").length;
+    const quotes = state.quotations.filter(q => ((q.dealId && allOwnedDealIds.has(q.dealId)) || q.owner===owner.id) && inRange(q.createdAt, range));
+    const quoteIds = new Set(quotes.map(q=>q.id));
+    const salesOrders = state.salesOrders.filter(so => quoteIds.has(so.quotationId));
+    const soIds = new Set(salesOrders.map(so=>so.id));
+    const invoices = state.invoices.filter(inv => soIds.has(inv.salesOrderId) && inRange(inv.createdAt, range));
+    const businessVol = quotes.filter(q => q.status==="Approved" && q.feeType!=="Government Fee").reduce((a,q)=>a+quoteAmount(q),0);
+    const collected = invoices.reduce((a,inv)=>a+inv.payments.reduce((x,p)=>x+p.amount,0),0);
+    const pendingCollection = invoices.reduce((a,inv)=>a+Math.max(0, inv.amount - inv.payments.reduce((x,p)=>x+p.amount,0)),0);
+    const pendingLeads = leads.filter(l => !["Qualified","Unqualified","Converted"].includes(l.status)).length;
+    const pendingQuotes = quotes.filter(q => !["Approved","Rejected","Expired"].includes(q.status)).length;
+    return { owner, leadsCount: leads.length, dealsCount: deals.length, dealsWon, quotesCount: quotes.length,
+      businessVolume: businessVol, collected, pendingCollection, pendingLeads, pendingQuotes };
+  }).sort((a,b) => b.businessVolume - a.businessVolume);
+
   // --- Charts tab data -------------------------------------------------------------------------
   const [chartTab, setChartTab] = useState("overview");
 
@@ -1220,6 +1289,33 @@ function Dashboard({ state, role, userId, setPage }) {
           </div>
         </div>
       )}
+
+      {isSalesRole && (
+        <div className="agw-card" style={{ marginTop: 16 }}>
+          <strong style={{ fontSize: 14 }}>{role === "sales_exec" ? "My performance" : "Sales team performance"}</strong>
+          <div style={{ marginTop: 10 }}>
+            {salesPersonRows.length === 0 ? <Empty icon={Users} text="No sales activity in this period yet." /> : (
+              <div style={{ overflowX:"auto" }}>
+              <table className="agw-table">
+                <thead><tr><th>Salesperson</th><th>Leads</th><th>Deals</th><th>Quotations</th><th>Collected</th><th>Pending</th></tr></thead>
+                <tbody>
+                  {salesPersonRows.map(r => (
+                    <tr key={r.owner.id}>
+                      <td style={{display:"flex",alignItems:"center",gap:8}}><span className="avatar">{r.owner.initials}</span>{r.owner.name}</td>
+                      <td>{r.leadsCount} <span style={{color:"var(--ink-soft)",fontSize:11}}>({r.pendingLeads} open)</span></td>
+                      <td>{r.dealsCount} <span style={{color:"var(--ink-soft)",fontSize:11}}>({r.dealsWon} won)</span></td>
+                      <td>{r.quotesCount} <span style={{color:"var(--ink-soft)",fontSize:11}}>({r.pendingQuotes} pending)</span></td>
+                      <td className="mono" style={{color:"var(--success)"}}>{money(r.collected)}</td>
+                      <td>{r.pendingCollection > 0 ? <span className="mono" style={{color:"var(--danger)"}}>{money(r.pendingCollection)}</span> : "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       </>}
 
       {chartTab === "charts" && (
@@ -1276,6 +1372,14 @@ function Dashboard({ state, role, userId, setPage }) {
                   {leadsBySource.length === 0 ? <Empty icon={Users} text="No leads yet." /> : <BarChart data={leadsBySource} />}
                 </div>
               </div>
+              {isSalesRole && (
+                <div className="agw-card" style={{ gridColumn: "1 / -1" }}>
+                  <strong style={{ fontSize: 14 }}>{role === "sales_exec" ? "My leads, deals & quotations" : "Sales team — leads, deals & quotations"}</strong>
+                  <div style={{ marginTop: 16 }}>
+                    {salesPersonRows.length === 0 ? <Empty icon={Users} text="No sales activity in this period yet." /> : <SalesPersonBars rows={salesPersonRows} />}
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>
