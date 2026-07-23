@@ -43,9 +43,20 @@ app.use("/api", require("./src/routes/templates.routes")); // /api/services, /ap
 // and no CORS to configure. `frontend:build` (npm --prefix frontend run build) produces this.
 // Also doubles as the "/" health probe some managed hosting platforms use before finishing
 // custom-domain/proxy setup — without SOME 200 response at "/", that check can silently block.
+// Vite content-hashes every JS/CSS filename (index-XXXXXXXX.js), so those are safe to cache
+// forever — a new build always gets new filenames, never reuses one for different content.
+// index.html is the opposite: it's the only thing that references those hashed filenames, so if
+// IT gets cached (some browsers apply their own heuristic caching when no header says otherwise —
+// Safari in particular, which is why this showed up as "different result on Mac"), a device can
+// keep loading an old shell pointing at deleted assets indefinitely, long after a new deploy.
 const frontendDist = path.join(__dirname, "frontend", "dist");
-app.use(express.static(frontendDist));
+app.use(express.static(frontendDist, {
+  setHeaders: (res, filePath) => {
+    res.set("Cache-Control", filePath.endsWith("index.html") ? "no-store" : "public, max-age=31536000, immutable");
+  },
+}));
 app.get(/^(?!\/api|\/uploads).*/, (req, res, next) => {
+  res.set("Cache-Control", "no-store");
   res.sendFile(path.join(frontendDist, "index.html"), (err) => { if (err) next(); });
 });
 
