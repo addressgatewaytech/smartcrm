@@ -328,6 +328,111 @@ function Rail({ steps, current }) {
   );
 }
 
+/* ---------------------------------------------------------------------- */
+/* LIGHTWEIGHT SVG CHARTS (no charting library — keeps the bundle small)   */
+/* ---------------------------------------------------------------------- */
+
+// data: [{ label, value, color }]. Renders a ring chart with a center total and a legend list.
+function DonutChart({ data, size = 160, centerLabel }) {
+  const total = data.reduce((a, d) => a + d.value, 0);
+  const r = size / 2;
+  const stroke = size * 0.22;
+  const radius = r - stroke / 2;
+  const circumference = 2 * Math.PI * radius;
+  let offset = 0;
+
+  return (
+    <div style={{ display:"flex", alignItems:"center", gap:20, flexWrap:"wrap" }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ flexShrink:0 }}>
+        <circle cx={r} cy={r} r={radius} fill="none" stroke="var(--hair)" strokeWidth={stroke} />
+        {total > 0 && data.filter(d => d.value > 0).map((d, i) => {
+          const frac = d.value / total;
+          const dash = frac * circumference;
+          const el = (
+            <circle key={i} cx={r} cy={r} r={radius} fill="none" stroke={d.color} strokeWidth={stroke}
+              strokeDasharray={`${dash} ${circumference - dash}`} strokeDashoffset={-offset}
+              transform={`rotate(-90 ${r} ${r})`} strokeLinecap="butt" />
+          );
+          offset += dash;
+          return el;
+        })}
+        <text x={r} y={r - 4} textAnchor="middle" className="disp" style={{ fontSize: size*0.17, fill:"var(--ink)" }}>{total}</text>
+        {centerLabel && <text x={r} y={r + 16} textAnchor="middle" style={{ fontSize: size*0.075, fill:"var(--ink-soft)" }}>{centerLabel}</text>}
+      </svg>
+      <div style={{ display:"flex", flexDirection:"column", gap:7, minWidth:130 }}>
+        {data.map((d, i) => (
+          <div key={i} style={{ display:"flex", alignItems:"center", gap:8, fontSize:12.5 }}>
+            <span style={{ width:9, height:9, borderRadius:"50%", background:d.color, flexShrink:0 }} />
+            <span style={{ flex:1, color:"var(--ink-soft)" }}>{d.label}</span>
+            <span style={{ fontWeight:600 }}>{d.value}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// series: [{ label, points: number[], color }], labels: string[] (x-axis, same length as points).
+function LineChart({ series, labels, height = 200, formatY = (n) => n }) {
+  const width = 560;
+  const padL = 42, padB = 26, padT = 14, padR = 10;
+  const innerW = width - padL - padR, innerH = height - padT - padB;
+  const allValues = series.flatMap(s => s.points);
+  const maxV = Math.max(1, ...allValues);
+  const stepX = labels.length > 1 ? innerW / (labels.length - 1) : 0;
+  const x = (i) => padL + i * stepX;
+  const y = (v) => padT + innerH - (v / maxV) * innerH;
+  const gridLines = 4;
+
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} style={{ width:"100%", height:"auto" }}>
+      {Array.from({ length: gridLines + 1 }).map((_, i) => {
+        const gy = padT + (innerH / gridLines) * i;
+        const val = Math.round(maxV - (maxV / gridLines) * i);
+        return (
+          <g key={i}>
+            <line x1={padL} y1={gy} x2={width - padR} y2={gy} stroke="var(--hair)" strokeWidth={1} />
+            <text x={padL - 8} y={gy + 3} textAnchor="end" style={{ fontSize:9.5, fill:"var(--ink-soft)" }}>{formatY(val)}</text>
+          </g>
+        );
+      })}
+      {labels.map((l, i) => (
+        (labels.length <= 8 || i % Math.ceil(labels.length / 8) === 0) &&
+        <text key={i} x={x(i)} y={height - 6} textAnchor="middle" style={{ fontSize:9.5, fill:"var(--ink-soft)" }}>{l}</text>
+      ))}
+      {series.map((s, si) => {
+        const path = s.points.map((v, i) => `${i === 0 ? "M" : "L"} ${x(i)} ${y(v)}`).join(" ");
+        return (
+          <g key={si}>
+            <path d={path} fill="none" stroke={s.color} strokeWidth={2.25} strokeLinejoin="round" strokeLinecap="round" />
+            {s.points.map((v, i) => <circle key={i} cx={x(i)} cy={y(v)} r={3} fill={s.color} />)}
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+// data: [{ label, value, color }]. Horizontal bars, sorted as given.
+function BarChart({ data, height = 22 }) {
+  const max = Math.max(1, ...data.map(d => d.value));
+  return (
+    <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+      {data.map((d, i) => (
+        <div key={i}>
+          <div style={{ display:"flex", justifyContent:"space-between", fontSize:12, marginBottom:3 }}>
+            <span style={{ color:"var(--ink-soft)" }}>{d.label}</span>
+            <span style={{ fontWeight:600 }}>{d.value}</span>
+          </div>
+          <div style={{ background:"var(--page)", borderRadius:4, height, overflow:"hidden" }}>
+            <div style={{ width:`${(d.value/max)*100}%`, height:"100%", background:d.color, borderRadius:4, transition:"width .3s" }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function Modal({ title, sub, onClose, children, width }) {
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -956,6 +1061,45 @@ function Dashboard({ state, role, userId, setPage }) {
   periodQuotes.forEach(q => { byCustomer[q.customer] = (byCustomer[q.customer]||0) + quoteAmount(q); });
   const topCustomers = Object.entries(byCustomer).sort((a,b)=>b[1]-a[1]).slice(0,6);
 
+  // --- Charts tab data -------------------------------------------------------------------------
+  const [chartTab, setChartTab] = useState("overview");
+
+  const dealStageColors = { Open:"var(--info)", "Quotation Sent":"var(--gold)", Won:"var(--success)", Lost:"var(--danger)" };
+  const dealsByStage = ["Open","Quotation Sent","Won","Lost"].map(stage => ({
+    label: stage, value: state.deals.filter(d=>d.stage===stage).length, color: dealStageColors[stage],
+  }));
+
+  const jobStatusColors = { "Pending Approval":"var(--warning)", Created:"var(--ink-soft)", Assigned:"var(--info)", "In Progress":"var(--gold)", "On Hold":"var(--warning)", Completed:"var(--success)", Cancelled:"var(--danger)" };
+  const jobsByStatus = ["Pending Approval","Created","Assigned","In Progress","On Hold","Completed","Cancelled"]
+    .map(s => ({ label:s, value: state.jobCards.filter(j=>j.status===s).length, color: jobStatusColors[s] }))
+    .filter(d => d.value > 0);
+
+  const sourcePalette = ["var(--brand)","var(--gold)","var(--info)","var(--success)","var(--danger)","var(--warning)"];
+  const sourceCounts = {};
+  state.leads.forEach(l => { const s = l.source || "Other"; sourceCounts[s] = (sourceCounts[s]||0) + 1; });
+  const leadsBySource = Object.entries(sourceCounts).sort((a,b)=>b[1]-a[1]).slice(0,6)
+    .map(([label,value],i) => ({ label, value, color: sourcePalette[i % sourcePalette.length] }));
+
+  const invoiceStatusColors = { Sent:"var(--info)", "Partially Paid":"var(--warning)", Paid:"var(--success)", Overdue:"var(--danger)" };
+  const invoicesByStatus = ["Sent","Partially Paid","Paid","Overdue"]
+    .map(s => ({ label:s, value: state.invoices.filter(i=>i.status===s).length, color: invoiceStatusColors[s] }))
+    .filter(d => d.value > 0);
+
+  // Trailing 6 months, oldest first.
+  const monthKeys = [], monthLabels = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i);
+    monthKeys.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`);
+    monthLabels.push(d.toLocaleDateString("en-GB", { month:"short" }));
+  }
+  const volumeByMonth = monthKeys.map(key =>
+    state.quotations.filter(q => q.status==="Approved" && q.feeType!=="Government Fee" && (q.createdAt||"").slice(0,7)===key)
+      .reduce((a,q)=>a+quoteAmount(q), 0)
+  );
+  const collectedByMonth = monthKeys.map(key =>
+    state.invoices.reduce((a,inv) => a + inv.payments.filter(p=>(p.date||"").slice(0,7)===key).reduce((x,p)=>x+p.amount,0), 0)
+  );
+
   const kpis = role === "ops_manager" || role === "ops_member" ? [
     { label: "Jobs in progress", value: jobsInProgress },
     { label: "Completed", value: jobsCompleted },
@@ -978,6 +1122,12 @@ function Dashboard({ state, role, userId, setPage }) {
 
   return (
     <div>
+      <div className="tabbar" style={{ marginBottom: 16 }}>
+        <button className={`tab ${chartTab==="overview"?"active":""}`} onClick={()=>setChartTab("overview")}>Overview</button>
+        <button className={`tab ${chartTab==="charts"?"active":""}`} onClick={()=>setChartTab("charts")}>Charts</button>
+      </div>
+
+      {chartTab === "overview" && <>
       {showPeriod && (
         <div style={{ marginBottom: 16 }}>
           <PeriodFilter period={period} setPeriod={setPeriod} customFrom={customFrom} setCustomFrom={setCustomFrom} customTo={customTo} setCustomTo={setCustomTo} />
@@ -1045,6 +1195,66 @@ function Dashboard({ state, role, userId, setPage }) {
                   </div>
                 ))}
           </div>
+        </div>
+      )}
+      </>}
+
+      {chartTab === "charts" && (
+        <div className="agw-grid" style={{ gridTemplateColumns: "1fr 1fr", gap:16 }}>
+          {(role === "ops_manager" || role === "ops_member") ? (
+            <div className="agw-card">
+              <strong style={{ fontSize: 14 }}>Job cards by status</strong>
+              <div style={{ marginTop: 16 }}>
+                {jobsByStatus.length === 0 ? <Empty icon={ClipboardList} text="No job cards yet." /> : <DonutChart data={jobsByStatus} centerLabel="job cards" />}
+              </div>
+            </div>
+          ) : role === "accounts" ? (
+            <>
+              <div className="agw-card">
+                <strong style={{ fontSize: 14 }}>Invoices by status</strong>
+                <div style={{ marginTop: 16 }}>
+                  {invoicesByStatus.length === 0 ? <Empty icon={Receipt} text="No invoices yet." /> : <DonutChart data={invoicesByStatus} centerLabel="invoices" />}
+                </div>
+              </div>
+              <div className="agw-card">
+                <strong style={{ fontSize: 14 }}>Collections — last 6 months</strong>
+                <div style={{ marginTop: 16 }}>
+                  <LineChart series={[{ label:"Collected", points: collectedByMonth, color:"var(--brand)" }]} labels={monthLabels} formatY={(n)=>n>=1000?`${Math.round(n/1000)}k`:n} />
+                </div>
+              </div>
+            </>
+          ) : role === "hr" ? (
+            <div className="agw-card">
+              <Empty icon={BarChart3} text="Charts for HR are on the roadmap — check Reports for attendance and leave breakdowns." />
+            </div>
+          ) : (
+            <>
+              <div className="agw-card">
+                <strong style={{ fontSize: 14 }}>Sales pipeline</strong>
+                <div style={{ marginTop: 16 }}>
+                  {state.deals.length === 0 ? <Empty icon={Handshake} text="No deals yet." /> : <DonutChart data={dealsByStage} centerLabel="deals" />}
+                </div>
+              </div>
+              <div className="agw-card">
+                <strong style={{ fontSize: 14 }}>Job cards by status</strong>
+                <div style={{ marginTop: 16 }}>
+                  {jobsByStatus.length === 0 ? <Empty icon={ClipboardList} text="No job cards yet." /> : <DonutChart data={jobsByStatus} centerLabel="job cards" />}
+                </div>
+              </div>
+              <div className="agw-card">
+                <strong style={{ fontSize: 14 }}>Business volume — last 6 months</strong>
+                <div style={{ marginTop: 16 }}>
+                  <LineChart series={[{ label:"Business volume", points: volumeByMonth, color:"var(--gold)" }]} labels={monthLabels} formatY={(n)=>n>=1000?`${Math.round(n/1000)}k`:n} />
+                </div>
+              </div>
+              <div className="agw-card">
+                <strong style={{ fontSize: 14 }}>Leads by source</strong>
+                <div style={{ marginTop: 16 }}>
+                  {leadsBySource.length === 0 ? <Empty icon={Users} text="No leads yet." /> : <BarChart data={leadsBySource} />}
+                </div>
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>
