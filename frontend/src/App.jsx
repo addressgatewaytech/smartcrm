@@ -1460,6 +1460,63 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
     setItems([...items, { category: "", service: templateService, description: "", note: "", qty: 1, price: 0, discountPct: 0 }]);
   };
 
+  // Company Formation (and similar) services almost always need BOTH a Professional Fee and a
+  // Government Fee quotation — users kept missing the second one since it was a fully separate
+  // "New quotation" action. When both templates exist for the selected service, offer to create
+  // the Government Fee one automatically alongside the Professional Fee one being built here.
+  const govFeeTpl = templates[templateService]?.["Government Fee"];
+  const govFeeActivityIdx = govFeeTpl?.items?.findIndex(it => (it.description || "").trim().toLowerCase() === "activity fees") ?? -1;
+  const [alsoGovFee, setAlsoGovFee] = useState(false);
+  const [govFeeActivities, setGovFeeActivities] = useState(null); // finalized once the prompt (if any) is confirmed
+  const [govFeeActivityPrompt, setGovFeeActivityPrompt] = useState(null); // { activities: string[] }
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+
+  const toggleAlsoGovFee = (checked) => {
+    setAlsoGovFee(checked);
+    if (checked && govFeeActivityIdx !== -1 && !govFeeActivities) {
+      setGovFeeActivityPrompt({ activities: [""] });
+    }
+    if (!checked) { setGovFeeActivities(null); setGovFeeActivityPrompt(null); }
+  };
+
+  const confirmGovFeeActivities = () => {
+    setGovFeeActivities(govFeeActivityPrompt.activities.map(a => a.trim()).filter(Boolean));
+    setGovFeeActivityPrompt(null);
+  };
+
+  const buildGovFeeItems = () => {
+    if (govFeeActivityIdx === -1 || !govFeeActivities?.length) return govFeeTpl.items;
+    const tplItem = govFeeTpl.items[govFeeActivityIdx];
+    const activityItem = { ...tplItem, qty: govFeeActivities.length, note: govFeeActivities.map((t, i) => `${i + 1} - ${t}`).join("\n") };
+    return [...govFeeTpl.items.slice(0, govFeeActivityIdx), activityItem, ...govFeeTpl.items.slice(govFeeActivityIdx + 1)];
+  };
+
+  const handleSubmit = async () => {
+    setSaving(true);
+    setSaveError("");
+    try {
+      const payload = { dealId: editQuotation ? editQuotation.dealId : dealId, customer, items, terms, notes, subject, feeType, orderDiscount, bank, footerNote };
+      if (editQuotation) {
+        await dispatch({ type:"UPDATE_QUOTATION", id: editQuotation.id, payload });
+      } else {
+        await dispatch({ type:"CREATE_QUOTATION", payload });
+        if (alsoGovFee && govFeeTpl) {
+          await dispatch({ type:"CREATE_QUOTATION", payload: {
+            dealId, customer, items: buildGovFeeItems(), terms: govFeeTpl.terms || "", notes: govFeeTpl.notes || "",
+            subject: govFeeTpl.subject || "", feeType: "Government Fee", orderDiscount: govFeeTpl.orderDiscount || 0,
+            bank: govFeeTpl.bank || "", footerNote: govFeeTpl.footerNote || "",
+          }});
+        }
+      }
+      onClose();
+    } catch (err) {
+      setSaveError(err instanceof ApiError ? err.message : "Couldn't save — please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <Modal title={editQuotation ? `Edit ${editQuotation.id}` : "Build quotation"} sub={editableCustomer || editQuotation ? "All amounts in QAR" : `${customer} — all amounts in QAR`} onClose={onClose} width={700}>
       <div className="row2">
@@ -1475,6 +1532,12 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
         <div className="side-note" style={{ marginTop:-4, marginBottom:12 }}>
           <AlertTriangle size={13} style={{verticalAlign:-2, marginRight:4}}/>Government Fee quotations are pass-through — they're excluded from business volume and incentive calculations.
         </div>
+      )}
+      {!editQuotation && feeType === "Professional Fee" && govFeeTpl && (
+        <label style={{ display:"flex", alignItems:"center", gap:8, fontSize:13, marginTop:-4, marginBottom:14, background:"var(--gold-tint)", border:"1px solid #F2C089", borderRadius:8, padding:"9px 12px", cursor:"pointer" }}>
+          <input type="checkbox" checked={alsoGovFee} onChange={e=>toggleAlsoGovFee(e.target.checked)} />
+          Also create the Government Fee quotation for {templateService} (most clients need both)
+        </label>
       )}
       {(editableCustomer || editQuotation) && (
         <div className="row2">
@@ -1527,6 +1590,31 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
           <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop: 16 }}>
             <button className="btn" onClick={()=>setActivityPrompt(null)}>Cancel</button>
             <button className="btn btn-primary" onClick={confirmActivities}>Continue</button>
+          </div>
+        </Modal>
+      )}
+      {govFeeActivityPrompt && (
+        <Modal title="Business activities (for the Government Fee quotation)" sub="One Activity Fees line will be added per activity, numbered in order." onClose={()=>{ setGovFeeActivityPrompt(null); setAlsoGovFee(false); }} width={480}>
+          {govFeeActivityPrompt.activities.map((a, i) => (
+            <div key={i} className="field" style={{ display:"flex", gap:6, alignItems:"flex-end" }}>
+              <div style={{ flex:1 }}>
+                <label>{`Activity ${i + 1}`}</label>
+                <input value={a} autoFocus={i===0}
+                  onChange={e=>setGovFeeActivityPrompt(p=>({ ...p, activities: p.activities.map((x,idx)=>idx===i?e.target.value:x) }))}
+                  placeholder="e.g. Retail Sale of Fire Protection and Safety Equipment, Tools, and Materials" />
+              </div>
+              {govFeeActivityPrompt.activities.length > 1 && (
+                <button type="button" className="btn btn-sm btn-ghost" style={{ color:"var(--danger)" }}
+                  onClick={()=>setGovFeeActivityPrompt(p=>({ ...p, activities: p.activities.filter((_,idx)=>idx!==i) }))}><Trash2 size={13}/></button>
+              )}
+            </div>
+          ))}
+          <button type="button" className="btn btn-sm" style={{ marginBottom: 16 }}
+            onClick={()=>setGovFeeActivityPrompt(p=>({ ...p, activities: [...p.activities, ""] }))}><Plus size={13}/> Add another activity</button>
+          <div className="side-note" style={{ marginTop:0 }}>Leave blank and continue to keep the template's generic single Activity Fees line instead.</div>
+          <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop: 16 }}>
+            <button className="btn" onClick={()=>{ setGovFeeActivityPrompt(null); setAlsoGovFee(false); }}>Cancel</button>
+            <button className="btn btn-primary" onClick={confirmGovFeeActivities}>Continue</button>
           </div>
         </Modal>
       )}
@@ -1594,14 +1682,12 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
         </div>
       </div>
 
+      {saveError && <div className="side-note" style={{ color:"var(--danger)" }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{saveError}</div>}
       <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop: 16 }}>
         <button className="btn" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" disabled={!customer} onClick={()=>{
-          const payload = { dealId: editQuotation ? editQuotation.dealId : dealId, customer, items, terms, notes, subject, feeType, orderDiscount, bank, footerNote };
-          if (editQuotation) dispatch({ type:"UPDATE_QUOTATION", id: editQuotation.id, payload });
-          else dispatch({ type:"CREATE_QUOTATION", payload });
-          onClose();
-        }}>{editQuotation ? "Save changes" : "Save quotation"}</button>
+        <button className="btn btn-primary" disabled={saving || !customer} onClick={handleSubmit}>
+          {saving ? "Saving…" : editQuotation ? "Save changes" : alsoGovFee ? "Save both quotations" : "Save quotation"}
+        </button>
       </div>
     </Modal>
   );
