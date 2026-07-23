@@ -9,7 +9,20 @@ router.use(requireAuth);
 
 router.get("/", async (req, res) => {
   const isOpsMember = req.user.roles.includes("ops_member") && !isAdminLike(req.user.roles) && !req.user.roles.includes("ops_manager");
-  const rows = await query("SELECT * FROM job_cards ORDER BY created_at DESC");
+  // Traces each job card back through its sales order -> quotation -> deal -> lead to find who
+  // originally brought in the business — distinct from job_cards.created_by, which is whoever
+  // triggered onboarding/direct-creation, not necessarily the original lead owner. Job cards
+  // created directly (no sales_order_id) have no lead lineage, so this comes back NULL for them.
+  const rows = await query(`
+    SELECT jc.*, u.name AS lead_creator_name
+    FROM job_cards jc
+    LEFT JOIN sales_orders so ON so.id = jc.sales_order_id
+    LEFT JOIN quotations q ON q.id = so.quotation_id
+    LEFT JOIN deals d ON d.id = q.deal_id
+    LEFT JOIN leads l ON l.id = d.lead_id
+    LEFT JOIN users u ON u.id = l.owner
+    ORDER BY jc.created_at DESC
+  `);
   const assignees = await query("SELECT * FROM job_card_assignees");
   const logs = await query("SELECT * FROM job_card_status_log ORDER BY at ASC");
   let out = rows.map((r) => ({

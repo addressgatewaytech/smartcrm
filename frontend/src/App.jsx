@@ -265,6 +265,9 @@ const ADMIN_LIKE = ["super_admin", "admin", "admin_exec"];
 const money = (n) => "QAR " + Number(n || 0).toLocaleString("en-US", { maximumFractionDigits: 0 });
 const daysFromNow = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0,10); };
 const fmtDate = (s) => new Date(s).toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"numeric" });
+// Whole days elapsed since a date (0 = today) — used as a simple aging indicator, e.g. how long
+// a job card has been open.
+const daysSince = (s) => Math.max(0, Math.floor((Date.now() - new Date(s).setHours(0,0,0,0)) / 86400000));
 
 let seq = 1000;
 const nextId = (prefix) => prefix + "-" + (++seq);
@@ -3310,13 +3313,15 @@ function JobsPage({ state, dispatch, role, userId }) {
           {visible.length === 0 ? <Empty icon={ClipboardList} text="No job cards yet." /> : (
           <div style={{ overflowX:"auto" }}>
           <table className="agw-table" style={{ minWidth: 820 }}>
-            <thead><tr><th>Job card</th><th>Customer</th><th>Service</th><th>Assigned</th><th>Checklist</th><th>Priority</th><th>Target date</th><th>Status</th></tr></thead>
+            <thead><tr><th>Job card</th><th>Customer</th><th>Service</th><th>Lead by</th><th>Age</th><th>Assigned</th><th>Checklist</th><th>Priority</th><th>Target date</th><th>Status</th></tr></thead>
             <tbody>
               {visible.map(j => (
                 <tr key={j.id} onClick={()=>openDetail(j)}>
                   <td className="mono">{j.id}</td>
                   <td>{j.customer}</td>
                   <td style={{maxWidth:180}}>{j.service}{j.description && ` — ${j.description}`}</td>
+                  <td style={{fontSize:12,color:"var(--ink-soft)"}}>{j.leadCreatorName || "—"}</td>
+                  <td className="mono" style={{fontSize:12}}>{daysSince(j.createdAt)}d</td>
                   <td>
                     <div className="avatars">
                       {j.assignees.length === 0 ? <span className="pill">Unassigned</span> :
@@ -3352,6 +3357,7 @@ function JobsPage({ state, dispatch, role, userId }) {
                 <h5>{j.customer}</h5>
                 <div className="mono" style={{ fontSize:11, color:"var(--ink-soft)", marginTop:-4, marginBottom:4 }}>{j.id}</div>
                 <div className="meta">{j.service}{j.description && ` — ${j.description}`}</div>
+                <div className="meta" style={{ fontSize:11 }}>{j.leadCreatorName ? `Lead by ${j.leadCreatorName}` : ""}{j.leadCreatorName && " · "}{daysSince(j.createdAt)}d old</div>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                   <div className="avatars">
                     {j.assignees.length === 0 ? <span className="pill">Unassigned</span> :
@@ -3471,6 +3477,10 @@ function JobDetailModal({ job, dispatch, role, employees, onClose, onReassign, i
         </div>
       )}
       <Rail steps={["Created","Assigned","In Progress","Completed"]} current={["Completed","Cancelled"].includes(job.status) ? "Completed" : job.status} />
+      <div style={{ fontSize:12, color:"var(--ink-soft)", marginTop:8 }}>
+        {job.leadCreatorName && <>Lead by <strong style={{color:"var(--ink)"}}>{job.leadCreatorName}</strong> · </>}
+        {daysSince(job.createdAt)} day{daysSince(job.createdAt)===1?"":"s"} old
+      </div>
 
       {pendingApproval && (
         <div className="agw-card" style={{ marginTop: 14, borderColor:"#F2C089", background:"var(--gold-tint)" }}>

@@ -75,6 +75,7 @@ export const mapJobCard = (j) => ({
   id: j.id, salesOrderId: j.sales_order_id, customer: j.customer, service: j.service, description: j.description || "",
   status: j.status, priority: j.priority, targetDate: j.target_date, checklist: j.checklist || [],
   cancelReason: j.cancel_reason, createdBy: j.created_by, createdAt: j.created_at,
+  leadCreatorName: j.lead_creator_name || null,
   assignees: j.assignees || [], statusLog: (j.statusLog || []).map(mapStatusLogEntry),
 });
 
