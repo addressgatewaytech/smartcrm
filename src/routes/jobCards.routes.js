@@ -99,4 +99,11 @@ router.post("/:id/checklist", async (req, res) => {
   res.json({ ok: true });
 });
 
+// Admin-only hard delete — for cleaning up test/mistaken job cards. Child rows (assignees,
+// status log) cascade via FK ON DELETE CASCADE.
+router.delete("/:id", requireRole(["admin_like"]), async (req, res) => {
+  await query("DELETE FROM job_cards WHERE id = ?", [req.params.id]);
+  res.json({ ok: true });
+});
+
 module.exports = router;

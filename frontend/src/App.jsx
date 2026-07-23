@@ -3445,14 +3445,31 @@ function JobDetailModal({ job, dispatch, role, employees, onClose, onReassign, i
   const [showReject, setShowReject] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
   const [newItemLabel, setNewItemLabel] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const canManage = role === "ops_manager" || role === "ops_member" || ADMIN_LIKE.includes(role);
   const canApproveJob = role === "accounts" || ADMIN_LIKE.includes(role);
   const allDone = job.checklist.length > 0 && job.checklist.every(c => c.done);
   const pendingApproval = job.status === "Pending Approval";
   const locked = ["Completed","Cancelled"].includes(job.status) || pendingApproval;
 
+  const handleDelete = async () => {
+    setConfirmDelete(false);
+    try {
+      await dispatch({type:"DELETE_JOB_CARD", id:job.id});
+      onClose();
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : "Couldn't delete — please try again.");
+    }
+  };
+
   return (
+    <>
     <Modal title={job.id} sub={`${job.customer} — ${job.service}${job.description ? " — "+job.description : ""}`} onClose={onClose} width={640}>
+      {ADMIN_LIKE.includes(role) && (
+        <div style={{ display:"flex", justifyContent:"flex-end", marginTop:-6, marginBottom:6 }}>
+          <button className="btn btn-sm btn-ghost" style={{color:"var(--danger)"}} onClick={()=>setConfirmDelete(true)}><Trash2 size={13}/> Delete job card</button>
+        </div>
+      )}
       <Rail steps={["Created","Assigned","In Progress","Completed"]} current={["Completed","Cancelled"].includes(job.status) ? "Completed" : job.status} />
 
       {pendingApproval && (
@@ -3545,6 +3562,11 @@ function JobDetailModal({ job, dispatch, role, employees, onClose, onReassign, i
         </div>
       )}
     </Modal>
+    {confirmDelete && (
+      <ConfirmModal title={`Delete ${job.id}?`} body={`${job.customer} — ${job.service}. This permanently deletes the job card and its history. This can't be undone.`}
+        confirmLabel="Delete" onConfirm={handleDelete} onClose={()=>setConfirmDelete(false)} />
+    )}
+    </>
   );
 }
 

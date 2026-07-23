@@ -180,6 +180,7 @@ export const api = {
     toggleChecklistItem: (id, itemId) => post(`/job-cards/${id}/checklist`, { itemId }),
     removeChecklistItem: (id, itemId) => post(`/job-cards/${id}/checklist`, { itemId, remove: true }),
     addChecklistItem: (id, label) => post(`/job-cards/${id}/checklist`, { label }),
+    remove: (id) => del(`/job-cards/${id}`),
   },
   subscriptions: {
     plans: () => get("/subscriptions/plans"),
