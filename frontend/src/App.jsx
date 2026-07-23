@@ -677,6 +677,9 @@ export default function App() {
   const [page, setPage] = useState("dashboard");
   const [showMore, setShowMore] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // Set when "View quotation" is clicked from Deals, so QuotationsPage can highlight and
+  // scroll to that specific row instead of leaving the user to hunt for it in the full list.
+  const [highlightQuotationId, setHighlightQuotationId] = useState(null);
 
   if (!authChecked) return null;
   if (!currentUser) return <Login onLogin={handleLogin} />;
@@ -830,8 +833,8 @@ export default function App() {
           <div className="agw-content">
             {page === "dashboard" && <Dashboard {...ctx} setPage={setPage} />}
             {page === "leads" && <LeadsPage {...ctx} setPage={setPage} />}
-            {page === "deals" && <DealsPage {...ctx} setPage={setPage} />}
-            {page === "quotations" && <QuotationsPage {...ctx} />}
+            {page === "deals" && <DealsPage {...ctx} setPage={setPage} onViewQuotation={setHighlightQuotationId} />}
+            {page === "quotations" && <QuotationsPage {...ctx} highlightId={highlightQuotationId} onHighlightHandled={()=>setHighlightQuotationId(null)} />}
             {page === "quotationTemplates" && <QuotationTemplatesPage {...ctx} />}
             {page === "customers" && <CustomersPage {...ctx} />}
             {page === "dataManager" && <DataManagerPage {...ctx} />}
@@ -1271,8 +1274,9 @@ function LeadsPage({ state, dispatch, userId, role }) {
 /* DEALS                                                                   */
 /* ---------------------------------------------------------------------- */
 
-function DealsPage({ state, dispatch, setPage }) {
-  const [view, setView] = useState("kanban");
+function DealsPage({ state, dispatch, setPage, onViewQuotation }) {
+  const [view, setView] = useState("table");
+  const viewQuotationFor = (d) => { onViewQuotation(state.quotations.find(q=>q.dealId===d.id)?.id); setPage("quotations"); };
   const [quoteFor, setQuoteFor] = useState(null);
   const [editDeal, setEditDeal] = useState(null);
   const [removeDeal, setRemoveDeal] = useState(null);
@@ -1311,7 +1315,7 @@ function DealsPage({ state, dispatch, setPage }) {
                     {d.stage === "Open" && !state.quotations.find(q=>q.dealId===d.id) &&
                       <button className="btn btn-sm" onClick={()=>setQuoteFor(d)}>Create quotation</button>}
                     {state.quotations.find(q=>q.dealId===d.id) &&
-                      <button className="btn btn-sm btn-ghost" onClick={()=>setPage("quotations")}>View quotation</button>}
+                      <button className="btn btn-sm btn-ghost" onClick={()=>viewQuotationFor(d)}>View quotation</button>}
                     <RowActions onEdit={()=>setEditDeal(d)} onRemove={()=>setRemoveDeal(d)} />
                   </td>
                 </tr>
@@ -1346,7 +1350,7 @@ function DealsPage({ state, dispatch, setPage }) {
                 {stage === "Open" && !state.quotations.find(q=>q.dealId===d.id) &&
                   <button className="btn btn-sm" style={{marginTop:8, width:"100%"}} onClick={()=>setQuoteFor(d)}>Create quotation</button>}
                 {state.quotations.find(q=>q.dealId===d.id) &&
-                  <button className="btn btn-sm btn-ghost" style={{marginTop:8, width:"100%"}} onClick={()=>setPage("quotations")}>View quotation <ChevronRight size={13}/></button>}
+                  <button className="btn btn-sm btn-ghost" style={{marginTop:8, width:"100%"}} onClick={()=>viewQuotationFor(d)}>View quotation <ChevronRight size={13}/></button>}
               </div>
             ))}
             {state.deals.filter(d=>d.stage===stage).length===0 && <div style={{fontSize:12,color:"var(--ink-soft)",padding:"6px 6px"}}>No deals</div>}
@@ -1697,7 +1701,7 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
 /* QUOTATIONS                                                              */
 /* ---------------------------------------------------------------------- */
 
-function QuotationsPage({ state, dispatch, role, userId }) {
+function QuotationsPage({ state, dispatch, role, userId, highlightId, onHighlightHandled }) {
   const [openId, setOpenId] = useState(null);
   // Derived, not a frozen snapshot — so in-modal actions (favorite toggle, etc.) that refresh
   // state.quotations are reflected immediately instead of only after closing and reopening.
@@ -1716,6 +1720,14 @@ function QuotationsPage({ state, dispatch, role, userId }) {
   const customerOptions = state.customers.map(c=>c.name);
   const editable = q => ["Draft","Pending Manager Approval"].includes(q.status);
 
+  // Scrolls the row "View quotation" (from Deals) pointed at into view — otherwise it's easy to
+  // lose in a long list with no indication of which one to click.
+  useEffect(() => {
+    if (!highlightId) return;
+    const el = document.getElementById(`quote-row-${highlightId}`);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [highlightId]);
+
   return (
     <div>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 14 }}>
@@ -1732,7 +1744,9 @@ function QuotationsPage({ state, dispatch, role, userId }) {
           <thead><tr><th></th><th>Quotation</th><th>Customer</th><th>Fee type</th><th>Amount (QAR)</th><th>Valid till</th><th>Status</th><th></th><th></th></tr></thead>
           <tbody>
             {rows.map(q => (
-              <tr key={q.id} onClick={()=>setOpenId(q.id)}>
+              <tr key={q.id} id={`quote-row-${q.id}`}
+                onClick={()=>{ setOpenId(q.id); if (highlightId) onHighlightHandled(); }}
+                style={q.id === highlightId ? { background:"var(--gold-tint)", boxShadow:"inset 3px 0 0 var(--gold)" } : undefined}>
                 <td>
                   <button className="btn btn-sm btn-ghost" title={q.favorite ? "Remove from favorites" : "Mark as favorite"}
                     onClick={(e)=>{ e.stopPropagation(); dispatch({type:"TOGGLE_QUOTATION_FAVORITE", id:q.id}); }}>
@@ -2295,6 +2309,7 @@ function matchesExpiryFilter(customer, filterKey) {
 }
 
 function CustomersPage({ state, dispatch }) {
+  const [view, setView] = useState("table");
   const [openId, setOpenId] = useState(null);
   // Derived, not a frozen snapshot — see the identical fix on JobsPage/QuotationsPage: in-modal
   // actions (doc/employee edits) refresh state.customers, and the modal needs to reflect that live.
@@ -2330,6 +2345,44 @@ function CustomersPage({ state, dispatch }) {
         </div>
         <button className="btn btn-primary" onClick={()=>setShowAdd(true)}><Plus size={15}/> New customer</button>
       </div>
+
+      <div className="tabbar" style={{ marginBottom: 14 }}>
+        <button className={`tab ${view==="table"?"active":""}`} onClick={()=>setView("table")}>Table</button>
+        <button className={`tab ${view==="card"?"active":""}`} onClick={()=>setView("card")}>Card</button>
+      </div>
+
+      {view === "table" && (
+        <div className="agw-card" style={{ padding: 0 }}>
+          {filtered.length === 0 ? (
+            state.customers.length === 0
+              ? <Empty icon={UserCheck} text="No customers yet — add one directly, or they'll appear once a quotation converts to a sales order." />
+              : <Empty icon={Search} text="No customers match these filters." />
+          ) : (
+          <div style={{ overflowX:"auto" }}>
+          <table className="agw-table" style={{ minWidth: 780 }}>
+            <thead><tr><th>Customer</th><th>Contact</th><th>Phone</th><th>Email</th><th>Company size</th><th>KYC</th><th></th></tr></thead>
+            <tbody>
+              {filtered.map(c => {
+                const flagged = [...c.docs, ...c.employees.flatMap(e=>e.docs)].filter(d => docState(d.expiry).label !== "Valid").length;
+                return (
+                  <tr key={c.id} onClick={()=>setOpenId(c.id)}>
+                    <td>{c.name}</td>
+                    <td>{c.contact || "—"}</td>
+                    <td className="mono" style={{fontSize:12}}>{c.phone || "—"}</td>
+                    <td style={{fontSize:12.5}}>{c.email || "—"}</td>
+                    <td>{c.companySize || "—"}</td>
+                    <td>{flagged > 0 ? <Stamp tone="warning">{flagged} flagged</Stamp> : <Stamp tone="success">Clear</Stamp>}</td>
+                    <td><RowActions onEdit={()=>setEditCustomer(c)} onRemove={()=>setRemoveCustomer(c)} /></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          </div>)}
+        </div>
+      )}
+
+      {view === "card" && (
       <div className="agw-grid" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
         {filtered.map(c => {
           const flagged = [...c.docs, ...c.employees.flatMap(e=>e.docs)].filter(d => docState(d.expiry).label !== "Valid").length;
@@ -2359,6 +2412,7 @@ function CustomersPage({ state, dispatch }) {
         {filtered.length===0 && state.customers.length>0 && <Empty icon={Search} text="No customers match these filters." />}
         {state.customers.length===0 && <Empty icon={UserCheck} text="No customers yet — add one directly, or they'll appear once a quotation converts to a sales order." />}
       </div>
+      )}
       {open && <CustomerDetailModal customer={open} state={state} dispatch={dispatch} onClose={()=>setOpenId(null)} />}
       {editCustomer && <NewCustomerModal customer={editCustomer} dispatch={dispatch} onClose={()=>setEditCustomer(null)} />}
       {removeCustomer && <ConfirmModal title={`Remove ${removeCustomer.name}?`} body="This deletes the customer profile, their KYC documents, and any employee records on file. This can't be undone." onConfirm={()=>dispatch({type:"DELETE_CUSTOMER", id:removeCustomer.id})} onClose={()=>setRemoveCustomer(null)} />}
@@ -3346,7 +3400,7 @@ function PaymentHistoryModal({ invoice: inv, dispatch, onClose }) {
 /* ---------------------------------------------------------------------- */
 
 function JobsPage({ state, dispatch, role, userId }) {
-  const [view, setView] = useState("kanban");
+  const [view, setView] = useState("table");
   const [assignFor, setAssignFor] = useState(null);
   const [detailId, setDetailId] = useState(null);
   const [detailCancelOnOpen, setDetailCancelOnOpen] = useState(false);
@@ -3904,6 +3958,7 @@ const attendanceTone = (status) => status === "Present" ? "success" : status ===
 function HrPage({ state, dispatch, role, userId }) {
   const isAdmin = ADMIN_LIKE.includes(role) || role === "hr";
   const [tab, setTab] = useState(isAdmin ? "team" : "me");
+  const [teamView, setTeamView] = useState("table");
   const [query, setQuery] = useState("");
   const [docsFor, setDocsFor] = useState(null);
   const [leaveFor, setLeaveFor] = useState(null);
@@ -3956,7 +4011,11 @@ function HrPage({ state, dispatch, role, userId }) {
           </button>
         </div>
         {tab === "team" && (
-          <div style={{ display:"flex", gap:8 }}>
+          <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+            <div className="tabbar" style={{ marginBottom:0, borderBottom:"none" }}>
+              <button className={`tab ${teamView==="table"?"active":""}`} onClick={()=>setTeamView("table")}>Table</button>
+              <button className={`tab ${teamView==="card"?"active":""}`} onClick={()=>setTeamView("card")}>Card</button>
+            </div>
             <button className="btn btn-sm" onClick={()=>setAttendanceFor(state.employees[0]?.id)}><CalendarClock size={13}/> Mark attendance</button>
             <div style={{ position:"relative", maxWidth: 260 }}>
               <Search size={15} style={{ position:"absolute", left:12, top:9, color:"var(--ink-soft)" }} />
@@ -3973,7 +4032,42 @@ function HrPage({ state, dispatch, role, userId }) {
         </div>
       )}
 
-      {tab === "team" && (
+      {tab === "team" && teamView === "table" && (
+        <div className="agw-card" style={{ padding: 0 }}>
+          {filtered.length === 0 ? <Empty icon={Search} text="No team members match that search." /> : (
+          <div style={{ overflowX:"auto" }}>
+          <table className="agw-table" style={{ minWidth: 760 }}>
+            <thead><tr><th>Employee</th><th>Department</th><th>Designation</th><th>Today</th><th>Leave balance</th><th>Docs</th><th></th></tr></thead>
+            <tbody>
+              {filtered.map(e => {
+                const status = onLeaveToday(e) ? "Leave" : todayStatusOf(e);
+                const flagged = e.docs.filter(d => docState(d.expiry).label !== "Valid").length;
+                return (
+                  <tr key={e.id}>
+                    <td style={{display:"flex",alignItems:"center",gap:8}}>
+                      {e.photoUrl ? <img src={e.photoUrl} alt={e.name} style={{width:28,height:28,borderRadius:"50%",objectFit:"cover"}} /> : <span className="avatar">{e.initials}</span>}
+                      {e.name}
+                    </td>
+                    <td>{e.dept}</td>
+                    <td style={{fontSize:12.5}}>{e.designation}</td>
+                    <td><Stamp tone={attendanceTone(status)}>{status}</Stamp></td>
+                    <td>{e.leaveBalance}</td>
+                    <td>{flagged > 0 ? <Stamp tone="warning">{flagged} flagged</Stamp> : <Stamp tone="success">Clear</Stamp>}</td>
+                    <td style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                      <button className="btn btn-sm btn-ghost" onClick={()=>setDocsFor(e)}>Docs</button>
+                      <button className="btn btn-sm btn-ghost" onClick={()=>setLeaveFor(e)}>Leave</button>
+                      {isAdmin && <button className="btn btn-sm btn-ghost" onClick={()=>setAttendanceFor(e.id)}>Attendance</button>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          </div>)}
+        </div>
+      )}
+
+      {tab === "team" && teamView === "card" && (
         <div className="agw-grid" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
           {filtered.map(e => (
             <EmployeeHrCard key={e.id} e={e} state={state} dispatch={dispatch} isAdmin={isAdmin} userId={userId} onOpenDocs={()=>setDocsFor(e)} onOpenLeave={()=>setLeaveFor(e)} onMarkAttendance={()=>setAttendanceFor(e.id)} onRequestPunch={()=>setPunchFor(e)} />
