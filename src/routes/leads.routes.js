@@ -2,7 +2,7 @@ const express = require("express");
 const { query, withTransaction } = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
 const { isAdminLike } = require("../middleware/roles");
-const { nextId, nextSequentialId, today } = require("../utils/helpers");
+const { nextId, nextSequentialId, today, findDuplicateCustomer } = require("../utils/helpers");
 const { checkExistingData } = require("./dataManager.routes").internal;
 
 const router = express.Router();
@@ -17,23 +17,16 @@ router.get("/", async (req, res) => {
   res.json(rows.map((r) => ({ ...r, followUps: followUps.filter((f) => f.lead_id === r.id) })));
 });
 
-// Finds a Customer that already matches this lead (by company name, or by phone/email
-// belonging to a different-named customer) rather than creating a duplicate profile; only
-// creates a new Customer when nothing matches. Returns { customerId, duplicateOf } — duplicateOf
-// is set (existing customer name) only when the match came from phone/email, not name, so the
-// frontend can surface "this looks like an existing customer" instead of silently merging.
+// Finds a Customer that already matches this lead (by company name, or by phone/email belonging
+// to a different-named customer — both normalized the same way findDuplicateCustomer uses
+// everywhere else, so "+974 5049 4933" correctly matches "50494933") rather than creating a
+// duplicate profile; only creates a new Customer when nothing matches. Returns
+// { customerId, duplicateOf } — duplicateOf is set (existing customer name) only when the match
+// came from phone/email, not name, so the frontend can surface "this looks like an existing
+// customer" instead of silently merging.
 async function findOrCreateCustomerForLead(b) {
-  const [byName] = await query("SELECT id, name FROM customers WHERE LOWER(name) = LOWER(?)", [b.company]);
-  if (byName) return { customerId: byName.id, duplicateOf: null };
-
-  const dupConditions = [];
-  const dupParams = [];
-  if (b.phone) { dupConditions.push("phone = ?"); dupParams.push(b.phone); }
-  if (b.email) { dupConditions.push("email = ?"); dupParams.push(b.email); }
-  if (dupConditions.length) {
-    const [byContact] = await query(`SELECT id, name FROM customers WHERE ${dupConditions.join(" OR ")} LIMIT 1`, dupParams);
-    if (byContact) return { customerId: byContact.id, duplicateOf: byContact.name };
-  }
+  const dup = await findDuplicateCustomer(query, { name: b.company, phone: b.phone, email: b.email });
+  if (dup) return { customerId: dup.match.id, duplicateOf: dup.field === "name" ? null : dup.match.name };
 
   const customerId = nextId("CU");
   await query("INSERT INTO customers (id, name, type, contact, phone, email) VALUES (?,?,?,?,?,?)",

@@ -39,10 +39,36 @@ const normCompany = (c) => (c || "").trim().toLowerCase();
 
 const money = (n) => `QAR ${Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+/**
+ * Single source of truth for "is this the same customer" — used by both POST/PATCH /customers
+ * (block outright) and lead creation (auto-link instead of creating a second profile). A previous
+ * per-route implementation only checked name (exact case-insensitive) and phone (exact string, so
+ * "+974 5049 4933" didn't match "50494933"); this normalizes phone/email/name the same way
+ * Data Manager's own dedup already does, so a typo'd space or missing country code doesn't let a
+ * duplicate slip through.
+ * `query` is the db query function; `excludeId` skips a row when checking an existing customer's
+ * own edit. Returns the matching row ({id, name, ...}) plus which field matched, or null.
+ */
+async function findDuplicateCustomer(query, { name, phone, email }, excludeId = null) {
+  const rows = await query(
+    `SELECT id, name, phone, email FROM customers${excludeId ? " WHERE id != ?" : ""}`,
+    excludeId ? [excludeId] : []
+  );
+  const nName = normCompany(name);
+  const nPhone = normPhone(phone);
+  const nEmail = normEmail(email);
+  for (const c of rows) {
+    if (nName && normCompany(c.name) === nName) return { match: c, field: "name" };
+    if (nPhone && normPhone(c.phone) === nPhone) return { match: c, field: "phone" };
+    if (nEmail && normEmail(c.email) === nEmail) return { match: c, field: "email" };
+  }
+  return null;
+}
+
 /** Sum of a quotation/order's line items after per-item and order-level discount. */
 function quoteTotal(items, orderDiscount = 0) {
   const subtotal = (items || []).reduce((a, it) => a + it.qty * it.price * (1 - (it.discountPct || 0) / 100), 0);
   return { subtotal, total: Math.max(0, subtotal - (orderDiscount || 0)) };
 }
 
-module.exports = { nextId, nextSequentialId, today, daysFromNow, normPhone, normEmail, normCompany, money, quoteTotal };
+module.exports = { nextId, nextSequentialId, today, daysFromNow, normPhone, normEmail, normCompany, money, quoteTotal, findDuplicateCustomer };

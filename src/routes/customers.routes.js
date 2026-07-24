@@ -2,7 +2,7 @@ const express = require("express");
 const { query } = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
 const { requireRole, isAdminLike } = require("../middleware/roles");
-const { nextId, quoteTotal } = require("../utils/helpers");
+const { nextId, quoteTotal, findDuplicateCustomer } = require("../utils/helpers");
 
 const router = express.Router();
 router.use(requireAuth);
@@ -44,8 +44,12 @@ router.get("/", async (req, res) => {
 });
 
 router.post("/", async (req, res) => {
-  const id = nextId("CU");
   const b = req.body;
+  const dup = await findDuplicateCustomer(query, { name: b.name, phone: b.phone, email: b.email });
+  if (dup) {
+    return res.status(400).json({ error: `This looks like a duplicate of the existing customer "${dup.match.name}" (matched by ${dup.field}) — please use that profile instead of creating a new one.` });
+  }
+  const id = nextId("CU");
   await query("INSERT INTO customers (id, name, type, contact, phone, landline, contact_mobile, email, address, company_size) VALUES (?,?,?,?,?,?,?,?,?,?)",
     [id, b.name, b.type || "Company", b.contact || null, b.phone || null, b.landline || null, b.contactMobile || null, b.email || null, b.address || null, b.companySize || null]);
   res.status(201).json({ id });
@@ -53,6 +57,10 @@ router.post("/", async (req, res) => {
 
 router.patch("/:id", requireRole(["admin_like"]), async (req, res) => {
   const b = req.body;
+  const dup = await findDuplicateCustomer(query, { name: b.name, phone: b.phone, email: b.email }, req.params.id);
+  if (dup) {
+    return res.status(400).json({ error: `This would duplicate the existing customer "${dup.match.name}" (matched by ${dup.field}) — please merge into that profile instead.` });
+  }
   await query("UPDATE customers SET name=COALESCE(?,name), type=COALESCE(?,type), contact=?, phone=?, landline=?, contact_mobile=?, email=?, address=?, company_size=? WHERE id=?",
     [b.name, b.type, b.contact || null, b.phone || null, b.landline || null, b.contactMobile || null, b.email || null, b.address || null, b.companySize || null, req.params.id]);
   res.json({ ok: true });
