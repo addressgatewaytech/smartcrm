@@ -3272,47 +3272,51 @@ function PlanCatalog({ state, dispatch, isAdmin }) {
         {isAdmin && <RowActions onRemove={()=>setRemovePlan(selected)} />}
       </div>
 
-      <div style={{ overflowX:"auto" }}>
-        <table className="agw-table" style={{ minWidth: plan.tiers.length > 1 ? 720 : 420 }}>
-          <thead>
-            <tr>
-              <th>Package Feature</th>
-              {plan.tiers.map(t => <th key={t.name} style={{textAlign:"center"}}>{t.name.toUpperCase()}</th>)}
-            </tr>
-          </thead>
-          <tbody>
-            <tr><td style={{fontWeight:500}}>Annual Fee</td>{plan.tiers.map(t=><td key={t.name} className="mono" style={{textAlign:"center"}}>{money(t.annualFee)} / Year</td>)}</tr>
-            {visibleRows.map(row => (
-              <tr key={row.key}>
-                <td style={{fontWeight:500}}>{row.label}</td>
-                {plan.tiers.map(t=><td key={t.name} style={{textAlign:"center",fontSize:12.5}}>{t[row.key]!==undefined ? (row.format ? row.format(t[row.key], t) : t[row.key]) : "—"}</td>)}
-              </tr>
-            ))}
-            {extraLabels.map(label => (
-              <tr key={label}>
-                <td style={{fontWeight:500}}>{label}</td>
-                {plan.tiers.map(t => <td key={t.name} style={{textAlign:"center",fontSize:12.5}}>{(t.extraFeatures||[]).find(f=>f.label===label)?.value || "—"}</td>)}
-              </tr>
-            ))}
-            {isAdmin && (
-              <tr>
-                <td></td>
-                {plan.tiers.map(t=>(
-                  <td key={t.name} style={{textAlign:"center"}}>
-                    <div style={{ display:"flex", gap:4, justifyContent:"center" }}>
-                      <button className="btn btn-sm" onClick={()=>startEdit(t)}>Edit</button>
-                      {plan.tiers.length > 1 && <button className="btn btn-sm btn-ghost" style={{color:"var(--danger)"}} onClick={()=>setRemoveTier(t.name)}><Trash2 size={12}/></button>}
-                    </div>
-                  </td>
+      <div style={{ display:"flex", gap:16, overflowX:"auto", paddingTop: 14, paddingBottom: 6 }}>
+        {plan.tiers.map((t, i) => {
+          const popular = plan.tiers.length >= 3 && i === 1;
+          const rows = [
+            ...visibleRows.map(row => ({ label: row.label, value: t[row.key]!==undefined ? (row.format ? row.format(t[row.key], t) : t[row.key]) : null })),
+            ...extraLabels.map(label => ({ label, value: (t.extraFeatures||[]).find(f=>f.label===label)?.value || null })),
+          ].map(r => ({ ...r, value: r.value === "—" ? null : r.value }));
+          return (
+            <div key={t.name} style={{
+              flex: "1 0 220px", minWidth: 220, maxWidth: 280, position:"relative",
+              background: "var(--surface)", borderRadius: 14, padding: "22px 20px",
+              border: popular ? "2px solid var(--brand)" : "1px solid var(--hair)",
+              boxShadow: popular ? "0 8px 24px rgba(19,145,172,0.14)" : "0 1px 3px rgba(0,0,0,0.04)",
+            }}>
+              {popular && (
+                <div style={{ position:"absolute", top:-12, left:"50%", transform:"translateX(-50%)", background:"var(--brand)", color:"#fff",
+                  fontSize:10.5, fontWeight:600, letterSpacing:".03em", padding:"4px 12px", borderRadius:20, whiteSpace:"nowrap" }}>MOST POPULAR</div>
+              )}
+              <div style={{ textAlign:"center", fontSize:12, fontWeight:600, letterSpacing:".04em", color:"var(--ink-soft)", marginTop: popular ? 6 : 0 }}>{t.name.toUpperCase()}</div>
+              <div style={{ textAlign:"center", margin:"10px 0 4px" }}>
+                <span className="disp" style={{ fontSize:15, color:"var(--ink-soft)", verticalAlign:"top", marginRight:2 }}>QAR</span>
+                <span className="disp" style={{ fontSize:28, fontWeight:700 }}>{t.annualFee.toLocaleString()}</span>
+              </div>
+              <div style={{ textAlign:"center", fontSize:11.5, color:"var(--ink-soft)", marginBottom:16 }}>per year</div>
+              <div style={{ borderTop:"1px solid var(--hair)", paddingTop:14 }}>
+                {rows.map(r => (
+                  <div key={r.label} style={{ display:"flex", gap:8, alignItems:"flex-start", marginBottom:10, fontSize:12.5 }}>
+                    {r.value ? <Check size={14} style={{ color:"var(--success)", flexShrink:0, marginTop:1 }}/> : <span style={{width:14,flexShrink:0,textAlign:"center",color:"var(--hair)"}}>—</span>}
+                    <span style={{ color: r.value ? "var(--ink)" : "var(--ink-soft)" }}><strong style={{fontWeight:500}}>{r.label}:</strong> {r.value || "Not included"}</span>
+                  </div>
                 ))}
-              </tr>
-            )}
-          </tbody>
-        </table>
+              </div>
+              {isAdmin && (
+                <div style={{ display:"flex", gap:6, justifyContent:"center", marginTop:14, paddingTop:14, borderTop:"1px solid var(--hair)" }}>
+                  <button className="btn btn-sm" onClick={()=>startEdit(t)}>Edit</button>
+                  {plan.tiers.length > 1 && <button className="btn btn-sm btn-ghost" style={{color:"var(--danger)"}} onClick={()=>setRemoveTier(t.name)}><Trash2 size={12}/></button>}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       {isAdmin && (
-        <button className="btn btn-sm" style={{ marginTop: 10 }} onClick={()=>setAddingTier(true)}><Plus size={13}/> Add tier</button>
+        <button className="btn btn-sm" style={{ marginTop: 16 }} onClick={()=>setAddingTier(true)}><Plus size={13}/> Add tier</button>
       )}
 
       <div className="agw-card" style={{ marginTop: 18 }}>
