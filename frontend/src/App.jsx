@@ -1192,24 +1192,26 @@ function Dashboard({ state, role, userId, setPage }) {
     state.invoices.reduce((a,inv) => a + inv.payments.filter(p=>(p.date||"").slice(0,7)===key).reduce((x,p)=>x+p.amount,0), 0)
   );
 
+  // Every KPI links to the page it's counted from — clicking the number takes you straight there
+  // instead of leaving you to find the right nav item yourself.
   const kpis = role === "ops_manager" || role === "ops_member" ? [
-    { label: "Jobs in progress", value: jobsInProgress },
-    { label: "Completed", value: jobsCompleted },
-    { label: "Cancelled", value: jobsCancelled },
-    { label: role === "ops_member" ? "Assigned to me" : "Unassigned jobs", value: role === "ops_member" ? myJobs.length : state.jobCards.filter(j=>j.assignees.length===0).length },
+    { label: "Jobs in progress", value: jobsInProgress, page: "jobs" },
+    { label: "Completed", value: jobsCompleted, page: "jobs" },
+    { label: "Cancelled", value: jobsCancelled, page: "jobs" },
+    { label: role === "ops_member" ? "Assigned to me" : "Unassigned jobs", value: role === "ops_member" ? myJobs.length : state.jobCards.filter(j=>j.assignees.length===0).length, page: "jobs" },
   ] : role === "accounts" ? [
-    { label: "Outstanding balance", value: money(outstanding) },
-    { label: "Invoiced this period", value: money(periodInvoiced) },
-    { label: "Collected this period", value: money(periodCollected) },
-    { label: "Paid in full", value: state.invoices.filter(i=>i.status==="Paid").length },
+    { label: "Outstanding balance", value: money(outstanding), page: "invoices" },
+    { label: "Invoiced this period", value: money(periodInvoiced), page: "invoices" },
+    { label: "Collected this period", value: money(periodCollected), page: "invoices" },
+    { label: "Paid in full", value: state.invoices.filter(i=>i.status==="Paid").length, page: "invoices" },
   ] : role === "hr" ? [
-    { label: "Employees", value: state.employees.length },
-    { label: "Documents expiring", value: state.employees.flatMap(e=>e.docs).filter(d=>docState(d.expiry).label!=="Valid").length },
+    { label: "Employees", value: state.employees.length, page: "hr" },
+    { label: "Documents expiring", value: state.employees.flatMap(e=>e.docs).filter(d=>docState(d.expiry).label!=="Valid").length, page: "hr" },
   ] : [
-    { label: "New leads this period", value: periodLeads },
-    { label: "Pipeline value", value: money(pipelineValue) },
-    { label: "Business volume this period", value: money(businessVolume) },
-    { label: "Job cards completed", value: periodJobsCompleted },
+    { label: "New leads this period", value: periodLeads, page: "leads" },
+    { label: "Pipeline value", value: money(pipelineValue), page: "deals" },
+    { label: "Business volume this period", value: money(businessVolume), page: "quotations" },
+    { label: "Job cards completed", value: periodJobsCompleted, page: "jobs" },
   ];
 
   return (
@@ -1228,7 +1230,9 @@ function Dashboard({ state, role, userId, setPage }) {
 
       <div className="agw-grid" style={{ gridTemplateColumns: `repeat(${kpis.length}, 1fr)`, marginBottom: 20 }}>
         {kpis.map(k => (
-          <div className="agw-card" key={k.label}>
+          <div className="agw-card" key={k.label} onClick={k.page ? () => setPage(k.page) : undefined}
+            style={k.page ? { cursor: "pointer" } : undefined}
+            title={k.page ? "View details" : undefined}>
             <div className="kpi-label">{k.label}</div>
             <div className="kpi-value disp">{k.value}</div>
           </div>
@@ -4644,7 +4648,6 @@ function EmployeeHrCard({ e, state, dispatch, isAdmin, userId, onOpenDocs, onOpe
         <div style={{ flex:1, minWidth:0 }}>
           <strong style={{ fontSize:14.5 }}>{e.name}</strong>
           <div style={{ fontSize:12, color:"var(--ink-soft)" }}>{e.designation}</div>
-          <div style={{ fontSize:11.5, color:"var(--ink-soft)" }}>{e.dept} · joined {fmtDate(e.joined)}</div>
         </div>
         <div style={{ textAlign:"right" }}>
           <Stamp tone={attendanceTone(status)}>{status}</Stamp>
