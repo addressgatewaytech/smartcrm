@@ -1,14 +1,26 @@
 const express = require("express");
 const { query, withTransaction } = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
-const { requireRole } = require("../middleware/roles");
+const { requireRole, isAdminLike } = require("../middleware/roles");
 const { nextId, daysFromNow } = require("../utils/helpers");
 
 const router = express.Router();
 router.use(requireAuth);
 
+// Same visibility rule as /leads and /deals: a sales_exec only sees sales orders created from
+// their own quotations (joined via quotation_id -> quotations.owner); managers/admins see all.
 router.get("/", async (req, res) => {
-  res.json(await query("SELECT * FROM sales_orders ORDER BY created_at DESC"));
+  const isSalesExecOnly = req.user.roles.includes("sales_exec") && !isAdminLike(req.user.roles) && !req.user.roles.includes("sales_manager");
+  const rows = isSalesExecOnly
+    ? await query(
+        `SELECT so.* FROM sales_orders so
+         LEFT JOIN quotations q ON q.id = so.quotation_id
+         WHERE q.owner = ? OR q.owner IS NULL
+         ORDER BY so.created_at DESC`,
+        [req.user.id]
+      )
+    : await query("SELECT * FROM sales_orders ORDER BY created_at DESC");
+  res.json(rows);
 });
 
 // Onboard client: generates the Invoice and the first Job Card (normal path — starts at "Created",

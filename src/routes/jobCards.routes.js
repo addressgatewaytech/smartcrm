@@ -9,12 +9,13 @@ router.use(requireAuth);
 
 router.get("/", async (req, res) => {
   const isOpsMember = req.user.roles.includes("ops_member") && !isAdminLike(req.user.roles) && !req.user.roles.includes("ops_manager");
+  const isSalesExecOnly = req.user.roles.includes("sales_exec") && !isAdminLike(req.user.roles) && !req.user.roles.includes("sales_manager");
   // Traces each job card back through its sales order -> quotation -> deal -> lead to find who
   // originally brought in the business — distinct from job_cards.created_by, which is whoever
   // triggered onboarding/direct-creation, not necessarily the original lead owner. Job cards
   // created directly (no sales_order_id) have no lead lineage, so this comes back NULL for them.
   const rows = await query(`
-    SELECT jc.*, u.name AS lead_creator_name
+    SELECT jc.*, u.name AS lead_creator_name, q.owner AS quotation_owner
     FROM job_cards jc
     LEFT JOIN sales_orders so ON so.id = jc.sales_order_id
     LEFT JOIN quotations q ON q.id = so.quotation_id
@@ -32,6 +33,13 @@ router.get("/", async (req, res) => {
     statusLog: logs.filter((l) => l.job_card_id === r.id),
   }));
   if (isOpsMember) out = out.filter((j) => j.assignees.includes(req.user.id));
+  // Same visibility rule as /deals, /sales-orders, /invoices: a sales_exec only sees job cards
+  // from their own quotations, plus anything they directly created themselves (no sales order to
+  // trace ownership through) or that has no traceable owner at all.
+  if (isSalesExecOnly) {
+    out = out.filter((j) => j.quotation_owner === req.user.id || (!j.sales_order_id && j.created_by === req.user.id) || (j.sales_order_id && !j.quotation_owner));
+  }
+  out = out.map(({ quotation_owner, ...rest }) => rest);
   res.json(out);
 });
 
