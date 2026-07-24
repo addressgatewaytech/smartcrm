@@ -89,6 +89,17 @@ export function useApiStore(enabled) {
     })();
   }, [enabled, refresh, refreshAttendance]);
 
+  // Notifications are the one thing another user's action can create without this session doing
+  // anything itself (a job card needing approval, a lead assigned, ...), so unlike everything else
+  // here (which only refreshes after a dispatch), this polls on a plain timer — the bell badge and
+  // any desktop/mobile notification triggered off it (see notifyNewItems in App.jsx) would
+  // otherwise only ever update after this tab's own next unrelated action.
+  useEffect(() => {
+    if (!enabled) return;
+    const id = setInterval(() => { refresh(["notifications"]).catch(() => {}); }, 45000);
+    return () => clearInterval(id);
+  }, [enabled, refresh]);
+
   const dispatch = useCallback(async (action) => {
     switch (action.type) {
       // --- Data Manager --------------------------------------------------------------------

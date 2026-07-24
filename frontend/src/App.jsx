@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import * as XLSX from "xlsx";
 import { api, setToken, getToken, ApiError, isImpersonating, beginImpersonation, endImpersonation, clearAllTokens } from "./api";
 import { useApiStore } from "./store";
@@ -851,6 +851,31 @@ export default function App() {
   // Set when "View quotation" is clicked from Deals, so QuotationsPage can highlight and
   // scroll to that specific row instead of leaving the user to hunt for it in the full list.
   const [highlightQuotationId, setHighlightQuotationId] = useState(null);
+
+  // Desktop/mobile OS notifications for anything new in this user's own notification feed (job
+  // card awaiting approval, lead assigned, ...), on top of the in-app bell. Combined with the 45s
+  // poll in useApiStore, this is what makes the bell (and this) live instead of only updating after
+  // this tab's own next action. Requires the user to have granted permission (see NotificationsPage).
+  const notifiedIds = useRef(new Set());
+  const notifSeeded = useRef(false);
+  useEffect(() => {
+    if (!currentUser) return;
+    const myRole = activeRole || currentUser.roles[0];
+    const myId = currentUser.id;
+    const mine = state.notifications.filter(n => n.audience.includes(myRole) || n.audience.includes(myId));
+    if (!notifSeeded.current) {
+      // First time this session we see the list — mark everything already there as "seen" so
+      // reloading doesn't re-fire a toast for every notification that already existed.
+      mine.forEach(n => notifiedIds.current.add(n.id));
+      notifSeeded.current = true;
+      return;
+    }
+    if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
+    mine.filter(n => !n.read && !notifiedIds.current.has(n.id)).forEach(n => {
+      notifiedIds.current.add(n.id);
+      try { new Notification(n.title || "Address Gateway CRM", { body: n.body || "", icon: "/icon-192.png" }); } catch {}
+    });
+  }, [state.notifications, currentUser, activeRole]);
 
   if (!authChecked) return <LoadingScreen />;
   if (!currentUser) return <Login onLogin={handleLogin} />;
@@ -5103,6 +5128,7 @@ function TemplatesPage({ state, dispatch }) {
 
 function NotificationsPage({ state, dispatch, myNotifs }) {
   const [emailFor, setEmailFor] = useState(null);
+  const [permission, setPermission] = useState(typeof Notification !== "undefined" ? Notification.permission : "unsupported");
   const iconFor = (type) => type==="expiry" ? { icon: CalendarClock, tone:"warning" }
     : type==="job" ? { icon: ClipboardList, tone:"info" }
     : type==="accounts" ? { icon: CircleDollarSign, tone:"gold" }
@@ -5113,6 +5139,15 @@ function NotificationsPage({ state, dispatch, myNotifs }) {
 
   return (
     <div className="agw-card">
+      {permission === "default" && (
+        <div className="side-note" style={{ marginTop:0, display:"flex", justifyContent:"space-between", alignItems:"center", gap:10, flexWrap:"wrap" }}>
+          <span><Bell size={13} style={{verticalAlign:-2,marginRight:4}}/>Get notified on this device the moment something new comes in — no need to keep this tab open.</span>
+          <button className="btn btn-sm btn-primary" onClick={()=>Notification.requestPermission().then(setPermission)}>Enable notifications</button>
+        </div>
+      )}
+      {permission === "denied" && (
+        <div className="side-note" style={{ marginTop:0 }}><Ban size={13} style={{verticalAlign:-2,marginRight:4}}/>Notifications are blocked for this site — enable them in your browser's site settings to get alerts here without opening the app.</div>
+      )}
       <div style={{ display:"flex", justifyContent:"space-between", marginBottom: 8 }}>
         <div style={{fontSize:12,color:"var(--ink-soft)"}}><Mail size={12} style={{verticalAlign:-2,marginRight:4}}/>Also sent by email for this account</div>
         <button className="btn btn-sm btn-ghost" onClick={()=>dispatch({type:"MARK_ALL_READ"})}>Mark all read</button>
