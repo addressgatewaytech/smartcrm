@@ -3670,13 +3670,15 @@ function RenewSubscriptionModal({ subscription: sub, dispatch, onClose }) {
 /* SALES ORDERS                                                            */
 /* ---------------------------------------------------------------------- */
 
-function OrdersPage({ state, dispatch }) {
+function OrdersPage({ state, dispatch, role }) {
   // This backend onboards a sales order in one atomic step (creates the invoice AND the first
   // job card together — see /api/sales-orders/:id/onboard) rather than the prototype's separate
   // "Confirmed -> Invoiced -> Client Onboarded" stages, and sales_orders itself has no status
   // column. Whether one's already been onboarded is derived from whether an invoice referencing
   // it exists.
   const isOnboarded = (soId) => state.invoices.some(inv => inv.salesOrderId === soId);
+  const isAdmin = ADMIN_LIKE.includes(role);
+  const [removeSo, setRemoveSo] = useState(null);
   return (
     <div className="agw-card" style={{ padding: 0 }}>
       {state.salesOrders.length === 0 ? <Empty icon={ShoppingCart} text="No sales orders yet — approve a quotation to create one." /> : (
@@ -3693,14 +3695,17 @@ function OrdersPage({ state, dispatch }) {
               <td><Stamp tone={so.feeType==="Government Fee" ? "neutral" : "success"}>{so.feeType || "Professional Fee"}</Stamp></td>
               <td className="mono">{money(so.amount)}</td>
               <td><Stamp tone={onboarded ? "success" : "warning"}>{onboarded ? "Onboarded" : "Pending onboarding"}</Stamp></td>
-              <td style={{ display:"flex", gap:6 }}>
+              <td style={{ display:"flex", gap:6, alignItems:"center" }}>
                 {!onboarded && <button className="btn btn-sm btn-primary" onClick={()=>dispatch({type:"ONBOARD_CLIENT", salesOrderId:so.id})}>Onboard client → create invoice & job</button>}
                 {onboarded && <span className="pill"><BadgeCheck size={12} style={{verticalAlign:-2}}/> Invoice & job card created</span>}
+                {isAdmin && <RowActions onRemove={()=>setRemoveSo(so)} />}
               </td>
             </tr>
           );})}
         </tbody>
       </table>)}
+      {removeSo && <ConfirmModal title={`Remove sales order ${removeSo.id}?`} body={`${removeSo.customer} — ${money(removeSo.amount)}. Any invoice or job card already created from it is kept, just unlinked. This can't be undone.`}
+        onConfirm={()=>{ dispatch({type:"DELETE_SALES_ORDER", id:removeSo.id}); setRemoveSo(null); }} onClose={()=>setRemoveSo(null)} />}
     </div>
   );
 }
@@ -3709,12 +3714,14 @@ function OrdersPage({ state, dispatch }) {
 /* INVOICES                                                                */
 /* ---------------------------------------------------------------------- */
 
-function InvoicesPage({ state, dispatch }) {
+function InvoicesPage({ state, dispatch, role }) {
   const [pay, setPay] = useState(null);
   const [amount, setAmount] = useState(0);
   const [mode, setMode] = useState("Bank Transfer");
   const [history, setHistory] = useState(null);
   const [emailFor, setEmailFor] = useState(null);
+  const [removeInvoice, setRemoveInvoice] = useState(null);
+  const isAdmin = ADMIN_LIKE.includes(role);
 
   return (
     <div>
@@ -3742,6 +3749,7 @@ function InvoicesPage({ state, dispatch }) {
                     <button className="btn btn-sm btn-ghost" onClick={()=>setEmailFor(inv)}>
                       {inv.emailedToClient ? <><BadgeCheck size={13}/> Emailed</> : <><Mail size={13}/> Email</>}
                     </button>
+                    {isAdmin && <RowActions onRemove={()=>setRemoveInvoice(inv)} />}
                   </td>
                 </tr>
               );
@@ -3749,6 +3757,9 @@ function InvoicesPage({ state, dispatch }) {
           </tbody>
         </table>)}
       </div>
+
+      {removeInvoice && <ConfirmModal title={`Remove invoice ${removeInvoice.id}?`} body={`${removeInvoice.customer} — ${money(removeInvoice.amount)}. Any recorded payments are removed with it. This can't be undone.`}
+        onConfirm={()=>{ dispatch({type:"DELETE_INVOICE", id:removeInvoice.id}); setRemoveInvoice(null); }} onClose={()=>setRemoveInvoice(null)} />}
 
       {history && <PaymentHistoryModal invoice={history} dispatch={dispatch} onClose={()=>setHistory(null)} />}
       {emailFor && (

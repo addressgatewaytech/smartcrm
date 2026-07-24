@@ -173,8 +173,10 @@ export function useApiStore(enabled) {
       case "CONVERT_TO_SALES_ORDER": await api.quotations.convertToSalesOrder(action.quotationId); return refresh(["quotations", "salesOrders", "deals", "customers"]);
       case "GENERATE_INVOICE": return; // superseded — GENERATE_INVOICE + ONBOARD_CLIENT are one atomic /onboard call on this backend
       case "ONBOARD_CLIENT": await api.salesOrders.onboard(action.salesOrderId); return refresh(["salesOrders", "invoices", "jobCards", "notifications"]);
+      case "DELETE_SALES_ORDER": await api.salesOrders.remove(action.id); return refresh(["salesOrders"]);
       case "RECORD_PAYMENT": await api.invoices.recordPayment(action.invoiceId, action.amount, action.mode); return refresh(["invoices"]);
       case "REMOVE_PAYMENT": await api.invoices.removePayment(action.invoiceId, action.paymentId); return refresh(["invoices"]);
+      case "DELETE_INVOICE": await api.invoices.remove(action.id); return refresh(["invoices"]);
 
       // --- Job cards --------------------------------------------------------------------
       case "CREATE_DIRECT_JOB_CARD": await api.jobCards.createDirect(action); return refresh(["jobCards", "notifications"]);

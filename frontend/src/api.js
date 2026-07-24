@@ -146,12 +146,14 @@ export const api = {
   salesOrders: {
     list: () => get("/sales-orders"),
     onboard: (id) => post(`/sales-orders/${id}/onboard`),
+    remove: (id) => del(`/sales-orders/${id}`),
   },
   invoices: {
     list: () => get("/invoices"),
     recordPayment: (id, amount, mode) => post(`/invoices/${id}/payments`, { amount, mode }),
     removePayment: (id, paymentId) => del(`/invoices/${id}/payments/${paymentId}`),
     markEmailed: (id, cc) => post(`/invoices/${id}/emailed`, { cc }),
+    remove: (id) => del(`/invoices/${id}`),
   },
   customers: {
     list: () => get("/customers"),

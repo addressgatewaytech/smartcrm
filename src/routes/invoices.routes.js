@@ -1,6 +1,7 @@
 const express = require("express");
 const { query } = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
+const { requireRole } = require("../middleware/roles");
 const { nextId } = require("../utils/helpers");
 
 const router = express.Router();
@@ -39,6 +40,12 @@ router.delete("/:id/payments/:paymentId", async (req, res) => {
 router.post("/:id/emailed", async (req, res) => {
   const { cc } = req.body;
   await query("UPDATE invoices SET emailed_to_client = 1, emailed_at = NOW(), email_cc = ? WHERE id = ?", [JSON.stringify(cc || []), req.params.id]);
+  res.json({ ok: true });
+});
+
+// Admin-only cleanup path for mistaken/test invoices — payments cascade automatically (see schema.sql).
+router.delete("/:id", requireRole(["admin_like"]), async (req, res) => {
+  await query("DELETE FROM invoices WHERE id = ?", [req.params.id]);
   res.json({ ok: true });
 });
 
