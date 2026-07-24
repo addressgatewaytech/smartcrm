@@ -132,7 +132,7 @@ export function useApiStore(enabled) {
       case "SET_QUOTATION_STATUS": await api.quotations.setStatus(action.id, action.status); return refresh(["quotations", "deals"]);
 
       // --- Employee photo -----------------------------------------------------------------
-      case "SET_EMPLOYEE_PHOTO": /* handled directly via api.users.uploadPhoto() by the caller (needs a File, not a URL) */ return refresh(["employees"]);
+      case "SET_EMPLOYEE_PHOTO": await api.users.uploadPhoto(action.employeeId, action.file); return refresh(["employees"]);
 
       // --- Services ----------------------------------------------------------------------
       case "ADD_SERVICE_OPTION": await api.services.add(action.name); return refresh(["services", "checklistTemplates", "quotationTemplates"]);
@@ -240,7 +240,7 @@ export function useApiStore(enabled) {
         }
         return;
       }
-      case "DELETE_PUNCH_REQUEST": return;
+      case "DELETE_PUNCH_REQUEST": await api.hr.removePunch(action.id); return refresh(["punchRequests"]);
 
       default: return;
     }

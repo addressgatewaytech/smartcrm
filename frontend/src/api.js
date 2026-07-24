@@ -210,6 +210,7 @@ export const api = {
     punchRequests: () => get("/hr/punch-requests"),
     requestPunch: (payload) => post("/hr/punch-requests", payload),
     decidePunch: (id, status) => post(`/hr/punch-requests/${id}/decide`, { status }),
+    removePunch: (id) => del(`/hr/punch-requests/${id}`),
   },
   incentives: {
     rules: () => get("/incentives/rules"),

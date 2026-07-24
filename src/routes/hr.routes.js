@@ -72,8 +72,11 @@ router.post("/punch-requests", async (req, res) => {
   if (new Date() > deadline) return res.status(400).json({ error: "Too late to request for this date — the window closed at 11:30 AM the next day." });
   if (new Date(date) > new Date(today())) return res.status(400).json({ error: "Cannot request a correction for a future date." });
 
+  // DATE_FORMAT()'s result collation doesn't always match the connection's (this host's MySQL
+  // throws "Illegal mix of collations" without the explicit COLLATE here) — every punch-request
+  // submission was failing because of this before it even got to the monthly-limit check.
   const monthPrefix = today().slice(0, 7); // YYYY-MM
-  const [{ cnt }] = await query("SELECT COUNT(*) AS cnt FROM punch_requests WHERE user_id = ? AND DATE_FORMAT(requested_at, '%Y-%m') = ?", [req.user.id, monthPrefix]);
+  const [{ cnt }] = await query("SELECT COUNT(*) AS cnt FROM punch_requests WHERE user_id = ? AND DATE_FORMAT(requested_at, '%Y-%m') COLLATE utf8mb4_unicode_ci = ?", [req.user.id, monthPrefix]);
   if (cnt >= 3) return res.status(400).json({ error: "You've used all 3 punch correction requests allowed this month." });
 
   const id = nextId("PR");
@@ -101,6 +104,14 @@ router.post("/punch-requests/:id/decide", requireRole(["admin_like", "hr"]), asy
       [nextId("ATT"), r.user_id, r.date, r.in_time, r.out_time, req.user.id]
     );
   }
+  res.json({ ok: true });
+});
+
+router.delete("/punch-requests/:id", async (req, res) => {
+  const [r] = await query("SELECT user_id, status FROM punch_requests WHERE id = ?", [req.params.id]);
+  const isAdmin = isHrAdmin(req.user.roles);
+  if (!isAdmin && (r.user_id !== req.user.id || r.status !== "Pending")) return res.status(403).json({ error: "Not allowed" });
+  await query("DELETE FROM punch_requests WHERE id = ?", [req.params.id]);
   res.json({ ok: true });
 });
 

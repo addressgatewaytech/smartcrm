@@ -4584,13 +4584,19 @@ function EmployeeHrCard({ e, state, dispatch, isAdmin, userId, onOpenDocs, onOpe
   const isSelf = e.id === userId;
   const canEditPhoto = isAdmin || isSelf;
 
-  const handlePhotoChange = (ev) => {
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const handlePhotoChange = async (ev) => {
     const file = ev.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => dispatch({ type:"SET_EMPLOYEE_PHOTO", employeeId: e.id, photoUrl: reader.result });
-    reader.readAsDataURL(file);
     ev.target.value = "";
+    if (!file) return;
+    setUploadingPhoto(true);
+    try {
+      await dispatch({ type:"SET_EMPLOYEE_PHOTO", employeeId: e.id, file });
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : "Couldn't upload photo — please try again.");
+    } finally {
+      setUploadingPhoto(false);
+    }
   };
 
   return (
@@ -4604,9 +4610,9 @@ function EmployeeHrCard({ e, state, dispatch, isAdmin, userId, onOpenDocs, onOpe
           )}
           {canEditPhoto && (
             <label style={{ position:"absolute", bottom:-2, right:-2, width:18, height:18, borderRadius:"50%", background:"var(--brand)",
-              display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", border:"1.5px solid #fff" }} title="Update profile photo">
+              display:"flex", alignItems:"center", justifyContent:"center", cursor: uploadingPhoto ? "wait" : "pointer", border:"1.5px solid #fff", opacity: uploadingPhoto ? 0.6 : 1 }} title="Update profile photo">
               <Camera size={10} color="#fff" />
-              <input type="file" accept="image/*" style={{ display:"none" }} onChange={handlePhotoChange} />
+              <input type="file" accept="image/*" style={{ display:"none" }} onChange={handlePhotoChange} disabled={uploadingPhoto} />
             </label>
           )}
         </div>
@@ -4719,6 +4725,22 @@ function MarkAttendanceModal({ employees, initialEmployeeId, dispatch, onClose }
 
 function LeaveRequestModal({ employee: e, dispatch, onClose }) {
   const [form, setForm] = useState({ type:"Annual", startDate: daysFromNow(1), endDate: daysFromNow(2), reason:"" });
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+
+  const submit = async () => {
+    setSaving(true);
+    setSaveError("");
+    try {
+      await dispatch({type:"ADD_LEAVE_REQUEST", payload:{...form, employeeId:e.id}});
+      onClose();
+    } catch (err) {
+      setSaveError(err instanceof ApiError ? err.message : "Couldn't submit — please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <Modal title={`Request leave — ${e.name}`} onClose={onClose}>
       <div className="row2">
@@ -4734,9 +4756,10 @@ function LeaveRequestModal({ employee: e, dispatch, onClose }) {
         <div className="field"><label>End date</label><input type="date" value={form.endDate} onChange={ev=>setForm({...form,endDate:ev.target.value})} /></div>
       </div>
       <div className="field"><label>Reason</label><textarea rows={2} value={form.reason} onChange={ev=>setForm({...form,reason:ev.target.value})} placeholder="Optional" /></div>
+      {saveError && <div className="side-note" style={{ color:"var(--danger)" }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{saveError}</div>}
       <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop: 16 }}>
         <button className="btn" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" onClick={()=>{ dispatch({type:"ADD_LEAVE_REQUEST", payload:{...form, employeeId:e.id}}); onClose(); }}>Submit request</button>
+        <button className="btn btn-primary" disabled={saving} onClick={submit}>{saving ? "Submitting…" : "Submit request"}</button>
       </div>
     </Modal>
   );
@@ -4752,6 +4775,8 @@ const PUNCH_REQUEST_MONTHLY_LIMIT = 3;
 
 function PunchRequestModal({ employee: e, state, dispatch, onClose }) {
   const [form, setForm] = useState({ date: daysFromNow(0), inTime:"09:00", outTime:"18:00", reason:"" });
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const now = new Date();
   const ym = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
   const usedThisMonth = state.punchRequests.filter(r => r.employeeId===e.id && (r.requestedAt||"").startsWith(ym)).length;
@@ -4759,6 +4784,19 @@ function PunchRequestModal({ employee: e, state, dispatch, onClose }) {
   const futureDate = form.date > daysFromNow(0);
   const pastDeadline = !futureDate && isPastPunchDeadline(form.date);
   const canSubmit = !limitReached && !pastDeadline && !futureDate && form.reason.trim();
+
+  const submit = async () => {
+    setSaving(true);
+    setSaveError("");
+    try {
+      await dispatch({type:"ADD_PUNCH_REQUEST", payload:{...form, employeeId:e.id}});
+      onClose();
+    } catch (err) {
+      setSaveError(err instanceof ApiError ? err.message : "Couldn't submit — please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <Modal title={`Request punch correction — ${e.name}`} sub="Report a missing or incorrect punch in/out for a specific day." onClose={onClose}>
@@ -4780,9 +4818,10 @@ function PunchRequestModal({ employee: e, state, dispatch, onClose }) {
         <div className="field"><label>Punch out</label><input type="time" value={form.outTime} onChange={ev=>setForm({...form,outTime:ev.target.value})} disabled={limitReached} /></div>
       </div>
       <div className="field"><label>Reason</label><textarea rows={2} value={form.reason} onChange={ev=>setForm({...form,reason:ev.target.value})} placeholder="e.g. Forgot to mark attendance, was on-site at a client visit..." disabled={limitReached} /></div>
+      {saveError && <div className="side-note" style={{ color:"var(--danger)" }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{saveError}</div>}
       <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop: 16 }}>
         <button className="btn" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" disabled={!canSubmit} onClick={()=>{ dispatch({type:"ADD_PUNCH_REQUEST", payload:{...form, employeeId:e.id}}); onClose(); }}>Submit request</button>
+        <button className="btn btn-primary" disabled={!canSubmit || saving} onClick={submit}>{saving ? "Submitting…" : "Submit request"}</button>
       </div>
     </Modal>
   );
