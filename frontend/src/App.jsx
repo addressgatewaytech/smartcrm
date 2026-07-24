@@ -2648,7 +2648,7 @@ function matchesExpiryFilter(customer, filterKey) {
   });
 }
 
-function CustomersPage({ state, dispatch }) {
+function CustomersPage({ state, dispatch, role }) {
   const [view, setView] = useState("table");
   const [openId, setOpenId] = useState(null);
   // Derived, not a frozen snapshot — see the identical fix on JobsPage/QuotationsPage: in-modal
@@ -2660,8 +2660,16 @@ function CustomersPage({ state, dispatch }) {
   const [showAdd, setShowAdd] = useState(false);
   const [editCustomer, setEditCustomer] = useState(null);
   const [removeCustomer, setRemoveCustomer] = useState(null);
+  const isAdmin = ADMIN_LIKE.includes(role);
+  // Visibility (a sales_exec only sees their own customers) is enforced server-side in
+  // GET /customers, since that's the only place with enough data to derive ownership correctly —
+  // /leads itself is already scoped to the requesting user for a sales_exec, so state.leads here
+  // never contains enough to figure out who owns someone else's customer. Edit/Delete stay
+  // admin-only regardless of role, since a wrong edit or delete here touches KYC records other
+  // people rely on (also enforced server-side on PATCH/DELETE /customers/:id).
+  const visibleCustomers = state.customers;
 
-  const filtered = state.customers.filter(c => {
+  const filtered = visibleCustomers.filter(c => {
     const haystack = [c.name, c.contact, c.phone, c.email].filter(Boolean).join(" ").toLowerCase();
     return haystack.includes(query.trim().toLowerCase()) && (!sizeFilter || c.companySize === sizeFilter) && matchesExpiryFilter(c, expiryFilter);
   });
@@ -2694,7 +2702,7 @@ function CustomersPage({ state, dispatch }) {
       {view === "table" && (
         <div className="agw-card" style={{ padding: 0 }}>
           {filtered.length === 0 ? (
-            state.customers.length === 0
+            visibleCustomers.length === 0
               ? <Empty icon={UserCheck} text="No customers yet — add one directly, or they'll appear once a quotation converts to a sales order." />
               : <Empty icon={Search} text="No customers match these filters." />
           ) : (
@@ -2712,7 +2720,7 @@ function CustomersPage({ state, dispatch }) {
                     <td style={{fontSize:12.5}}>{c.email || "—"}</td>
                     <td>{c.companySize || "—"}</td>
                     <td>{flagged > 0 ? <Stamp tone="warning">{flagged} flagged</Stamp> : <Stamp tone="success">Clear</Stamp>}</td>
-                    <td><RowActions onEdit={()=>setEditCustomer(c)} onRemove={()=>setRemoveCustomer(c)} /></td>
+                    <td><RowActions onEdit={isAdmin ? ()=>setEditCustomer(c) : null} onRemove={isAdmin ? ()=>setRemoveCustomer(c) : null} /></td>
                   </tr>
                 );
               })}
@@ -2736,7 +2744,7 @@ function CustomersPage({ state, dispatch }) {
                 </div>
                 <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                   {flagged > 0 ? <Stamp tone="warning">{flagged} doc{flagged>1?"s":""} flagged</Stamp> : <Stamp tone="success">KYC clear</Stamp>}
-                  <RowActions onEdit={()=>setEditCustomer(c)} onRemove={()=>setRemoveCustomer(c)} />
+                  <RowActions onEdit={isAdmin ? ()=>setEditCustomer(c) : null} onRemove={isAdmin ? ()=>setRemoveCustomer(c) : null} />
                 </div>
               </div>
               <div style={{ display:"flex", gap:6, marginTop: 12, flexWrap:"wrap" }}>
@@ -2749,8 +2757,8 @@ function CustomersPage({ state, dispatch }) {
             </div>
           );
         })}
-        {filtered.length===0 && state.customers.length>0 && <Empty icon={Search} text="No customers match these filters." />}
-        {state.customers.length===0 && <Empty icon={UserCheck} text="No customers yet — add one directly, or they'll appear once a quotation converts to a sales order." />}
+        {filtered.length===0 && visibleCustomers.length>0 && <Empty icon={Search} text="No customers match these filters." />}
+        {visibleCustomers.length===0 && <Empty icon={UserCheck} text="No customers yet — add one directly, or they'll appear once a quotation converts to a sales order." />}
       </div>
       )}
       {open && <CustomerDetailModal customer={open} state={state} dispatch={dispatch} onClose={()=>setOpenId(null)} />}

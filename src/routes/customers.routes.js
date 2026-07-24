@@ -1,6 +1,7 @@
 const express = require("express");
 const { query } = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
+const { requireRole, isAdminLike } = require("../middleware/roles");
 const { nextId, quoteTotal } = require("../utils/helpers");
 
 const router = express.Router();
@@ -11,7 +12,31 @@ router.get("/", async (req, res) => {
   const docs = await query("SELECT * FROM customer_docs");
   const staff = await query("SELECT * FROM customer_staff");
   const staffDocs = await query("SELECT * FROM customer_staff_docs");
-  res.json(customers.map((c) => ({
+
+  const canSeeAll = isAdminLike(req.user.roles) || req.user.roles.includes("sales_manager");
+  let visible = customers;
+  if (!canSeeAll) {
+    // Customers have no owner column — ownership is derived from the customer's most recent lead
+    // (a lead auto-creates its customer, so this covers most records), falling back to the most
+    // recent deal. Done here (not client-side) because /leads itself is scoped to the requesting
+    // user for a sales_exec, so the client never has enough data to derive anyone else's ownership.
+    // Only hides a customer this user can prove belongs to someone else — one with no lead/deal
+    // match (e.g. added directly) stays visible rather than vanishing on its creator.
+    const leads = await query("SELECT company, owner, created_at FROM leads ORDER BY created_at DESC");
+    const deals = await query("SELECT customer, owner, created_at FROM deals ORDER BY created_at DESC");
+    // Case-insensitive, matching how findOrCreateCustomerForLead itself matches names in leads.routes.js —
+    // real data has inconsistent casing between a lead's company and its linked customer's name.
+    const sameName = (a, b) => (a || "").trim().toLowerCase() === (b || "").trim().toLowerCase();
+    const ownerFor = (name) => {
+      const lead = leads.find((l) => sameName(l.company, name));
+      if (lead) return lead.owner;
+      const deal = deals.find((d) => sameName(d.customer, name));
+      return deal ? deal.owner : null;
+    };
+    visible = customers.filter((c) => { const owner = ownerFor(c.name); return owner == null || owner === req.user.id; });
+  }
+
+  res.json(visible.map((c) => ({
     ...c,
     docs: docs.filter((d) => d.customer_id === c.id),
     employees: staff.filter((s) => s.customer_id === c.id).map((s) => ({ ...s, docs: staffDocs.filter((d) => d.customer_staff_id === s.id) })),
@@ -26,14 +51,14 @@ router.post("/", async (req, res) => {
   res.status(201).json({ id });
 });
 
-router.patch("/:id", async (req, res) => {
+router.patch("/:id", requireRole(["admin_like"]), async (req, res) => {
   const b = req.body;
   await query("UPDATE customers SET name=COALESCE(?,name), type=COALESCE(?,type), contact=?, phone=?, landline=?, contact_mobile=?, email=?, address=?, company_size=? WHERE id=?",
     [b.name, b.type, b.contact || null, b.phone || null, b.landline || null, b.contactMobile || null, b.email || null, b.address || null, b.companySize || null, req.params.id]);
   res.json({ ok: true });
 });
 
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", requireRole(["admin_like"]), async (req, res) => {
   await query("DELETE FROM customers WHERE id = ?", [req.params.id]);
   res.json({ ok: true });
 });
