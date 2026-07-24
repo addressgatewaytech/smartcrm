@@ -2059,6 +2059,7 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, onHighligh
   const total = q => Math.max(0, q.items.reduce((a,it)=>a+it.qty*it.price*(1-(it.discountPct||0)/100),0) - (q.orderDiscount||0));
   const customerOptions = state.customers.map(c=>c.name);
   const editable = q => ["Draft","Pending Manager Approval"].includes(q.status);
+  const isAdmin = ADMIN_LIKE.includes(role);
 
   // Scrolls the row "View quotation" (from Deals) pointed at into view — otherwise it's easy to
   // lose in a long list with no indication of which one to click.
@@ -2103,7 +2104,7 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, onHighligh
                 <td>
                   <RowActions
                     onEdit={editable(q) ? ()=>setEditQuote(q) : null}
-                    onRemove={q.status==="Draft" ? ()=>setRemoveQuote(q) : null}
+                    onRemove={q.status==="Draft" && isAdmin ? ()=>setRemoveQuote(q) : null}
                   />
                 </td>
               </tr>
@@ -2154,8 +2155,11 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, customerOptions
   const [editing, setEditing] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [emailing, setEmailing] = useState(false);
+  const [revising, setRevising] = useState(false);
   const editable = ["Draft","Pending Manager Approval"].includes(q.status);
+  const isAdmin = ADMIN_LIKE.includes(role);
   const customerEmail = state?.customers.find(c=>c.name===q.customer)?.email;
+  const linkedSalesOrder = state?.salesOrders.find(so => so.quotationId === q.id);
 
   // "content" holds the committed (saved) text/items shown everywhere in this modal.
   // "draft" is the working copy while Visual edit is active in the PDF tab.
@@ -2210,7 +2214,7 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, customerOptions
             onClick={()=>dispatch({type:"TOGGLE_QUOTATION_FAVORITE", id:q.id})}>
             <Star size={14} style={{ color: q.favorite ? "var(--gold)" : "var(--ink-soft)" }} fill={q.favorite ? "var(--gold)" : "none"} />
           </button>
-          <RowActions onEdit={editable ? ()=>setEditing(true) : null} onRemove={q.status==="Draft" ? ()=>setRemoving(true) : null} />
+          <RowActions onEdit={editable ? ()=>setEditing(true) : null} onRemove={q.status==="Draft" && isAdmin ? ()=>setRemoving(true) : null} />
         </div>
       </div>
       <div style={{ borderBottom:"1px solid var(--hair)", marginBottom:18 }} />
@@ -2290,7 +2294,20 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, customerOptions
                 <button className="btn btn-primary" disabled={actionBusy} onClick={()=>runAction({type:"CONVERT_TO_SALES_ORDER", quotationId:q.id})}>{actionBusy ? "Creating…" : "Client accepted — create sales order"}</button>
               )
             )}
+            {q.status === "Approved" &&
+              <button className="btn" disabled={actionBusy} onClick={()=>setRevising(true)}><Pencil size={13}/> Revise quotation</button>}
           </div>
+          {revising && (
+            <ConfirmModal
+              title={`Revise ${q.id}?`}
+              body={linkedSalesOrder
+                ? `This moves it back to Draft so it can be edited and resubmitted for approval. Sales order ${linkedSalesOrder.id} (already created from this quotation) is not affected — remove or replace it separately if the terms have genuinely changed.`
+                : "This moves it back to Draft so it can be edited and resubmitted for approval."}
+              confirmLabel="Revise"
+              onConfirm={()=>{ setRevising(false); runAction({type:"REVISE_QUOTATION", id:q.id}, { keepOpen: true }); }}
+              onClose={()=>setRevising(false)}
+            />
+          )}
         </>
       )}
 

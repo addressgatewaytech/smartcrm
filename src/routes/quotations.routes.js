@@ -74,10 +74,25 @@ router.patch("/:id", async (req, res) => {
   res.json({ ok: true });
 });
 
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", requireRole(["admin_like"]), async (req, res) => {
   const [row] = await query("SELECT status FROM quotations WHERE id = ?", [req.params.id]);
   if (row?.status !== "Draft") return res.status(400).json({ error: "Only Draft quotations can be removed" });
   await query("DELETE FROM quotations WHERE id = ?", [req.params.id]);
+  res.json({ ok: true });
+});
+
+// Reopens an Approved quotation for editing — moves it back to Draft (unlocking PATCH and the
+// normal Submit-for-approval / Send-to-client flow) and returns the linked deal to "Quotation
+// Sent" so the pipeline reflects that it's back under negotiation. Does NOT touch any Sales
+// Order/Invoice/Job Card already created from the previous approval — those are a separate
+// record of what was actually agreed at the time; an admin can remove one via its own page if it
+// truly was a mistake.
+router.post("/:id/revise", async (req, res) => {
+  const [q] = await query("SELECT status, deal_id FROM quotations WHERE id = ?", [req.params.id]);
+  if (!q) return res.status(404).json({ error: "Not found" });
+  if (q.status !== "Approved") return res.status(400).json({ error: "Only an Approved quotation can be revised" });
+  await query("UPDATE quotations SET status = 'Draft' WHERE id = ?", [req.params.id]);
+  if (q.deal_id) await query("UPDATE deals SET stage = 'Quotation Sent' WHERE id = ?", [q.deal_id]);
   res.json({ ok: true });
 });
 

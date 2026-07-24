@@ -130,6 +130,7 @@ export const api = {
     toggleFavorite: (id) => post(`/quotations/${id}/favorite`),
     markEmailed: (id, cc) => post(`/quotations/${id}/emailed`, { cc }),
     clone: (id, customer) => post(`/quotations/${id}/clone`, { customer }),
+    revise: (id) => post(`/quotations/${id}/revise`),
     convertToSalesOrder: (id) => post(`/quotations/${id}/convert-to-sales-order`),
     pdfUrl: (id) => `/api/quotations/${id}/pdf`,
     // The PDF endpoint requires the same Bearer auth as everything else, so a plain <a href>/
