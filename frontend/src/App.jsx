@@ -3132,7 +3132,7 @@ function subTransactionsUsed(sub, state) {
   }).length;
 }
 
-function SubscriptionsPage({ state, dispatch, role }) {
+function SubscriptionsPage({ state, dispatch, role, userId }) {
   const [tab, setTab] = useState("subscriptions");
   const [newSub, setNewSub] = useState(false);
   const [detailFor, setDetailFor] = useState(null);
@@ -3140,10 +3140,21 @@ function SubscriptionsPage({ state, dispatch, role }) {
   const [removeSub, setRemoveSub] = useState(null);
   const isAdmin = ADMIN_LIKE.includes(role);
 
-  const activeCount = state.subscriptions.filter(s => subStatusOf(s) === "Active").length;
-  const expiringCount = state.subscriptions.filter(s => subStatusOf(s) === "Expiring Soon").length;
-  const expiredCount = state.subscriptions.filter(s => subStatusOf(s) === "Expired").length;
-  const annualValue = state.subscriptions.filter(s => s.status !== "Cancelled").reduce((a,s)=>a+s.annualFee,0);
+  // Subscriptions have no owner column of their own — ownership is derived from the customer's
+  // most recent deal, the same lineage-tracing approach used for Job Cards' "lead created by".
+  // Managers and admins see every subscription; a sales_exec only sees their own customers'.
+  const subOwnerId = (sub) => {
+    const dealsForCustomer = state.deals.filter(d => d.customer === sub.customer);
+    if (!dealsForCustomer.length) return null;
+    return dealsForCustomer.reduce((latest, d) => (!latest || d.createdAt > latest.createdAt ? d : latest), null).owner;
+  };
+  const canSeeAllSubs = isAdmin || role === "sales_manager";
+  const visibleSubs = canSeeAllSubs ? state.subscriptions : state.subscriptions.filter(s => subOwnerId(s) === userId);
+
+  const activeCount = visibleSubs.filter(s => subStatusOf(s) === "Active").length;
+  const expiringCount = visibleSubs.filter(s => subStatusOf(s) === "Expiring Soon").length;
+  const expiredCount = visibleSubs.filter(s => subStatusOf(s) === "Expired").length;
+  const annualValue = visibleSubs.filter(s => s.status !== "Cancelled").reduce((a,s)=>a+s.annualFee,0);
 
   return (
     <div>
@@ -3164,11 +3175,11 @@ function SubscriptionsPage({ state, dispatch, role }) {
 
       {tab === "subscriptions" && (
         <div className="agw-card" style={{ padding: 0 }}>
-          {state.subscriptions.length === 0 ? <Empty icon={Repeat} text="No subscriptions yet — start one from the Growth Partner Program." /> : (
+          {visibleSubs.length === 0 ? <Empty icon={Repeat} text="No subscriptions yet — start one from the Growth Partner Program." /> : (
           <table className="agw-table">
             <thead><tr><th>Customer</th><th>Plan</th><th>Tier</th><th>Annual fee</th><th>Start</th><th>Expiry</th><th>Job cards used</th><th>Status</th><th></th></tr></thead>
             <tbody>
-              {state.subscriptions.map(sub => {
+              {visibleSubs.map(sub => {
                 const tierDef = state.subscriptionPlans[sub.plan]?.tiers.find(t=>t.name===sub.tier);
                 const status = subStatusOf(sub);
                 const used = subTransactionsUsed(sub, state);
