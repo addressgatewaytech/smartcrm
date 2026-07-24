@@ -278,7 +278,10 @@ const ADMIN_LIKE = ["super_admin", "admin", "admin_exec"];
 
 const money = (n) => "QAR " + Number(n || 0).toLocaleString("en-US", { maximumFractionDigits: 0 });
 const daysFromNow = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0,10); };
-const fmtDate = (s) => new Date(s).toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"numeric" });
+// new Date(null) resolves to the 1970 epoch instead of "Invalid Date" — every call site across
+// the app assumed a date field would always be set, so this silently printed "01 Jan 1970" the
+// first time a genuinely-null one showed up (imported historical job cards with no target date).
+const fmtDate = (s) => s ? new Date(s).toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"numeric" }) : "—";
 // Whole days elapsed since a date (0 = today) — used as a simple aging indicator, e.g. how long
 // a job card has been open.
 const daysSince = (s) => Math.max(0, Math.floor((Date.now() - new Date(s).setHours(0,0,0,0)) / 86400000));
