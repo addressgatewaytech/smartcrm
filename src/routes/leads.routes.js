@@ -61,7 +61,21 @@ router.post("/", async (req, res) => {
   res.status(201).json({ id, customerId, duplicateOf });
 });
 
+// A sales_exec may only modify their own lead, even if they somehow know another lead's id —
+// GET already keeps them from seeing it, but nothing previously stopped a direct API call.
+const isSalesExecOnly = (roles) => roles.includes("sales_exec") && !isAdminLike(roles) && !roles.includes("sales_manager");
+async function assertOwnsOrAdmin(req, res) {
+  if (!isSalesExecOnly(req.user.roles)) return true;
+  const [lead] = await query("SELECT owner FROM leads WHERE id = ?", [req.params.id]);
+  if (lead && lead.owner && lead.owner !== req.user.id) {
+    res.status(403).json({ error: "You can only modify your own leads" });
+    return false;
+  }
+  return true;
+}
+
 router.patch("/:id", async (req, res) => {
+  if (!(await assertOwnsOrAdmin(req, res))) return;
   const b = req.body;
   const fields = [];
   const params = [];
@@ -98,6 +112,7 @@ router.post("/:id/convert-to-deal", async (req, res) => {
 });
 
 router.delete("/:id", async (req, res) => {
+  if (!(await assertOwnsOrAdmin(req, res))) return;
   await query("DELETE FROM leads WHERE id = ?", [req.params.id]);
   res.json({ ok: true });
 });

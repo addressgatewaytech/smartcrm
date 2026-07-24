@@ -1,13 +1,21 @@
 const express = require("express");
 const { query, withTransaction } = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
+const { isAdminLike } = require("../middleware/roles");
 const { nextSequentialId } = require("../utils/helpers");
 
 const router = express.Router();
 router.use(requireAuth);
 
+// Same visibility rule as /leads: a sales_exec only sees their own deals; sales managers and
+// admins see everyone's. (A deal with no owner shouldn't normally exist — POST always sets one —
+// but "OR owner IS NULL" is kept for parity with /leads in case of legacy/imported rows.)
+const isSalesExecOnly = (roles) => roles.includes("sales_exec") && !isAdminLike(roles) && !roles.includes("sales_manager");
+
 router.get("/", async (req, res) => {
-  const rows = await query("SELECT * FROM deals ORDER BY created_at DESC");
+  const rows = isSalesExecOnly(req.user.roles)
+    ? await query("SELECT * FROM deals WHERE owner = ? OR owner IS NULL ORDER BY created_at DESC", [req.user.id])
+    : await query("SELECT * FROM deals ORDER BY created_at DESC");
   res.json(rows);
 });
 
@@ -21,7 +29,20 @@ router.post("/", async (req, res) => {
   res.status(201).json({ id });
 });
 
+// A sales_exec may only modify their own deal, even if they somehow know another deal's id —
+// GET already keeps them from seeing it, but nothing previously stopped a direct API call.
+async function assertOwnsOrAdmin(req, res) {
+  if (!isSalesExecOnly(req.user.roles)) return true;
+  const [deal] = await query("SELECT owner FROM deals WHERE id = ?", [req.params.id]);
+  if (deal && deal.owner && deal.owner !== req.user.id) {
+    res.status(403).json({ error: "You can only modify your own deals" });
+    return false;
+  }
+  return true;
+}
+
 router.patch("/:id", async (req, res) => {
+  if (!(await assertOwnsOrAdmin(req, res))) return;
   const b = req.body;
   const fields = [];
   const params = [];
@@ -35,6 +56,7 @@ router.patch("/:id", async (req, res) => {
 });
 
 router.delete("/:id", async (req, res) => {
+  if (!(await assertOwnsOrAdmin(req, res))) return;
   await query("DELETE FROM deals WHERE id = ?", [req.params.id]);
   res.json({ ok: true });
 });
