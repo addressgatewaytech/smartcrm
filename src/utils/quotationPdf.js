@@ -29,9 +29,6 @@ const DISCLAIMER_2 =
   "decisions and processing timeframes of the relevant government authorities.";
 
 const MARGIN = 40;
-const TEAL = "#1391AC";
-const NAVY = "#0E3350";
-const GOLD = "#E8791E";
 const GRAY = "#6b7178";
 const INK = "#151A1F";
 const DARK_BG = "#2A2E33";
@@ -39,6 +36,10 @@ const HAIR = "#E1E6E8";
 const LIGHT_BG = "#F5F6F6";
 
 const FONTS_DIR = path.join(__dirname, "../assets/fonts");
+// Same logo file the app's own sidebar uses (frontend/public/logo-address-gateway.png) — real
+// PNG, not a font-drawn recreation, so the PDF and the UI always show the exact same wordmark.
+const LOGO_PATH = path.join(__dirname, "../../frontend/public/logo-address-gateway.png");
+const LOGO_ASPECT = 1410 / 613; // native px dimensions of that file
 // Real Inter font files (same family the web app itself uses) registered once per PDFDocument —
 // PDFKit's built-in fonts (Helvetica, Courier, ...) don't match the original quotation format.
 function registerFonts(doc) {
@@ -55,21 +56,12 @@ const fmtDate = (d) => {
   return `${day}-${m}-${y}`;
 };
 
-/** Draws the brand wordmark ("ADDRESS GATEWAY" in three colors, right-aligned) at (rightX, y). Returns the y after it. */
+/** Draws the real brand logo (same PNG as the app's sidebar), right-aligned, at (rightX, y). Returns the y after it. */
 function drawBrandHeader(doc, rightX, y) {
-  doc.font("Inter-Bold").fontSize(19);
-  const parts = [["ADDRESS ", TEAL], ["GATE", NAVY], ["WAY", GOLD]];
-  const totalWidth = parts.reduce((w, [t]) => w + doc.widthOfString(t), 0);
-  let x = rightX - totalWidth;
-  parts.forEach(([t, color]) => {
-    doc.fillColor(color).text(t, x, y, { lineBreak: false });
-    x += doc.widthOfString(t);
-  });
-  doc.fillColor(INK);
-  y += 21;
-  doc.font("Inter").fontSize(8).fillColor(GRAY)
-    .text("BUSINESS SERVICES", MARGIN, y, { width: rightX - MARGIN, align: "right", characterSpacing: 1.2 });
-  y = doc.y + 5;
+  const logoHeight = 34;
+  const logoWidth = logoHeight * LOGO_ASPECT;
+  doc.image(LOGO_PATH, rightX - logoWidth, y, { height: logoHeight });
+  y += logoHeight + 6;
   doc.fontSize(9)
     .text("Address Gateway Building", MARGIN, y, { width: rightX - MARGIN, align: "right" });
   y = doc.y;
