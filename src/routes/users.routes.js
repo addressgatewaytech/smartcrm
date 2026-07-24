@@ -25,13 +25,13 @@ router.use(requireAuth);
 // HR ("roles: all" in the nav) needs every authenticated user to see the roster — only
 // create/edit/delete of Users & Roles itself stays restricted to super_admin/admin below.
 router.get("/", async (req, res) => {
-  const rows = await query("SELECT id, name, email, roles, dept, initials, designation, photo_url, leave_balance, active, joined_date FROM users ORDER BY name");
+  const rows = await query("SELECT id, name, email, roles, dept, initials, designation, photo_url, leave_balance, active, joined_date, date_of_birth FROM users ORDER BY name");
   const docs = await query("SELECT * FROM staff_docs");
   res.json(rows.map((r) => ({ ...r, docs: docs.filter((d) => d.user_id === r.id) })));
 });
 
 router.post("/", requireRole(["super_admin", "admin"]), async (req, res) => {
-  const { name, email, password, roles, dept, initials } = req.body;
+  const { name, email, password, roles, dept, initials, joinedDate, dateOfBirth } = req.body;
   if (!name || !roles?.length) return res.status(400).json({ error: "Name and at least one role are required" });
 
   if (email) {
@@ -43,14 +43,14 @@ router.post("/", requireRole(["super_admin", "admin"]), async (req, res) => {
   const hash = await bcrypt.hash(password || "ChangeMe123!", 10);
   const designation = roles.map((r) => ROLE_LABEL[r]).join(" + ");
   await query(
-    `INSERT INTO users (id, name, email, password_hash, roles, dept, initials, designation, joined_date) VALUES (?,?,?,?,?,?,?,?,?)`,
-    [id, name, email || null, hash, JSON.stringify(roles), dept || null, initials || name.slice(0, 2).toUpperCase(), designation, today()]
+    `INSERT INTO users (id, name, email, password_hash, roles, dept, initials, designation, joined_date, date_of_birth) VALUES (?,?,?,?,?,?,?,?,?,?)`,
+    [id, name, email || null, hash, JSON.stringify(roles), dept || null, initials || name.slice(0, 2).toUpperCase(), designation, joinedDate || today(), dateOfBirth || null]
   );
   res.status(201).json({ id });
 });
 
 router.patch("/:id", requireRole(["super_admin", "admin"]), async (req, res) => {
-  const { name, email, roles, dept, initials } = req.body;
+  const { name, email, roles, dept, initials, joinedDate, dateOfBirth } = req.body;
   const fields = [];
   const params = [];
   if (name) { fields.push("name = ?"); params.push(name); }
@@ -65,6 +65,8 @@ router.patch("/:id", requireRole(["super_admin", "admin"]), async (req, res) => 
   }
   if (dept) { fields.push("dept = ?"); params.push(dept); }
   if (initials) { fields.push("initials = ?"); params.push(initials); }
+  if (joinedDate !== undefined) { fields.push("joined_date = ?"); params.push(joinedDate || null); }
+  if (dateOfBirth !== undefined) { fields.push("date_of_birth = ?"); params.push(dateOfBirth || null); }
   if (!fields.length) return res.status(400).json({ error: "Nothing to update" });
   params.push(req.params.id);
   await query(`UPDATE users SET ${fields.join(", ")} WHERE id = ?`, params);

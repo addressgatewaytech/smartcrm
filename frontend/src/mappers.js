@@ -13,6 +13,7 @@ export const mapUser = (u) => ({
   leaveBalance: u.leave_balance ?? u.leaveBalance,
   active: !!(u.active ?? true),
   joined: u.joined_date ?? u.joined,
+  dateOfBirth: u.date_of_birth ?? u.dateOfBirth ?? null,
   docs: (u.docs || []).map(mapStaffDoc),
   attendance: [],
   dataActivity: { date: null, emailsSent: 0, whatsappsSent: 0, lastEmailAt: null, lastWhatsappAt: null },

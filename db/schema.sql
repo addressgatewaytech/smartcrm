@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS users (
   leave_balance INT DEFAULT 21,
   active        TINYINT(1) DEFAULT 1,
   joined_date   DATE,
+  date_of_birth DATE,
   created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
