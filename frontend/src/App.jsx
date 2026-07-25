@@ -4976,7 +4976,7 @@ function StaffDocsModal({ employee: e, dispatch, onClose }) {
 /* ---------------------------------------------------------------------- */
 
 function UsersPage({ state, dispatch }) {
-  const blank = { name:"", email:"", password:"", roles:["sales_exec"], dept:"Sales", initials:"", joinedDate: daysFromNow(0), dateOfBirth:"" };
+  const blank = { name:"", email:"", password:"", roles:["sales_exec"], dept:"Sales", initials:"", joinedDate: daysFromNow(0), dateOfBirth:"", designation:"" };
   const [showAdd, setShowAdd] = useState(false);
   const [editUser, setEditUser] = useState(null);
   const [removeUser, setRemoveUser] = useState(null);
@@ -4985,7 +4985,7 @@ function UsersPage({ state, dispatch }) {
   const [saving, setSaving] = useState(false);
   const toggleRole = (r) => setForm(f => ({ ...f, roles: f.roles.includes(r) ? f.roles.filter(x=>x!==r) : [...f.roles, r] }));
 
-  const openEdit = (e) => { setEditUser(e); setForm({ name:e.name, email:e.email||"", password:"", roles:e.roles, dept:e.dept, initials:e.initials, joinedDate: (e.joined||"").slice(0,10), dateOfBirth: (e.dateOfBirth||"").slice(0,10) }); setSaveError(""); };
+  const openEdit = (e) => { setEditUser(e); setForm({ name:e.name, email:e.email||"", password:"", roles:e.roles, dept:e.dept, initials:e.initials, joinedDate: (e.joined||"").slice(0,10), dateOfBirth: (e.dateOfBirth||"").slice(0,10), designation:e.designation||"" }); setSaveError(""); };
   const closeModal = () => { setShowAdd(false); setEditUser(null); setForm(blank); setSaveError(""); };
 
   // Not fire-and-forget: a rejected dispatch (e.g. "email already in use") used to be silently
@@ -4995,7 +4995,7 @@ function UsersPage({ state, dispatch }) {
     setSaveError("");
     try {
       if (editUser) {
-        const payload = { name: form.name, email: form.email, roles: form.roles, dept: form.dept, initials: form.initials, joinedDate: form.joinedDate, dateOfBirth: form.dateOfBirth };
+        const payload = { name: form.name, email: form.email, roles: form.roles, dept: form.dept, initials: form.initials, joinedDate: form.joinedDate, dateOfBirth: form.dateOfBirth, designation: form.designation };
         await dispatch({type:"UPDATE_USER", id:editUser.id, payload});
         if (form.password) await dispatch({type:"RESET_USER_PASSWORD", id:editUser.id, password: form.password});
       } else {
@@ -5044,7 +5044,10 @@ function UsersPage({ state, dispatch }) {
             <div className="field"><label>Email (required to log in)</label><input type="email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})} placeholder="name@addressgateway.com" /></div>
             <div className="field"><label>{editUser ? "Reset password (optional)" : "Password (optional)"}</label><input type="password" value={form.password} onChange={e=>setForm({...form,password:e.target.value})} placeholder={editUser ? "Leave blank to keep current" : "Leave blank for default: ChangeMe123!"} /></div>
           </div>
-          <div className="field"><label>Department</label><input value={form.dept} onChange={e=>setForm({...form,dept:e.target.value})} /></div>
+          <div className="row2">
+            <div className="field"><label>Department</label><input value={form.dept} onChange={e=>setForm({...form,dept:e.target.value})} /></div>
+            <div className="field"><label>Designation (job title)</label><input value={form.designation} onChange={e=>setForm({...form,designation:e.target.value})} placeholder="e.g. Senior Sales Executive" /></div>
+          </div>
           <div className="row2">
             <div className="field"><label>Join date</label><input type="date" value={form.joinedDate} onChange={e=>setForm({...form,joinedDate:e.target.value})} /></div>
             <div className="field"><label>Date of birth</label><input type="date" value={form.dateOfBirth} onChange={e=>setForm({...form,dateOfBirth:e.target.value})} /></div>

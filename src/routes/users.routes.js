@@ -31,7 +31,7 @@ router.get("/", async (req, res) => {
 });
 
 router.post("/", requireRole(["super_admin", "admin"]), async (req, res) => {
-  const { name, email, password, roles, dept, initials, joinedDate, dateOfBirth } = req.body;
+  const { name, email, password, roles, dept, initials, joinedDate, dateOfBirth, designation } = req.body;
   if (!name || !roles?.length) return res.status(400).json({ error: "Name and at least one role are required" });
 
   if (email) {
@@ -41,16 +41,18 @@ router.post("/", requireRole(["super_admin", "admin"]), async (req, res) => {
 
   const id = nextId("u");
   const hash = await bcrypt.hash(password || "ChangeMe123!", 10);
-  const designation = roles.map((r) => ROLE_LABEL[r]).join(" + ");
+  // A real job title, editable independently of roles — defaults to the role label(s) only when
+  // nothing was typed in, since that's the closest sensible guess for a brand-new user.
+  const resolvedDesignation = designation?.trim() || roles.map((r) => ROLE_LABEL[r]).join(" + ");
   await query(
     `INSERT INTO users (id, name, email, password_hash, roles, dept, initials, designation, joined_date, date_of_birth) VALUES (?,?,?,?,?,?,?,?,?,?)`,
-    [id, name, email || null, hash, JSON.stringify(roles), dept || null, initials || name.slice(0, 2).toUpperCase(), designation, joinedDate || today(), dateOfBirth || null]
+    [id, name, email || null, hash, JSON.stringify(roles), dept || null, initials || name.slice(0, 2).toUpperCase(), resolvedDesignation, joinedDate || today(), dateOfBirth || null]
   );
   res.status(201).json({ id });
 });
 
 router.patch("/:id", requireRole(["super_admin", "admin"]), async (req, res) => {
-  const { name, email, roles, dept, initials, joinedDate, dateOfBirth } = req.body;
+  const { name, email, roles, dept, initials, joinedDate, dateOfBirth, designation } = req.body;
   const fields = [];
   const params = [];
   if (name) { fields.push("name = ?"); params.push(name); }
@@ -59,10 +61,10 @@ router.patch("/:id", requireRole(["super_admin", "admin"]), async (req, res) => 
     if (existing) return res.status(400).json({ error: `${email} is already in use by another user` });
   }
   if (email !== undefined) { fields.push("email = ?"); params.push(email || null); }
-  if (roles) {
-    fields.push("roles = ?", "designation = ?");
-    params.push(JSON.stringify(roles), roles.map((r) => ROLE_LABEL[r]).join(" + "));
-  }
+  // Designation is now a job title independent of roles — changing roles no longer silently
+  // overwrites it. It's only updated when the caller actually sends one.
+  if (roles) { fields.push("roles = ?"); params.push(JSON.stringify(roles)); }
+  if (designation !== undefined) { fields.push("designation = ?"); params.push(designation?.trim() || null); }
   if (dept) { fields.push("dept = ?"); params.push(dept); }
   if (initials) { fields.push("initials = ?"); params.push(initials); }
   if (joinedDate !== undefined) { fields.push("joined_date = ?"); params.push(joinedDate || null); }
