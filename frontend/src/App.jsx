@@ -1516,19 +1516,36 @@ function LeadsPage({ state, dispatch, userId, role }) {
     }
   };
 
-  const owned = ["sales_exec"].includes(role) ? state.leads.filter(l => l.owner === userId) : state.leads;
+  const [query, setQuery] = useState("");
+  const ownedByRole = ["sales_exec"].includes(role) ? state.leads.filter(l => l.owner === userId) : state.leads;
+  const owned = ownedByRole.filter(l => {
+    const haystack = [l.name, l.company, l.email, l.phone, l.id, l.reference].filter(Boolean).join(" ").toLowerCase();
+    return haystack.includes(query.trim().toLowerCase());
+  });
 
   const openFollowUp = (l) => { setFollowFor(l); setFuNote(""); setFuStatus(l.status); setFuNext(l.nextFollowUp || daysFromNow(3)); };
   const openEdit = (l) => { setEditLead(l); setForm({ name:l.name, company:l.company, phone:l.phone||"", email:l.email||"", reference:l.reference||"", source:l.source, service:l.service }); };
 
   return (
     <div>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 14 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 14, flexWrap:"wrap", gap:10 }}>
         <div className="tabbar" style={{ marginBottom:0, borderBottom:"none" }}>
           <button className={`tab ${view==="table"?"active":""}`} onClick={()=>setView("table")}>Table</button>
           <button className={`tab ${view==="kanban"?"active":""}`} onClick={()=>setView("kanban")}>Kanban</button>
         </div>
-        <button className="btn btn-primary" onClick={()=>{ setForm(blankForm); setShowAdd(true); }}><Plus size={15}/> New lead</button>
+        <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+          <div style={{ position:"relative", maxWidth: 260 }}>
+            <Search size={15} style={{ position:"absolute", left:12, top:9, color:"var(--ink-soft)" }} />
+            <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search leads"
+              style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:8, padding:"7px 12px 7px 34px", fontSize:13, background:"var(--surface)" }} />
+          </div>
+          <button className="btn btn-sm" onClick={()=>exportCSV("leads.csv",
+            ["Lead ID","Name","Company","Service","Source","Reference","Owner","Status","Next Follow-up","Created"],
+            owned.map(l=>[l.id, l.name, l.company, l.service, l.source, l.reference||"", state.employees.find(t=>t.id===l.owner)?.name||"", l.status, l.nextFollowUp||"", l.createdAt]))}>
+            <Download size={13}/> Export
+          </button>
+          <button className="btn btn-primary" onClick={()=>{ setForm(blankForm); setShowAdd(true); }}><Plus size={15}/> New lead</button>
+        </div>
       </div>
 
       {view === "table" && (
@@ -1705,25 +1722,42 @@ function DealsPage({ state, dispatch, setPage, onViewQuotation, role, userId }) 
   const [draggedDealId, setDraggedDealId] = useState(null);
   const [dragOverStage, setDragOverStage] = useState(null);
   const stages = ["Open","Quotation Sent","Won","Lost"];
+  const [query, setQuery] = useState("");
+  const deals = state.deals.filter(d => {
+    const haystack = [d.customer, d.id, d.service].filter(Boolean).join(" ").toLowerCase();
+    return haystack.includes(query.trim().toLowerCase());
+  });
 
   return (
     <div>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 14 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 14, flexWrap:"wrap", gap:10 }}>
         <div className="tabbar" style={{ marginBottom:0, borderBottom:"none" }}>
           <button className={`tab ${view==="kanban"?"active":""}`} onClick={()=>setView("kanban")}>Kanban</button>
           <button className={`tab ${view==="table"?"active":""}`} onClick={()=>setView("table")}>Table</button>
         </div>
-        <button className="btn btn-primary" onClick={()=>setNewDeal(true)}><Plus size={15}/> New deal</button>
+        <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+          <div style={{ position:"relative", maxWidth: 260 }}>
+            <Search size={15} style={{ position:"absolute", left:12, top:9, color:"var(--ink-soft)" }} />
+            <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search deals"
+              style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:8, padding:"7px 12px 7px 34px", fontSize:13, background:"var(--surface)" }} />
+          </div>
+          <button className="btn btn-sm" onClick={()=>exportCSV("deals.csv",
+            ["Deal ID","Customer","Service","Value","Owner","Stage","Expected Close"],
+            deals.map(d=>[d.id, d.customer, d.service, d.value, state.employees.find(t=>t.id===d.owner)?.name||"", d.stage, d.expectedClose]))}>
+            <Download size={13}/> Export
+          </button>
+          <button className="btn btn-primary" onClick={()=>setNewDeal(true)}><Plus size={15}/> New deal</button>
+        </div>
       </div>
 
       {view === "table" && (
         <div className="agw-card" style={{ padding: 0 }}>
-          {state.deals.length === 0 ? <Empty icon={Handshake} text="No deals yet. Convert a lead to get started." /> : (
+          {deals.length === 0 ? <Empty icon={Handshake} text="No deals yet. Convert a lead to get started." /> : (
           <div style={{ overflowX:"auto" }}>
           <table className="agw-table" style={{ minWidth: 720 }}>
             <thead><tr><th>Customer</th><th>Service</th><th>Value</th><th>Owner</th><th>Stage</th><th>Expected close</th><th></th></tr></thead>
             <tbody>
-              {state.deals.map(d => (
+              {deals.map(d => (
                 <tr key={d.id}>
                   <td>{d.customer}<div className="mono" style={{fontSize:11,color:"var(--ink-soft)"}}>{d.id}</div></td>
                   <td style={{maxWidth:200}}>{d.service}</td>
@@ -1758,8 +1792,8 @@ function DealsPage({ state, dispatch, setPage, onViewQuotation, role, userId }) 
             onDragOver={(e)=>{ e.preventDefault(); if (dragOverStage!==stage) setDragOverStage(stage); }}
             onDragLeave={()=>setDragOverStage(prev => prev===stage ? null : prev)}
             onDrop={(e)=>{ e.preventDefault(); if (draggedDealId) dispatch({type:"UPDATE_DEAL", id:draggedDealId, payload:{stage}}); setDraggedDealId(null); setDragOverStage(null); }}>
-            <h4>{stage}<span className="pill">{state.deals.filter(d=>d.stage===stage).length}</span></h4>
-            {state.deals.filter(d => d.stage === stage).map(d => (
+            <h4>{stage}<span className="pill">{deals.filter(d=>d.stage===stage).length}</span></h4>
+            {deals.filter(d => d.stage === stage).map(d => (
               <div className={`job-card ${draggedDealId===d.id ? "dragging" : ""}`} key={d.id} draggable
                 onDragStart={(e)=>{ setDraggedDealId(d.id); e.dataTransfer.effectAllowed = "move"; }}
                 onDragEnd={()=>{ setDraggedDealId(null); setDragOverStage(null); }}>
@@ -1778,7 +1812,7 @@ function DealsPage({ state, dispatch, setPage, onViewQuotation, role, userId }) 
                   <button className="btn btn-sm btn-ghost" style={{marginTop:8, width:"100%"}} onClick={()=>viewQuotationFor(d)}>View quotation <ChevronRight size={13}/></button>}
               </div>
             ))}
-            {state.deals.filter(d=>d.stage===stage).length===0 && <div style={{fontSize:12,color:"var(--ink-soft)",padding:"6px 6px"}}>No deals</div>}
+            {deals.filter(d=>d.stage===stage).length===0 && <div style={{fontSize:12,color:"var(--ink-soft)",padding:"6px 6px"}}>No deals</div>}
           </div>
         ))}
       </div>
@@ -2185,8 +2219,10 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, onHighligh
   const [removeQuote, setRemoveQuote] = useState(null);
   const [favoritesOnly, setFavoritesOnly] = useState(false);
 
+  const [query, setQuery] = useState("");
   const owned = role === "sales_exec" ? state.quotations.filter(q => q.owner === userId || !q.owner) : state.quotations;
   const rows = (favoritesOnly ? owned.filter(q => q.favorite) : owned)
+    .filter(q => [q.customer, q.id].filter(Boolean).join(" ").toLowerCase().includes(query.trim().toLowerCase()))
     .slice().sort((a,b) => (b.favorite?1:0) - (a.favorite?1:0));
   const favoriteCount = owned.filter(q => q.favorite).length;
   const total = q => Math.max(0, q.items.reduce((a,it)=>a+it.qty*it.price*(1-(it.discountPct||0)/100),0) - (q.orderDiscount||0));
@@ -2204,13 +2240,25 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, onHighligh
 
   return (
     <div>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 14 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 14, flexWrap:"wrap", gap:10 }}>
         <label style={{ display:"flex", alignItems:"center", gap:8, fontSize:13, cursor:"pointer" }}>
           <input type="checkbox" checked={favoritesOnly} onChange={e=>setFavoritesOnly(e.target.checked)} />
           <Star size={14} style={{ color:"var(--gold)" }} fill={favoritesOnly ? "var(--gold)" : "none"} />
           Favorites only {favoriteCount > 0 && `(${favoriteCount})`}
         </label>
-        <button className="btn btn-primary" onClick={()=>setNewQuote(true)}><Plus size={15}/> New quotation</button>
+        <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+          <div style={{ position:"relative", maxWidth: 260 }}>
+            <Search size={15} style={{ position:"absolute", left:12, top:9, color:"var(--ink-soft)" }} />
+            <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search quotations"
+              style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:8, padding:"7px 12px 7px 34px", fontSize:13, background:"var(--surface)" }} />
+          </div>
+          <button className="btn btn-sm" onClick={()=>exportCSV("quotations.csv",
+            ["Quotation ID","Customer","Fee Type","Amount (QAR)","Valid Till","Status"],
+            rows.map(q=>[q.id, q.customer, q.feeType||"Professional Fee", total(q), q.validTill, q.status]))}>
+            <Download size={13}/> Export
+          </button>
+          <button className="btn btn-primary" onClick={()=>setNewQuote(true)}><Plus size={15}/> New quotation</button>
+        </div>
       </div>
       <div className="agw-card" style={{ padding: 0 }}>
         {rows.length === 0 ? <Empty icon={favoritesOnly ? Star : FileText} text={favoritesOnly ? "No favorite quotations yet — star a quotation to use it as a go-to format." : "No quotations yet. Create one from a deal, or start a new one."} /> : (
@@ -2843,7 +2891,14 @@ function CustomersPage({ state, dispatch, role, userId }) {
             {EXPIRY_FILTERS.map(f=><option key={f.key} value={f.key}>{f.label}</option>)}
           </select>
         </div>
-        <button className="btn btn-primary" onClick={()=>setShowAdd(true)}><Plus size={15}/> New customer</button>
+        <div style={{ display:"flex", gap:8 }}>
+          <button className="btn btn-sm" onClick={()=>exportCSV("customers-kyc.csv",
+            ["Customer","Contact","Phone","Email","Company Size","KYC Status"],
+            filtered.map(c=>{ const flagged = [...c.docs, ...c.employees.flatMap(e=>e.docs)].filter(d => docState(d.expiry).label !== "Valid").length; return [c.name, c.contact||"", c.phone||"", c.email||"", c.companySize||"", flagged>0?`${flagged} flagged`:"Clear"]; }))}>
+            <Download size={13}/> Export
+          </button>
+          <button className="btn btn-primary" onClick={()=>setShowAdd(true)}><Plus size={15}/> New customer</button>
+        </div>
       </div>
 
       <div className="tabbar" style={{ marginBottom: 14 }}>
@@ -3315,7 +3370,9 @@ function SubscriptionsPage({ state, dispatch, role, userId }) {
     return dealsForCustomer.reduce((latest, d) => (!latest || d.createdAt > latest.createdAt ? d : latest), null).owner;
   };
   const canSeeAllSubs = isAdmin || role === "sales_manager";
-  const visibleSubs = canSeeAllSubs ? state.subscriptions : state.subscriptions.filter(s => subOwnerId(s) === userId);
+  const [query, setQuery] = useState("");
+  const visibleSubs = (canSeeAllSubs ? state.subscriptions : state.subscriptions.filter(s => subOwnerId(s) === userId))
+    .filter(s => [s.customer, s.id, s.plan].filter(Boolean).join(" ").toLowerCase().includes(query.trim().toLowerCase()));
 
   const activeCount = visibleSubs.filter(s => subStatusOf(s) === "Active").length;
   const expiringCount = visibleSubs.filter(s => subStatusOf(s) === "Expiring Soon").length;
@@ -3331,12 +3388,26 @@ function SubscriptionsPage({ state, dispatch, role, userId }) {
         <div className="agw-card"><div className="kpi-label">Annualized value</div><div className="kpi-value disp">{money(annualValue)}</div></div>
       </div>
 
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 14 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 14, flexWrap:"wrap", gap:10 }}>
         <div className="tabbar" style={{ marginBottom:0, borderBottom:"none" }}>
           <button className={`tab ${tab==="subscriptions"?"active":""}`} onClick={()=>setTab("subscriptions")}>Customer Subscriptions</button>
           <button className={`tab ${tab==="catalog"?"active":""}`} onClick={()=>setTab("catalog")}>Plans & Services</button>
         </div>
-        {tab === "subscriptions" && <button className="btn btn-primary" onClick={()=>setNewSub(true)}><Plus size={15}/> New subscription</button>}
+        {tab === "subscriptions" && (
+          <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+            <div style={{ position:"relative", maxWidth: 260 }}>
+              <Search size={15} style={{ position:"absolute", left:12, top:9, color:"var(--ink-soft)" }} />
+              <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search subscriptions"
+                style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:8, padding:"7px 12px 7px 34px", fontSize:13, background:"var(--surface)" }} />
+            </div>
+            <button className="btn btn-sm" onClick={()=>exportCSV("subscriptions.csv",
+              ["Subscription ID","Customer","Plan","Tier","Annual Fee","Start","Expiry","Status"],
+              visibleSubs.map(s=>[s.id, s.customer, s.plan, s.tier, s.annualFee, s.startDate, s.expiryDate, subStatusOf(s)]))}>
+              <Download size={13}/> Export
+            </button>
+            <button className="btn btn-primary" onClick={()=>setNewSub(true)}><Plus size={15}/> New subscription</button>
+          </div>
+        )}
       </div>
 
       {tab === "subscriptions" && (
@@ -3845,13 +3916,28 @@ function OrdersPage({ state, dispatch, role }) {
   const isOnboarded = (soId) => state.invoices.some(inv => inv.salesOrderId === soId);
   const isAdmin = ADMIN_LIKE.includes(role);
   const [removeSo, setRemoveSo] = useState(null);
+  const [query, setQuery] = useState("");
+  const rows = state.salesOrders.filter(so => [so.customer, so.id, so.service].filter(Boolean).join(" ").toLowerCase().includes(query.trim().toLowerCase()));
   return (
-    <div className="agw-card" style={{ padding: 0 }}>
-      {state.salesOrders.length === 0 ? <Empty icon={ShoppingCart} text="No sales orders yet — approve a quotation to create one." /> : (
+    <div>
+      <div style={{ display:"flex", justifyContent:"flex-end", marginBottom: 14, gap:8 }}>
+        <div style={{ position:"relative", maxWidth: 260, flex:1 }}>
+          <Search size={15} style={{ position:"absolute", left:12, top:9, color:"var(--ink-soft)" }} />
+          <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search sales orders"
+            style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:8, padding:"7px 12px 7px 34px", fontSize:13, background:"var(--surface)" }} />
+        </div>
+        <button className="btn btn-sm" onClick={()=>exportCSV("sales-orders.csv",
+          ["Order ID","Customer","Service","Fee Type","Amount (QAR)","Status"],
+          rows.map(so=>[so.id, so.customer, so.service, so.feeType||"Professional Fee", so.amount, isOnboarded(so.id)?"Onboarded":"Pending onboarding"]))}>
+          <Download size={13}/> Export
+        </button>
+      </div>
+      <div className="agw-card" style={{ padding: 0 }}>
+      {rows.length === 0 ? <Empty icon={ShoppingCart} text="No sales orders yet — approve a quotation to create one." /> : (
       <table className="agw-table">
         <thead><tr><th>Order</th><th>Customer</th><th>Service</th><th>Fee type</th><th>Amount (QAR)</th><th>Status</th><th></th></tr></thead>
         <tbody>
-          {state.salesOrders.map(so => {
+          {rows.map(so => {
             const onboarded = isOnboarded(so.id);
             return (
             <tr key={so.id}>
@@ -3872,6 +3958,7 @@ function OrdersPage({ state, dispatch, role }) {
       </table>)}
       {removeSo && <ConfirmModal title={`Remove sales order ${removeSo.id}?`} body={`${removeSo.customer} — ${money(removeSo.amount)}. Any invoice or job card already created from it is kept, just unlinked. This can't be undone.`}
         onConfirm={()=>{ dispatch({type:"DELETE_SALES_ORDER", id:removeSo.id}); setRemoveSo(null); }} onClose={()=>setRemoveSo(null)} />}
+      </div>
     </div>
   );
 }
@@ -3888,15 +3975,29 @@ function InvoicesPage({ state, dispatch, role }) {
   const [emailFor, setEmailFor] = useState(null);
   const [removeInvoice, setRemoveInvoice] = useState(null);
   const isAdmin = ADMIN_LIKE.includes(role);
+  const [query, setQuery] = useState("");
+  const rows = state.invoices.filter(inv => [inv.customer, inv.id].filter(Boolean).join(" ").toLowerCase().includes(query.trim().toLowerCase()));
 
   return (
     <div>
+      <div style={{ display:"flex", justifyContent:"flex-end", marginBottom: 14, gap:8 }}>
+        <div style={{ position:"relative", maxWidth: 260, flex:1 }}>
+          <Search size={15} style={{ position:"absolute", left:12, top:9, color:"var(--ink-soft)" }} />
+          <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search invoices"
+            style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:8, padding:"7px 12px 7px 34px", fontSize:13, background:"var(--surface)" }} />
+        </div>
+        <button className="btn btn-sm" onClick={()=>exportCSV("invoices.csv",
+          ["Invoice ID","Customer","Fee Type","Amount","Paid","Balance","Due","Status"],
+          rows.map(inv=>{ const paid = inv.payments.reduce((a,p)=>a+p.amount,0); return [inv.id, inv.customer, inv.feeType||"Professional Fee", inv.amount, paid, inv.amount-paid, inv.dueDate, inv.status]; }))}>
+          <Download size={13}/> Export
+        </button>
+      </div>
       <div className="agw-card" style={{ padding: 0 }}>
-        {state.invoices.length === 0 ? <Empty icon={Receipt} text="No invoices yet." /> : (
+        {rows.length === 0 ? <Empty icon={Receipt} text="No invoices yet." /> : (
         <table className="agw-table">
           <thead><tr><th>Invoice</th><th>Customer</th><th>Fee type</th><th>Amount</th><th>Paid</th><th>Balance</th><th>Due</th><th>Status</th><th></th></tr></thead>
           <tbody>
-            {state.invoices.map(inv => {
+            {rows.map(inv => {
               const paid = inv.payments.reduce((a,p)=>a+p.amount,0);
               const balance = inv.amount - paid;
               return (
@@ -4005,7 +4106,9 @@ function JobsPage({ state, dispatch, role, userId }) {
   const canManage = role === "ops_manager" || ADMIN_LIKE.includes(role);
   const canCreateDirect = ["sales_manager","sales_exec","ops_manager"].includes(role) || ADMIN_LIKE.includes(role);
 
-  const visible = role === "ops_member" ? state.jobCards.filter(j => j.assignees.includes(userId)) : state.jobCards;
+  const [query, setQuery] = useState("");
+  const visibleByRole = role === "ops_member" ? state.jobCards.filter(j => j.assignees.includes(userId)) : state.jobCards;
+  const visible = visibleByRole.filter(j => [j.customer, j.id, j.service].filter(Boolean).join(" ").toLowerCase().includes(query.trim().toLowerCase()));
 
   const openDetail = (j, cancelOnOpen=false) => { setDetailId(j.id); setDetailCancelOnOpen(cancelOnOpen); };
 
@@ -4031,12 +4134,24 @@ function JobsPage({ state, dispatch, role, userId }) {
 
   return (
     <div>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 14 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 14, flexWrap:"wrap", gap:10 }}>
         <div className="tabbar" style={{ marginBottom:0, borderBottom:"none" }}>
           <button className={`tab ${view==="kanban"?"active":""}`} onClick={()=>setView("kanban")}>Kanban</button>
           <button className={`tab ${view==="table"?"active":""}`} onClick={()=>setView("table")}>Table</button>
         </div>
-        {canCreateDirect && <button className="btn btn-primary" onClick={()=>setNewJob(true)}><Plus size={15}/> New job card</button>}
+        <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+          <div style={{ position:"relative", maxWidth: 260 }}>
+            <Search size={15} style={{ position:"absolute", left:12, top:9, color:"var(--ink-soft)" }} />
+            <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search job cards"
+              style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:8, padding:"7px 12px 7px 34px", fontSize:13, background:"var(--surface)" }} />
+          </div>
+          <button className="btn btn-sm" onClick={()=>exportCSV("job-cards.csv",
+            ["Job Card","Customer","Service","Priority","Status","Target Date"],
+            visible.map(j=>[j.id, j.customer, j.service, j.priority, j.status, j.targetDate||""]))}>
+            <Download size={13}/> Export
+          </button>
+          {canCreateDirect && <button className="btn btn-primary" onClick={()=>setNewJob(true)}><Plus size={15}/> New job card</button>}
+        </div>
       </div>
 
       {view === "table" && (
@@ -4633,6 +4748,11 @@ function HrPage({ state, dispatch, role, userId }) {
               <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search team"
                 style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:8, padding:"7px 12px 7px 34px", fontSize:13, background:"var(--surface)" }} />
             </div>
+            <button className="btn btn-sm" onClick={()=>exportCSV("team.csv",
+              ["Name","Department","Designation","Status","Leave Balance"],
+              filtered.map(e=>[e.name, e.dept, e.designation||"", e.active===false?"Deactivated":"Active", e.leaveBalance ?? 21]))}>
+              <Download size={13}/> Export
+            </button>
           </div>
         )}
       </div>
@@ -5167,6 +5287,8 @@ function UsersPage({ state, dispatch, role }) {
   const [saveError, setSaveError] = useState("");
   const [saving, setSaving] = useState(false);
   const toggleRole = (r) => setForm(f => ({ ...f, roles: f.roles.includes(r) ? f.roles.filter(x=>x!==r) : [...f.roles, r] }));
+  const [query, setQuery] = useState("");
+  const visibleUsers = state.employees.filter(e => [e.name, e.dept, e.designation, e.email].filter(Boolean).join(" ").toLowerCase().includes(query.trim().toLowerCase()));
 
   const openEdit = (e) => { setEditUser(e); setForm({ name:e.name, email:e.email||"", password:"", roles:e.roles, dept:e.dept, initials:e.initials, joinedDate: (e.joined||"").slice(0,10), dateOfBirth: (e.dateOfBirth||"").slice(0,10), designation:e.designation||"" }); setSaveError(""); };
   const closeModal = () => { setShowAdd(false); setEditUser(null); setForm(blank); setSaveError(""); };
@@ -5194,12 +5316,26 @@ function UsersPage({ state, dispatch, role }) {
 
   return (
     <div>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 14 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 14, flexWrap:"wrap", gap:10 }}>
         <div className="tabbar" style={{ marginBottom:0, borderBottom:"none" }}>
           <button className={`tab ${tab==="users"?"active":""}`} onClick={()=>setTab("users")}>Users</button>
           <button className={`tab ${tab==="approval"?"active":""}`} onClick={()=>setTab("approval")}>Approval Process Workflow</button>
         </div>
-        {tab === "users" && <button className="btn btn-primary" onClick={()=>{ setForm(blank); setSaveError(""); setShowAdd(true); }}><UserPlus size={15}/> Add user</button>}
+        {tab === "users" && (
+          <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+            <div style={{ position:"relative", maxWidth: 260 }}>
+              <Search size={15} style={{ position:"absolute", left:12, top:9, color:"var(--ink-soft)" }} />
+              <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search users"
+                style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:8, padding:"7px 12px 7px 34px", fontSize:13, background:"var(--surface)" }} />
+            </div>
+            <button className="btn btn-sm" onClick={()=>exportCSV("users.csv",
+              ["Name","Email","Designation","Roles","Department","Status"],
+              visibleUsers.map(e=>[e.name, e.email||"", e.designation||"", e.roles.map(r=>ROLE_LABEL[r]).join(", "), e.dept, e.active===false?"Deactivated":"Active"]))}>
+              <Download size={13}/> Export
+            </button>
+            <button className="btn btn-primary" onClick={()=>{ setForm(blank); setSaveError(""); setShowAdd(true); }}><UserPlus size={15}/> Add user</button>
+          </div>
+        )}
       </div>
 
       {tab === "approval" && <ApprovalWorkflowPage state={state} dispatch={dispatch} role={role} />}
@@ -5209,7 +5345,7 @@ function UsersPage({ state, dispatch, role }) {
         <table className="agw-table">
           <thead><tr><th>User</th><th>Roles</th><th>Department</th><th>Status</th><th></th></tr></thead>
           <tbody>
-            {state.employees.map(e => (
+            {visibleUsers.map(e => (
               <tr key={e.id}>
                 <td style={{display:"flex",alignItems:"center",gap:8}}><span className="avatar">{e.initials}</span>{e.name}</td>
                 <td style={{display:"flex",gap:4,flexWrap:"wrap"}}>{e.roles.map(r=><span key={r} className="pill">{ROLE_LABEL[r]}</span>)}</td>
