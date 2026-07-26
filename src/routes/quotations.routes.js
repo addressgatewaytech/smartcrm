@@ -47,11 +47,21 @@ router.post("/", async (req, res) => {
   const hasDiscount = (b.items || []).some((it) => it.discountPct > 0) || (b.orderDiscount || 0) > 0;
   const status = hasDiscount ? "Pending Manager Approval" : "Draft";
 
+  // A quotation created from a deal belongs to that deal's owner, not whoever happened to click
+  // "Create quotation" — otherwise a manager/admin creating one on a sales_exec's behalf makes it
+  // invisible to that sales_exec (owner-scoped GET / filters strictly by owner).
+  let owner = b.owner;
+  if (!owner && b.dealId) {
+    const [deal] = await query("SELECT owner FROM deals WHERE id = ?", [b.dealId]);
+    owner = deal?.owner;
+  }
+  owner = owner || req.user.id;
+
   await query(
     `INSERT INTO quotations (id, deal_id, customer, fee_type, subject, items, order_discount, bank, footer_note, notes, terms, status, valid_till, owner, favorite)
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)`,
     [id, b.dealId || null, b.customer, b.feeType || "Professional Fee", b.subject || null, JSON.stringify(b.items || []), b.orderDiscount || 0,
-      b.bank || null, b.footerNote || null, b.notes || null, b.terms || null, status, daysFromNow(14), b.owner || req.user.id]
+      b.bank || null, b.footerNote || null, b.notes || null, b.terms || null, status, daysFromNow(14), owner]
   );
   if (b.dealId) await query("UPDATE deals SET stage = 'Quotation Sent' WHERE id = ?", [b.dealId]);
   res.status(201).json({ id, status });

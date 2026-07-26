@@ -188,7 +188,7 @@ const CSS = `
   .field { margin-bottom: 12px; }
   .field label { display: block; font-size: 12px; color: var(--ink-soft); margin-bottom: 5px; }
   .field input, .field select, .field textarea { width: 100%; border: 1px solid var(--hair); border-radius: 8px;
-    padding: 8px 10px; font-size: 13.5px; background: #FCFBF9; color: var(--ink); appearance: auto; -webkit-appearance: auto; }
+    padding: 8px 10px; font-size: 13.5px; background: var(--surface); color: var(--ink); appearance: auto; -webkit-appearance: auto; }
   .field input:focus, .field select:focus, .field textarea:focus { outline: 2px solid var(--brand-tint); border-color: var(--brand); }
   .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
@@ -274,6 +274,8 @@ const CSS = `
   html.dark .agw .checkbox { background: var(--surface); }
   html.dark .agw .board-col { background: #171D24; }
   html.dark .agw .job-card:hover { border-color: var(--brand); }
+  html.dark .agw .btn-ghost:hover { background: #262E37; }
+  html.dark .agw .notif-unread { background: #1C2731; }
 
   .theme-toggle { width: 34px; height: 34px; border-radius: 50%; background: rgba(255,255,255,.18); border: none;
     color: #fff; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
@@ -1690,21 +1692,25 @@ function LeadsPage({ state, dispatch, userId, role }) {
 /* DEALS                                                                   */
 /* ---------------------------------------------------------------------- */
 
-function DealsPage({ state, dispatch, setPage, onViewQuotation }) {
+function DealsPage({ state, dispatch, setPage, onViewQuotation, role, userId }) {
   const [view, setView] = useState("table");
   const viewQuotationFor = (d) => { onViewQuotation(state.quotations.find(q=>q.dealId===d.id)?.id); setPage("quotations"); };
   const [quoteFor, setQuoteFor] = useState(null);
   const [editDeal, setEditDeal] = useState(null);
   const [removeDeal, setRemoveDeal] = useState(null);
+  const [newDeal, setNewDeal] = useState(false);
   const [draggedDealId, setDraggedDealId] = useState(null);
   const [dragOverStage, setDragOverStage] = useState(null);
   const stages = ["Open","Quotation Sent","Won","Lost"];
 
   return (
     <div>
-      <div className="tabbar" style={{ marginBottom: 14 }}>
-        <button className={`tab ${view==="kanban"?"active":""}`} onClick={()=>setView("kanban")}>Kanban</button>
-        <button className={`tab ${view==="table"?"active":""}`} onClick={()=>setView("table")}>Table</button>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 14 }}>
+        <div className="tabbar" style={{ marginBottom:0, borderBottom:"none" }}>
+          <button className={`tab ${view==="kanban"?"active":""}`} onClick={()=>setView("kanban")}>Kanban</button>
+          <button className={`tab ${view==="table"?"active":""}`} onClick={()=>setView("table")}>Table</button>
+        </div>
+        <button className="btn btn-primary" onClick={()=>setNewDeal(true)}><Plus size={15}/> New deal</button>
       </div>
 
       {view === "table" && (
@@ -1778,7 +1784,52 @@ function DealsPage({ state, dispatch, setPage, onViewQuotation }) {
       {quoteFor && <QuoteBuilderModal dealId={quoteFor.id} customerName={quoteFor.customer} defaultService={quoteFor.service} services={state.services} dispatch={dispatch} templates={state.quotationTemplates} onClose={()=>setQuoteFor(null)} />}
       {editDeal && <EditDealModal deal={editDeal} state={state} dispatch={dispatch} onClose={()=>setEditDeal(null)} />}
       {removeDeal && <ConfirmModal title={`Remove deal ${removeDeal.id}?`} body={`${removeDeal.customer} — ${money(removeDeal.value)}. This can't be undone.`} onConfirm={()=>dispatch({type:"DELETE_DEAL", id:removeDeal.id})} onClose={()=>setRemoveDeal(null)} />}
+      {newDeal && <NewDealModal state={state} dispatch={dispatch} userId={userId} onClose={()=>setNewDeal(false)} />}
     </div>
+  );
+}
+
+// Deals normally come from converting a Lead — this is the direct path for a customer who's
+// already in the system and doesn't need to go through the lead pipeline again.
+function NewDealModal({ state, dispatch, userId, initialCustomer=null, onClose }) {
+  const [form, setForm] = useState({ customer: initialCustomer || "", service: state.services[0] || "", value: 0, expectedClose: daysFromNow(21) });
+  const [saveError, setSaveError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    setSaveError("");
+    try {
+      await dispatch({ type:"ADD_DEAL", payload: { ...form, owner: userId, stage: "Open" } });
+      onClose();
+    } catch (err) {
+      setSaveError(err instanceof ApiError ? err.message : "Couldn't save — please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal title="New deal" sub="For a customer already in the system — no need to go through a lead first." onClose={onClose}>
+      <div className="field"><label>Customer</label>
+        <input list="new-deal-customer-options" value={form.customer} onChange={e=>setForm({...form,customer:e.target.value})} placeholder="Type or pick a customer" autoFocus={!initialCustomer} disabled={!!initialCustomer} />
+        <datalist id="new-deal-customer-options">{state.customers.map(c=><option key={c.id} value={c.name} />)}</datalist>
+      </div>
+      <div className="row2">
+        <div className="field"><label>Service</label>
+          <select value={form.service} onChange={e=>setForm({...form,service:e.target.value})}>
+            {state.services.map(s=><option key={s}>{s}</option>)}
+          </select>
+        </div>
+        <div className="field"><label>Estimated value (QAR)</label><input type="number" inputMode="numeric" className="no-spinner" value={form.value} onChange={e=>setForm({...form,value:Number(e.target.value)})} /></div>
+      </div>
+      <div className="field"><label>Expected close date</label><input type="date" value={form.expectedClose} onChange={e=>setForm({...form,expectedClose:e.target.value})} /></div>
+      {saveError && <div className="side-note" style={{ color:"var(--danger)" }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{saveError}</div>}
+      <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop: 16 }}>
+        <button className="btn" onClick={onClose}>Cancel</button>
+        <button className="btn btn-primary" disabled={saving || !state.customers.some(c=>c.name===form.customer)} onClick={handleSave}>{saving ? "Saving…" : "Create deal"}</button>
+      </div>
+    </Modal>
   );
 }
 
@@ -2744,7 +2795,7 @@ function matchesExpiryFilter(customer, filterKey) {
   });
 }
 
-function CustomersPage({ state, dispatch, role }) {
+function CustomersPage({ state, dispatch, role, userId }) {
   const [view, setView] = useState("table");
   const [openId, setOpenId] = useState(null);
   // Derived, not a frozen snapshot — see the identical fix on JobsPage/QuotationsPage: in-modal
@@ -2857,7 +2908,7 @@ function CustomersPage({ state, dispatch, role }) {
         {visibleCustomers.length===0 && <Empty icon={UserCheck} text="No customers yet — add one directly, or they'll appear once a quotation converts to a sales order." />}
       </div>
       )}
-      {open && <CustomerDetailModal customer={open} state={state} dispatch={dispatch} onClose={()=>setOpenId(null)} />}
+      {open && <CustomerDetailModal customer={open} state={state} dispatch={dispatch} userId={userId} onClose={()=>setOpenId(null)} />}
       {editCustomer && <NewCustomerModal customer={editCustomer} dispatch={dispatch} onClose={()=>setEditCustomer(null)} />}
       {removeCustomer && <ConfirmModal title={`Remove ${removeCustomer.name}?`} body="This deletes the customer profile, their KYC documents, and any employee records on file. This can't be undone." onConfirm={()=>dispatch({type:"DELETE_CUSTOMER", id:removeCustomer.id})} onClose={()=>setRemoveCustomer(null)} />}
       {showAdd && <NewCustomerModal dispatch={dispatch} onClose={()=>setShowAdd(false)} />}
@@ -2933,8 +2984,9 @@ function NewCustomerModal({ dispatch, onClose, onCreated, customer=null }) {
   );
 }
 
-function CustomerDetailModal({ customer: c, state, dispatch, onClose }) {
+function CustomerDetailModal({ customer: c, state, dispatch, userId, onClose }) {
   const [tab, setTab] = useState("profile");
+  const [creatingDeal, setCreatingDeal] = useState(false);
   const blankDoc = { type: "Passport", number: "", expiry: daysFromNow(365), cloudLink: "" };
   const [doc, setDoc] = useState(blankDoc);
   const [docEditingId, setDocEditingId] = useState(null);
@@ -2989,9 +3041,14 @@ function CustomerDetailModal({ customer: c, state, dispatch, onClose }) {
           <button className={`tab ${tab==="profile"?"active":""}`} onClick={()=>setTab("profile")}>Profile & KYC</button>
           <button className={`tab ${tab==="dashboard"?"active":""}`} onClick={()=>setTab("dashboard")}>Dashboard</button>
         </div>
-        <button className="btn btn-sm" onClick={()=>setEmailingCustomer(true)}><Mail size={13}/> Email customer</button>
+        <div style={{ display:"flex", gap:8 }}>
+          <button className="btn btn-sm" onClick={()=>setCreatingDeal(true)}><Handshake size={13}/> Create deal</button>
+          <button className="btn btn-sm" onClick={()=>setEmailingCustomer(true)}><Mail size={13}/> Email customer</button>
+        </div>
       </div>
       <div style={{ borderBottom:"1px solid var(--hair)", marginBottom:18 }} />
+
+      {creatingDeal && <NewDealModal state={state} dispatch={dispatch} userId={userId} initialCustomer={c.name} onClose={()=>setCreatingDeal(false)} />}
 
       {emailingCustomer && (
         <EmailCustomerModal

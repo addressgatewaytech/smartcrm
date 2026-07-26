@@ -127,6 +127,7 @@ export function useApiStore(enabled) {
       case "CONVERT_LEAD_TO_DEAL": await api.leads.convertToDeal(action.id, action.value); return refresh(["leads", "deals"]);
 
       // --- Deals ----------------------------------------------------------------------------
+      case "ADD_DEAL": await api.deals.create(action.payload); return refresh(["deals"]);
       case "UPDATE_DEAL": await api.deals.update(action.id, action.payload); return refresh(["deals"]);
       case "DELETE_DEAL": await api.deals.remove(action.id); return refresh(["deals"]);
 
