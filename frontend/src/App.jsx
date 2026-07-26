@@ -5593,15 +5593,44 @@ function NotificationsPage({ state, dispatch, myNotifs }) {
 
 function SettingsPage({ state, dispatch }) {
   const enabled = state.appSettings.emailNotificationsEnabled;
+  const [backingUp, setBackingUp] = useState(false);
+  const [backupError, setBackupError] = useState("");
+
+  const handleBackup = async () => {
+    setBackingUp(true);
+    setBackupError("");
+    try {
+      const blob = await api.settings.downloadBackup();
+      downloadBlob(`smartcrm-backup-${daysFromNow(0)}.sql`, blob);
+    } catch (err) {
+      setBackupError(err instanceof ApiError ? err.message : "Couldn't generate a backup — please try again.");
+    } finally {
+      setBackingUp(false);
+    }
+  };
+
   return (
-    <div className="agw-card" style={{ maxWidth: 560 }}>
-      <strong style={{ fontSize:14 }}>Email sending</strong>
-      <label style={{ display:"flex", alignItems:"center", gap:8, fontSize:13, marginTop:10 }}>
-        <input type="checkbox" checked={enabled} onChange={(e)=>dispatch({type:"UPDATE_APP_SETTINGS", payload:{ emailNotificationsEnabled: e.target.checked }})} />
-        Send emails (notifications, data manager outreach, etc.)
-      </label>
-      <div className="side-note" style={{ marginTop:10 }}>
-        Turning this off stops all outgoing emails except password-reset codes — those always send, so nobody ever gets locked out of their account.
+    <div style={{ display:"flex", flexDirection:"column", gap:18, maxWidth: 560 }}>
+      <div className="agw-card">
+        <strong style={{ fontSize:14 }}>Email sending</strong>
+        <label style={{ display:"flex", alignItems:"center", gap:8, fontSize:13, marginTop:10 }}>
+          <input type="checkbox" checked={enabled} onChange={(e)=>dispatch({type:"UPDATE_APP_SETTINGS", payload:{ emailNotificationsEnabled: e.target.checked }})} />
+          Send emails (notifications, data manager outreach, etc.)
+        </label>
+        <div className="side-note" style={{ marginTop:10 }}>
+          Turning this off stops all outgoing emails except password-reset codes — those always send, so nobody ever gets locked out of their account.
+        </div>
+      </div>
+
+      <div className="agw-card">
+        <strong style={{ fontSize:14 }}>Data backup</strong>
+        <div className="modal-sub" style={{ marginTop:4 }}>
+          Downloads a complete, restorable SQL dump of the entire database — every table, every row — as of right now.
+        </div>
+        {backupError && <div className="side-note" style={{ color:"var(--danger)", marginTop:10 }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{backupError}</div>}
+        <button className="btn btn-primary" style={{ marginTop:12 }} disabled={backingUp} onClick={handleBackup}>
+          <Download size={14}/> {backingUp ? "Generating…" : "Download backup now"}
+        </button>
       </div>
     </div>
   );

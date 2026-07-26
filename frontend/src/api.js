@@ -269,6 +269,15 @@ export const api = {
   settings: {
     get: () => get("/settings"),
     update: (payload) => patch("/settings", payload),
+    // Same reasoning as quotations.downloadPdf: needs the Bearer auth header a plain <a href>
+    // can't send, so fetch as a blob and let the caller turn it into a download.
+    downloadBackup: async () => {
+      const headers = {};
+      if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
+      const res = await fetch(`/api/settings/backup`, { headers, cache: "no-store" });
+      if (!res.ok) throw new ApiError("Failed to generate backup", res.status);
+      return res.blob();
+    },
   },
   approvalWorkflow: {
     types: () => get("/approval-workflow/types"),
