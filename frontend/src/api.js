@@ -126,6 +126,7 @@ export const api = {
     update: (id, payload) => patch(`/quotations/${id}`, payload),
     remove: (id) => del(`/quotations/${id}`),
     approveDiscount: (id) => post(`/quotations/${id}/approve-discount`),
+    submitForApproval: (id) => post(`/quotations/${id}/submit-for-approval`),
     setStatus: (id, status) => post(`/quotations/${id}/status`, { status }),
     toggleFavorite: (id) => post(`/quotations/${id}/favorite`),
     markEmailed: (id, cc) => post(`/quotations/${id}/emailed`, { cc }),

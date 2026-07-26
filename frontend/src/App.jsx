@@ -2245,7 +2245,7 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, onHighligh
           </tbody>
         </table>)}
       </div>
-      {open && <QuoteDetailModal quotation={open} state={state} dispatch={dispatch} role={role} customerOptions={customerOptions} templates={state.quotationTemplates} onClose={()=>setOpenId(null)} />}
+      {open && <QuoteDetailModal quotation={open} state={state} dispatch={dispatch} role={role} userId={userId} customerOptions={customerOptions} templates={state.quotationTemplates} onClose={()=>setOpenId(null)} />}
       {newQuote && <QuoteBuilderModal editableCustomer customerOptions={customerOptions} defaultService={state.services[0]} services={state.services} dispatch={dispatch} templates={state.quotationTemplates} onClose={()=>setNewQuote(false)} />}
       {cloneFor && <CloneQuoteModal quotation={cloneFor} customerOptions={customerOptions} dispatch={dispatch} onClose={()=>setCloneFor(null)} />}
       {editQuote && <QuoteBuilderModal editQuotation={editQuote} customerOptions={customerOptions} services={state.services} dispatch={dispatch} templates={state.quotationTemplates} onClose={()=>setEditQuote(null)} />}
@@ -2282,7 +2282,7 @@ function CloneQuoteModal({ quotation: q, customerOptions, dispatch, onClose, onC
   );
 }
 
-function QuoteDetailModal({ quotation: q, state, dispatch, role, customerOptions=[], templates={}, onClose }) {
+function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, customerOptions=[], templates={}, onClose }) {
   const [view, setView] = useState("details");
   const [cloning, setCloning] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -2327,7 +2327,9 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, customerOptions
   const subtotal = cq.items.reduce((a,it)=>a+it.qty*it.price*(1-(it.discountPct||0)/100),0);
   const total = Math.max(0, subtotal - (cq.orderDiscount||0));
   const hasDiscount = cq.items.some(it=>it.discountPct>0) || (cq.orderDiscount||0) > 0;
-  const canApprove = role === "sales_manager" || ADMIN_LIKE.includes(role);
+  const myDesignation = state?.employees.find(e=>e.id===userId)?.designation;
+  const assignedApproverDesignations = (state?.approvalTypes||[]).find(t=>t.key==="quotation_approval")?.approverDesignations || [];
+  const canApprove = role === "sales_manager" || ADMIN_LIKE.includes(role) || (myDesignation && assignedApproverDesignations.includes(myDesignation));
 
   const startVisualEdit = () => { setDraft({ ...content, items: content.items.map(it=>({...it})) }); setVisualEdit(true); };
   const saveVisualEdit = () => { setContent(draft); dispatch({ type:"UPDATE_QUOTATION", id:q.id, payload:draft }); setDraft(null); setVisualEdit(false); };
@@ -2403,14 +2405,14 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, customerOptions
 
           {actionError && <div className="side-note" style={{ color:"var(--danger)", marginTop:12, marginBottom:0 }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{actionError}</div>}
           <div style={{ display:"flex", gap:8, marginTop: 12, flexWrap:"wrap" }}>
-            {q.status === "Draft" && hasDiscount &&
-              <button className="btn btn-primary" disabled={actionBusy} onClick={()=>runAction({type:"SUBMIT_QUOTATION_FOR_APPROVAL", id:q.id})}>Submit for Manager approval</button>}
-            {q.status === "Draft" && !hasDiscount &&
+            {q.status === "Draft" && (hasDiscount || !canApprove) &&
+              <button className="btn btn-primary" disabled={actionBusy} onClick={()=>runAction({type:"SUBMIT_QUOTATION_FOR_APPROVAL", id:q.id})}>Submit for approval</button>}
+            {q.status === "Draft" && !hasDiscount && canApprove &&
               <button className="btn btn-primary" disabled={actionBusy} onClick={()=>runAction({type:"SEND_QUOTATION", id:q.id})}>Send to client</button>}
             {q.status === "Pending Manager Approval" && canApprove &&
-              <button className="btn btn-primary" disabled={actionBusy} onClick={()=>runAction({type:"APPROVE_QUOTATION_DISCOUNT", id:q.id, by:"Sales Manager"})}><Check size={14}/> Approve discount & send</button>}
+              <button className="btn btn-primary" disabled={actionBusy} onClick={()=>runAction({type:"APPROVE_QUOTATION_DISCOUNT", id:q.id, by:"Sales Manager"})}><Check size={14}/> Approve & send</button>}
             {q.status === "Pending Manager Approval" && !canApprove &&
-              <div className="side-note" style={{marginTop:0}}>Waiting on Sales Manager approval for the applied discount.</div>}
+              <div className="side-note" style={{marginTop:0}}>Waiting on approval before this can be sent to the client.</div>}
             {q.status === "Sent" && <>
               <button className="btn" disabled={actionBusy} onClick={()=>runAction({type:"SET_QUOTATION_STATUS", id:q.id, status:"Under Negotiation"}, { keepOpen: true })}>Mark under negotiation</button>
               {q.feeType === "Government Fee" ? (

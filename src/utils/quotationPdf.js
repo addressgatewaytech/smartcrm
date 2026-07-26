@@ -284,11 +284,22 @@ function generateQuotationPdf(quotation, res) {
   drawField("Signature:", MARGIN, y, colWidth);
   drawField("Mobile No.:", MARGIN + colWidth + 30, y, colWidth);
 
-  // --- Footer note, repeated on every page (per spec: must repeat, editable per template/quotation) ---
+  // --- Footer note + DRAFT watermark, both repeated on every page. The watermark marks any
+  // quotation that hasn't actually been sent to the client yet (still Draft, or awaiting
+  // approval) so a copy shared or downloaded early is unmistakably not final. ---
   const footerText = quotation.footer_note || DEFAULT_FOOTER_NOTE;
+  const isUnsent = ["Draft", "Pending Manager Approval"].includes(quotation.status);
   const range = doc.bufferedPageRange();
   for (let i = range.start; i < range.start + range.count; i++) {
     doc.switchToPage(i);
+    if (isUnsent) {
+      doc.save();
+      doc.opacity(0.15);
+      doc.font("Inter-Bold").fontSize(120).fillColor("#C0392B")
+        .rotate(-45, { origin: [doc.page.width / 2, doc.page.height / 2] })
+        .text("DRAFT", 0, doc.page.height / 2 - 60, { width: doc.page.width, align: "center", lineBreak: false });
+      doc.restore();
+    }
     doc.font("Inter").fontSize(7).fillColor(GRAY)
       .text(footerText, MARGIN, doc.page.height - MARGIN - 24, { width: doc.page.width - MARGIN * 2, align: "center" });
     doc.fillColor(INK);

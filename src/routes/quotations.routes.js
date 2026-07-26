@@ -4,7 +4,16 @@ const { requireAuth } = require("../middleware/auth");
 const { requireRole, isAdminLike } = require("../middleware/roles");
 const { nextId, nextSequentialId, daysFromNow, quoteTotal } = require("../utils/helpers");
 const { generateQuotationPdf } = require("../utils/quotationPdf");
-const { requireRoleOrApprovalTypeDesignation } = require("../utils/designationApproval");
+const { requireRoleOrApprovalTypeDesignation, isAssignedApprover } = require("../utils/designationApproval");
+
+// Sales Manager / Admin-tier can always send a quotation straight to the client; anyone else
+// needs to submit it for approval first (see /:id/submit-for-approval and /:id/approve-discount)
+// unless the Approval Process Workflow (Users & Roles) has assigned their designation as an
+// approver for "Quotation Approval".
+async function canSendDirectly(user) {
+  if (user.roles.includes("sales_manager") || isAdminLike(user.roles)) return true;
+  return isAssignedApprover(user.id, "quotation_approval");
+}
 
 const router = express.Router();
 router.use(requireAuth);
@@ -107,16 +116,38 @@ router.post("/:id/revise", async (req, res) => {
   res.json({ ok: true });
 });
 
-// Sales Manager / Admin-tier approves a discounted quotation, moving it to Sent — or, if the
-// Approval Process Workflow (Users & Roles) has assigned designations to "Quotation Discount
+// Any Draft quotation can be submitted for approval, not just discounted ones — this is how a
+// plain sales_exec (no direct-send privilege) gets a quotation in front of an approver before
+// it can go to the client.
+router.post("/:id/submit-for-approval", async (req, res) => {
+  await query("UPDATE quotations SET status = 'Pending Manager Approval' WHERE id = ? AND status = 'Draft'", [req.params.id]);
+  res.json({ ok: true });
+});
+
+// Sales Manager / Admin-tier approves a quotation pending approval, moving it to Sent — or, if
+// the Approval Process Workflow (Users & Roles) has assigned designations to "Quotation
 // Approval", anyone holding one of those designations can too.
-router.post("/:id/approve-discount", requireRoleOrApprovalTypeDesignation(["sales_manager", "admin_like"], "quotation_discount"), async (req, res) => {
+router.post("/:id/approve-discount", requireRoleOrApprovalTypeDesignation(["sales_manager", "admin_like"], "quotation_approval"), async (req, res) => {
   await query("UPDATE quotations SET status = 'Sent' WHERE id = ? AND status = 'Pending Manager Approval'", [req.params.id]);
   res.json({ ok: true });
 });
 
 router.post("/:id/status", async (req, res) => {
   const { status } = req.body; // "Sent" | "Under Negotiation" | "Rejected" | "Approved" (Government Fee terminal state — see below)
+
+  if (status === "Sent") {
+    const [q] = await query("SELECT status FROM quotations WHERE id = ?", [req.params.id]);
+    if (!q) return res.status(404).json({ error: "Not found" });
+    // A quotation pending approval must go through /:id/approve-discount, not this generic
+    // route — otherwise anyone could bypass the approval gate entirely.
+    if (q.status === "Pending Manager Approval") {
+      return res.status(400).json({ error: "This quotation needs approval before it can be sent — use the approve action" });
+    }
+    if (q.status === "Draft" && !(await canSendDirectly(req.user))) {
+      return res.status(403).json({ error: "Submit this quotation for approval before sending it to the client" });
+    }
+  }
+
   await query("UPDATE quotations SET status = ? WHERE id = ?", [status, req.params.id]);
   // Mirror convert-to-sales-order's deal-stage sync for direct status changes (e.g. a
   // Government Fee quotation's terminal "Approved", or a plain Rejected before any sales order exists).

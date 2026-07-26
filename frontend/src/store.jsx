@@ -135,7 +135,7 @@ export function useApiStore(enabled) {
 
       // --- Quotations -------------------------------------------------------------------------
       case "CREATE_QUOTATION": await api.quotations.create(action.payload); return refresh(["quotations", "deals"]);
-      case "SUBMIT_QUOTATION_FOR_APPROVAL": return; // backend computes Pending Manager Approval automatically on create/update
+      case "SUBMIT_QUOTATION_FOR_APPROVAL": await api.quotations.submitForApproval(action.id); return refresh(["quotations"]);
       case "CLONE_QUOTATION": await api.quotations.clone(action.id, action.customer); return refresh(["quotations"]);
       case "REVISE_QUOTATION": await api.quotations.revise(action.id); return refresh(["quotations", "deals"]);
       case "TOGGLE_QUOTATION_FAVORITE": await api.quotations.toggleFavorite(action.id); return refresh(["quotations"]);
