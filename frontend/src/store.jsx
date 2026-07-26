@@ -14,7 +14,7 @@ const emptyState = () => ({
   subscriptionPlans: {}, subscriptions: [], dataRecords: [], dataExportHistory: [],
   dataSettings: { dailyEmailTarget: 25, dailyWhatsappTarget: 25, emailIntervalMinutes: 5, whatsappIntervalMinutes: 10, recyclingEnabled: true, recyclingDays: 30, emailTemplate: { subject: "", body: "" }, whatsappTemplate: { body: "" } },
   appSettings: { emailNotificationsEnabled: true },
-  approvalHierarchy: [],
+  approvalTypes: [],
   activity: [],
 });
 
@@ -54,7 +54,7 @@ export function useApiStore(enabled) {
       dataExportHistory: async () => ({ dataExportHistory: (await api.dataManager.exportHistory()).map(mapExportHistoryEntry) }),
       dataSettings: async () => ({ dataSettings: mapDataSettings(await api.dataManager.settings()) }),
       appSettings: async () => ({ appSettings: mapAppSettings(await api.settings.get()) }),
-      approvalHierarchy: async () => ({ approvalHierarchy: await api.approvalWorkflow.hierarchy() }),
+      approvalTypes: async () => ({ approvalTypes: await api.approvalWorkflow.types() }),
     };
     const list = keys || Object.keys(tasks);
     // allSettled, not all — some tasks (e.g. Data Manager export history) are admin/data_manager-only
@@ -220,7 +220,7 @@ export function useApiStore(enabled) {
       case "UPDATE_USER": await api.users.update(action.id, action.payload); return refresh(["employees"]);
       case "RESET_USER_PASSWORD": return api.users.resetPassword(action.id, action.password);
       case "DELETE_USER": await api.users.remove(action.id); return refresh(["employees"]);
-      case "SET_DESIGNATION_APPROVER": await api.approvalWorkflow.setApprover(action.designation, action.parentDesignation); return refresh(["approvalHierarchy"]);
+      case "SET_APPROVAL_TYPE_APPROVERS": await api.approvalWorkflow.setTypeApprovers(action.key, action.approverDesignations); return refresh(["approvalTypes"]);
 
       // --- Incentives -----------------------------------------------------------------------
       case "UPDATE_INCENTIVE_RULE": await api.incentives.updateRule(action.id, action.payload); return refresh(["incentiveRules"]);

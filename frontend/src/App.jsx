@@ -5259,40 +5259,19 @@ function UsersPage({ state, dispatch, role }) {
 }
 
 // Drives real approvals (quotation discounts, job card sign-off, leave and punch requests) — see
-// requireRoleOrDesignationApprover on the backend. Kanban-style: dragging a designation card into
-// another designation's column sets that column's designation as its approver. Existing role-based
-// approvals (Sales Manager, Accounts, HR, Admin) keep working untouched; this only adds routing
-// on top, and only once a chain is actually configured here.
+// requireRoleOrApprovalTypeDesignation on the backend. Each approval type gets its own flat list
+// of assigned approver designations, independent of the others. Existing role-based approvals
+// (Sales Manager, Accounts, HR, Admin) keep working untouched; this only adds designation-based
+// routing on top, and only once a type actually has designations assigned here.
 function ApprovalWorkflowPage({ state, dispatch, role }) {
   const canEdit = ["super_admin","admin"].includes(role);
-  const designations = state.approvalHierarchy || [];
-  const [draggedDesignation, setDraggedDesignation] = useState(null);
-  const [dragOverCol, setDragOverCol] = useState(null);
+  const types = state.approvalTypes || [];
+  const allDesignations = [...new Set(state.employees.map(e => e.designation).filter(Boolean))].sort();
 
-  const parentOfMap = new Map(designations.map(d => [d.designation, d.parentDesignation]));
-  const wouldCycle = (child, newParent) => {
-    if (!newParent) return false;
-    if (child === newParent) return true;
-    let cur = parentOfMap.get(newParent) || null;
-    let hops = 0;
-    while (cur && hops < 20) {
-      if (cur === child) return true;
-      cur = parentOfMap.get(cur) || null;
-      hops++;
-    }
-    return false;
-  };
-
-  const columns = [{ key: null, label: "Top of chain (no approver)" }, ...designations.map(d => ({ key: d.designation, label: d.designation }))];
-
-  const handleDrop = (parentKey) => {
-    setDragOverCol(null);
-    const child = draggedDesignation;
-    setDraggedDesignation(null);
-    if (!child || !canEdit) return;
-    if (parentKey === (parentOfMap.get(child) ?? null)) return;
-    if (wouldCycle(child, parentKey)) return;
-    dispatch({ type:"SET_DESIGNATION_APPROVER", designation: child, parentDesignation: parentKey });
+  const toggleDesignation = (type, designation) => {
+    const current = type.approverDesignations || [];
+    const next = current.includes(designation) ? current.filter(d => d !== designation) : [...current, designation];
+    dispatch({ type:"SET_APPROVAL_TYPE_APPROVERS", key: type.key, approverDesignations: next });
   };
 
   return (
@@ -5301,61 +5280,45 @@ function ApprovalWorkflowPage({ state, dispatch, role }) {
         <strong style={{ fontSize:14 }}>Approval Process Workflow</strong>
         <p className="modal-sub">
           {canEdit
-            ? "Drag a designation card into another designation's column to set who approves its requests — quotation discounts, job card sign-off, leave and punch requests. Existing role-based approvals (Sales Manager, Accounts, HR, Admin) keep working regardless; this adds designation-based routing on top."
-            : "How approval requests route by designation. Only Super Admin / Admin can edit this."}
+            ? "For each approval type, pick which designations are allowed to approve it — on top of the built-in role-based approvers, which always keep working regardless."
+            : "Who can approve each type of request. Only Super Admin / Admin can edit this."}
         </p>
       </div>
 
-      {designations.length === 0 ? (
-        <Empty icon={UserCog} text="No designations found yet — add designations to users under the Users tab first." />
-      ) : (
-      <div className="board" style={{ overflowX:"auto" }}>
-        {columns.map(col => (
-          <div className={`board-col ${dragOverCol===col.key ? "drag-over" : ""}`} key={col.key ?? "__root__"}
-            onDragOver={(e)=>{ e.preventDefault(); if (canEdit && dragOverCol!==col.key) setDragOverCol(col.key); }}
-            onDragLeave={()=>setDragOverCol(prev => prev===col.key ? null : prev)}
-            onDrop={(e)=>{ e.preventDefault(); handleDrop(col.key); }}>
-            <h4>{col.label}</h4>
-            {designations.filter(d => (d.parentDesignation ?? null) === col.key).map(d => (
-              <div className={`job-card ${draggedDesignation===d.designation ? "dragging" : ""}`} key={d.designation}
-                draggable={canEdit}
-                onDragStart={()=>setDraggedDesignation(d.designation)}
-                onDragEnd={()=>{ setDraggedDesignation(null); setDragOverCol(null); }}
-                style={{ cursor: canEdit ? "grab" : "default" }} title={canEdit ? "Drag onto another column to set its approver" : d.designation}>
-                <h5 style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{d.designation}</h5>
-              </div>
+      <div className="agw-card" style={{ padding: 0 }}>
+        <table className="agw-table">
+          <thead><tr><th>Approval type</th><th>Built-in approvers</th><th>Assigned designations</th></tr></thead>
+          <tbody>
+            {types.map(t => (
+              <tr key={t.key}>
+                <td style={{ fontWeight:500 }}>{t.label}</td>
+                <td style={{ fontSize:12.5, color:"var(--ink-soft)" }}>{t.builtInRoles.join(", ")}</td>
+                <td>
+                  <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom: canEdit ? 8 : 0 }}>
+                    {(t.approverDesignations || []).length === 0
+                      ? <span style={{ fontSize:12, color:"var(--ink-soft)" }}>None assigned</span>
+                      : t.approverDesignations.map(d => <span key={d} className="pill">{d}</span>)}
+                  </div>
+                  {canEdit && (
+                    <details>
+                      <summary style={{ fontSize:12, color:"var(--brand)", cursor:"pointer" }}>Edit</summary>
+                      <div style={{ display:"flex", flexDirection:"column", gap:4, marginTop:8, maxHeight:160, overflowY:"auto" }}>
+                        {allDesignations.map(d => (
+                          <label key={d} style={{ display:"flex", alignItems:"center", gap:8, fontSize:12.5 }}>
+                            <input type="checkbox" checked={(t.approverDesignations || []).includes(d)} onChange={()=>toggleDesignation(t, d)} /> {d}
+                          </label>
+                        ))}
+                      </div>
+                    </details>
+                  )}
+                </td>
+              </tr>
             ))}
-            {designations.filter(d => (d.parentDesignation ?? null) === col.key).length === 0 && <div style={{fontSize:12,color:"var(--ink-soft)",padding:"6px 6px"}}>—</div>}
-          </div>
-        ))}
+          </tbody>
+        </table>
       </div>
-      )}
-
-      {designations.length > 0 && (
-        <div className="agw-card" style={{ marginTop: 18 }}>
-          <strong style={{ fontSize:14 }}>Organization hierarchy</strong>
-          <OrgChartTree designations={designations} />
-        </div>
-      )}
     </div>
   );
-}
-
-function OrgChartTree({ designations }) {
-  const childrenOf = (parent) => designations.filter(d => (d.parentDesignation ?? null) === parent).map(d => d.designation);
-  const roots = childrenOf(null);
-
-  const renderNode = (name, depth) => (
-    <div key={name} style={{ marginLeft: depth * 24, marginTop: 8 }}>
-      <div style={{ display:"inline-flex", alignItems:"center", gap:6, background:"var(--page)", borderRadius:8, padding:"6px 12px", fontSize:12.5, fontWeight:500 }}>
-        <UserCog size={13} /> {name}
-      </div>
-      {childrenOf(name).map(child => renderNode(child, depth + 1))}
-    </div>
-  );
-
-  if (roots.length === 0) return <div style={{ fontSize:12, color:"var(--ink-soft)", marginTop:8 }}>Nothing configured yet — drag cards above to build the hierarchy.</div>;
-  return <div style={{ marginTop: 8 }}>{roots.map(r => renderNode(r, 0))}</div>;
 }
 
 /* ---------------------------------------------------------------------- */

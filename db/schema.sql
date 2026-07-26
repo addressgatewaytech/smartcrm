@@ -96,14 +96,15 @@ CREATE TABLE IF NOT EXISTS staff_docs (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
--- Approval Process Workflow (Users & Roles): who approves whom, by designation rather than by
--- individual user — parent_designation is the designation that approves requests raised by
--- `designation`. NULL parent = top of the chain (no approver above it). Not FK'd to users.designation
--- since designation is free text and a row can exist here before/after any user actually holds it.
-CREATE TABLE IF NOT EXISTS designation_hierarchy (
-  designation        VARCHAR(200) PRIMARY KEY,
-  parent_designation VARCHAR(200),
-  updated_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+-- Approval Process Workflow (Users & Roles): which designations are allowed to approve each
+-- fixed approval type (quotation_discount, job_card_signoff, leave_request, punch_request) — a
+-- flat allow-list per type, independent of any reporting hierarchy. approver_designations is a
+-- JSON array of designation strings; an empty/missing row means only the built-in role gate
+-- (Sales Manager, Accounts, HR, Admin-tier — see each route) can approve that type.
+CREATE TABLE IF NOT EXISTS approval_type_assignments (
+  approval_type         VARCHAR(50) PRIMARY KEY,
+  approver_designations JSON NOT NULL,
+  updated_at            TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------------

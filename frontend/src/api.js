@@ -270,8 +270,8 @@ export const api = {
     update: (payload) => patch("/settings", payload),
   },
   approvalWorkflow: {
-    hierarchy: () => get("/approval-workflow/hierarchy"),
-    setApprover: (designation, parentDesignation) => request("PUT", "/approval-workflow/hierarchy", { designation, parentDesignation }),
+    types: () => get("/approval-workflow/types"),
+    setTypeApprovers: (key, approverDesignations) => request("PUT", `/approval-workflow/types/${encodeURIComponent(key)}`, { approverDesignations }),
   },
 };
 

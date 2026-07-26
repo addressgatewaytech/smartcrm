@@ -1,42 +1,34 @@
 const { query } = require("../config/db");
-const { requireRole, isAdminLike } = require("../middleware/roles");
+const { isAdminLike } = require("../middleware/roles");
 
-// Walks the configured chain (child -> parent -> parent's parent -> ...) starting from
-// `ofDesignation` and returns true if `ancestorDesignation` appears anywhere above it.
-// Capped at 20 hops as a cheap guard against a chain that somehow slipped past the
-// cycle check below.
-async function isDesignationAncestor(ancestorDesignation, ofDesignation) {
-  if (!ancestorDesignation || !ofDesignation || ancestorDesignation === ofDesignation) return false;
-  const rows = await query("SELECT designation, parent_designation FROM designation_hierarchy");
-  const parentOf = new Map(rows.map((r) => [r.designation, r.parent_designation]));
-  let cur = parentOf.get(ofDesignation) || null;
-  let hops = 0;
-  while (cur && hops < 20) {
-    if (cur === ancestorDesignation) return true;
-    cur = parentOf.get(cur) || null;
-    hops++;
-  }
-  return false;
-}
+// Every fixed approval type in the system, with its built-in (always-allowed) role gate —
+// shown in the Approval Process Workflow UI so admins know what already works even with no
+// designations assigned yet.
+const APPROVAL_TYPES = [
+  { key: "quotation_discount", label: "Quotation Discount Approval", builtInRoles: ["Sales Manager", "Admin-tier"] },
+  { key: "job_card_signoff", label: "Job Card Sign-off", builtInRoles: ["Accounts", "Admin-tier"] },
+  { key: "leave_request", label: "Leave Request Approval", builtInRoles: ["HR", "Admin-tier"] },
+  { key: "punch_request", label: "Punch Request Approval", builtInRoles: ["HR", "Admin-tier"] },
+];
 
-// Same shape as requireRole(baseRoles), but additive: also lets a caller through if their
-// designation is a configured approver (ancestor in designation_hierarchy) of the target
-// user's designation. `resolveTargetUserId(req)` returns the id of the user whose request is
-// being approved/rejected. Never removes access requireRole alone would have granted — if the
-// hierarchy is unconfigured for a given pair, behavior is identical to plain requireRole.
-function requireRoleOrDesignationApprover(baseRoles, resolveTargetUserId) {
+// Same shape as requireRole(baseRoles), but additive: also lets a caller through if their own
+// designation is on the assigned approver list for `approvalTypeKey` (Approval Process Workflow,
+// Users & Roles). Never removes access requireRole alone would have granted — if nobody has
+// assigned designations for a type yet, behavior is identical to plain requireRole.
+function requireRoleOrApprovalTypeDesignation(baseRoles, approvalTypeKey) {
   return async (req, res, next) => {
     const userRoles = req.user?.roles || [];
     const roleOk = baseRoles.some((role) => (role === "admin_like" ? isAdminLike(userRoles) : userRoles.includes(role)));
     if (roleOk) return next();
 
     try {
-      const targetUserId = await resolveTargetUserId(req);
-      if (!targetUserId) return res.status(403).json({ error: "You do not have permission to perform this action" });
+      const [row] = await query("SELECT approver_designations FROM approval_type_assignments WHERE approval_type = ?", [approvalTypeKey]);
+      const allowed = row?.approver_designations || [];
+      if (!allowed.length) return res.status(403).json({ error: "You do not have permission to perform this action" });
       const [approver] = await query("SELECT designation FROM users WHERE id = ?", [req.user.id]);
-      const [target] = await query("SELECT designation FROM users WHERE id = ?", [targetUserId]);
-      const ok = await isDesignationAncestor(approver?.designation, target?.designation);
-      if (!ok) return res.status(403).json({ error: "You do not have permission to perform this action" });
+      if (!approver?.designation || !allowed.includes(approver.designation)) {
+        return res.status(403).json({ error: "You do not have permission to perform this action" });
+      }
       next();
     } catch (err) {
       next(err);
@@ -44,4 +36,4 @@ function requireRoleOrDesignationApprover(baseRoles, resolveTargetUserId) {
   };
 }
 
-module.exports = { isDesignationAncestor, requireRoleOrDesignationApprover };
+module.exports = { APPROVAL_TYPES, requireRoleOrApprovalTypeDesignation };

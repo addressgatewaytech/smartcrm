@@ -3,12 +3,7 @@ const { query } = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
 const { requireRole, isAdminLike } = require("../middleware/roles");
 const { nextId, daysFromNow } = require("../utils/helpers");
-const { requireRoleOrDesignationApprover } = require("../utils/designationApproval");
-
-const resolveJobCardCreator = async (req) => {
-  const [j] = await query("SELECT created_by FROM job_cards WHERE id = ?", [req.params.id]);
-  return j?.created_by;
-};
+const { requireRoleOrApprovalTypeDesignation } = require("../utils/designationApproval");
 
 const router = express.Router();
 router.use(requireAuth);
@@ -70,13 +65,13 @@ router.post("/direct", requireRole(["sales_manager", "sales_exec", "ops_manager"
   res.status(201).json({ id });
 });
 
-router.post("/:id/approve", requireRoleOrDesignationApprover(["accounts", "admin_like"], resolveJobCardCreator), async (req, res) => {
+router.post("/:id/approve", requireRoleOrApprovalTypeDesignation(["accounts", "admin_like"], "job_card_signoff"), async (req, res) => {
   await query("UPDATE job_cards SET status = 'Created' WHERE id = ? AND status = 'Pending Approval'", [req.params.id]);
   await query("INSERT INTO job_card_status_log (job_card_id, status, by_user, note) VALUES (?, 'Created', ?, 'Approved by Accounts')", [req.params.id, req.user.id]);
   res.json({ ok: true });
 });
 
-router.post("/:id/reject", requireRoleOrDesignationApprover(["accounts", "admin_like"], resolveJobCardCreator), async (req, res) => {
+router.post("/:id/reject", requireRoleOrApprovalTypeDesignation(["accounts", "admin_like"], "job_card_signoff"), async (req, res) => {
   const { reason } = req.body;
   await query("UPDATE job_cards SET status = 'Cancelled', cancel_reason = ? WHERE id = ? AND status = 'Pending Approval'", [reason, req.params.id]);
   await query("INSERT INTO job_card_status_log (job_card_id, status, by_user, note) VALUES (?, 'Cancelled', ?, ?)", [req.params.id, req.user.id, reason]);
