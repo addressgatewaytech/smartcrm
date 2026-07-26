@@ -532,8 +532,8 @@ function SalesPersonBars({ rows }) {
 
 function Modal({ title, sub, onClose, children, width }) {
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" style={width ? { maxWidth: width } : undefined} onClick={e => e.stopPropagation()}>
+    <div className="modal-backdrop">
+      <div className="modal" style={width ? { maxWidth: width } : undefined}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
           <div>
             <h3>{title}</h3>
