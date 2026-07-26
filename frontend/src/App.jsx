@@ -9,7 +9,7 @@ import {
   UserPlus, ShieldCheck, Ban, Clock, ArrowRight, Search, Mail,
   BadgeCheck, CalendarClock, Briefcase, Copy, Files, Link2, Pencil, Trash2, Repeat, BarChart3, Download, MoreHorizontal, ChevronsLeft, ChevronsRight, Camera, Star,
   Database, Upload, MessageCircle, Recycle, ArchiveX, ShieldAlert, Settings as SettingsIcon,
-  Sun, Moon
+  Sun, Moon, BookOpen
 } from "lucide-react";
 
 /* ---------------------------------------------------------------------- */
@@ -3994,6 +3994,8 @@ function JobsPage({ state, dispatch, role, userId }) {
   const [draggedJobId, setDraggedJobId] = useState(null);
   const [dragOverCol, setDragOverCol] = useState(null);
   const [newJob, setNewJob] = useState(false);
+  const [expandedCols, setExpandedCols] = useState({});
+  const KANBAN_PAGE_SIZE = 5;
   const cols = ["Pending Approval","Created","Assigned","In Progress","On Hold","Completed","Cancelled"];
   const canManage = role === "ops_manager" || ADMIN_LIKE.includes(role);
   const canCreateDirect = ["sales_manager","sales_exec","ops_manager"].includes(role) || ADMIN_LIKE.includes(role);
@@ -4066,13 +4068,17 @@ function JobsPage({ state, dispatch, role, userId }) {
 
       {view === "kanban" && (
       <div className="board">
-        {cols.map(col => (
+        {cols.map(col => {
+          const colJobs = visible.filter(j => j.status === col);
+          const isExpanded = !!expandedCols[col];
+          const shownJobs = isExpanded ? colJobs : colJobs.slice(0, KANBAN_PAGE_SIZE);
+          return (
           <div className={`board-col ${dragOverCol===col ? "drag-over" : ""}`} key={col}
             onDragOver={(e)=>{ e.preventDefault(); if (dragOverCol!==col) setDragOverCol(col); }}
             onDragLeave={()=>setDragOverCol(prev => prev===col ? null : prev)}
             onDrop={(e)=>{ e.preventDefault(); handleDrop(col); }}>
-            <h4>{col}<span className="pill">{visible.filter(j=>j.status===col).length}</span></h4>
-            {visible.filter(j => j.status === col).map(j => (
+            <h4>{col}<span className="pill">{colJobs.length}</span></h4>
+            {shownJobs.map(j => (
               <div className={`job-card ${draggedJobId===j.id ? "dragging" : ""}`} key={j.id} onClick={()=>openDetail(j)}
                 draggable={canManage && !["Completed","Cancelled","Pending Approval"].includes(j.status)}
                 onDragStart={(e)=>{ setDraggedJobId(j.id); e.dataTransfer.effectAllowed = "move"; }}
@@ -4095,9 +4101,16 @@ function JobsPage({ state, dispatch, role, userId }) {
                   <button className="btn btn-sm" style={{marginTop:8,width:"100%"}} onClick={(e)=>{e.stopPropagation(); setAssignFor(j);}}>Assign team</button>}
               </div>
             ))}
-            {visible.filter(j=>j.status===col).length===0 && <div style={{fontSize:12,color:"var(--ink-soft)",padding:"6px 6px"}}>—</div>}
+            {colJobs.length === 0 && <div style={{fontSize:12,color:"var(--ink-soft)",padding:"6px 6px"}}>—</div>}
+            {colJobs.length > KANBAN_PAGE_SIZE && (
+              <button className="btn btn-sm btn-ghost" style={{width:"100%",marginTop:4}}
+                onClick={()=>setExpandedCols(prev=>({...prev,[col]:!prev[col]}))}>
+                {isExpanded ? "Show less" : `Show ${colJobs.length - KANBAN_PAGE_SIZE} more`}
+              </button>
+            )}
           </div>
-        ))}
+          );
+        })}
       </div>
       )}
 
@@ -4593,6 +4606,7 @@ function HrPage({ state, dispatch, role, userId }) {
             {isAdmin ? "Punch requests" : "My punch requests"}
             {(isAdmin ? pendingPunchCount : myPendingPunchCount) > 0 && <span className="agw-nav-badge" style={{marginLeft:6}}>{isAdmin ? pendingPunchCount : myPendingPunchCount}</span>}
           </button>
+          <button className={`tab ${tab==="kb"?"active":""}`} onClick={()=>setTab("kb")}><BookOpen size={13} style={{verticalAlign:-2,marginRight:4}}/>Knowledge Base</button>
         </div>
         {tab === "team" && (
           <div style={{ display:"flex", gap:8, alignItems:"center" }}>
@@ -4666,10 +4680,63 @@ function HrPage({ state, dispatch, role, userId }) {
 
       {tab === "attendance" && isAdmin && <HrAttendanceReport state={state} dispatch={dispatch} onMarkAttendance={(id)=>setAttendanceFor(id)} />}
 
+      {tab === "kb" && <KnowledgeBasePage />}
+
       {docsFor && <StaffDocsModal employee={docsFor} dispatch={dispatch} onClose={()=>setDocsFor(null)} />}
       {leaveFor && <LeaveRequestModal employee={leaveFor} dispatch={dispatch} onClose={()=>setLeaveFor(null)} />}
       {attendanceFor && <MarkAttendanceModal employees={state.employees} initialEmployeeId={attendanceFor} dispatch={dispatch} onClose={()=>setAttendanceFor(null)} />}
       {punchFor && <PunchRequestModal employee={punchFor} state={state} dispatch={dispatch} onClose={()=>setPunchFor(null)} />}
+    </div>
+  );
+}
+
+const WORKFLOW_STAGES = [
+  { icon: Users, label: "Lead", desc: "A new prospect comes in — from a campaign, referral, or website enquiry." },
+  { icon: Handshake, label: "Deal", desc: "The lead is qualified and converted into a deal with an estimated value." },
+  { icon: FileText, label: "Quotation", desc: "A price quote is built and sent to the customer for approval." },
+  { icon: ShoppingCart, label: "Sales Order", desc: "Once approved, the quotation becomes a confirmed sales order." },
+  { icon: Receipt, label: "Invoice", desc: "The customer is billed against the sales order." },
+  { icon: ClipboardList, label: "Job Card", desc: "Operations picks up the work and tracks it through to completion." },
+];
+
+/** Basic "how it works" guide for HR — a graphical Lead-to-Job-Card workflow so new
+ * staff can understand the pipeline at a glance. More sections/articles get added here later. */
+function KnowledgeBasePage() {
+  return (
+    <div>
+      <div className="agw-card" style={{ marginBottom: 18 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
+          <BookOpen size={18} />
+          <strong style={{ fontSize:15.5 }}>How to use SMART CRM</strong>
+        </div>
+        <div style={{ fontSize:13, color:"var(--ink-soft)", lineHeight:1.6 }}>
+          A quick look at how work flows through the system, from the moment a lead comes in to the job card
+          that closes it out. More guides will be added here over time.
+        </div>
+      </div>
+
+      <div className="agw-card">
+        <strong style={{ fontSize:14 }}>The core workflow: Lead → Job Card</strong>
+        <div style={{ display:"flex", alignItems:"stretch", flexWrap:"wrap", gap:0, marginTop:16 }}>
+          {WORKFLOW_STAGES.map((s, i) => (
+            <React.Fragment key={s.label}>
+              <div style={{ flex:"1 1 150px", minWidth:150, background:"var(--page)", borderRadius:8, padding:"14px 12px", textAlign:"center" }}>
+                <div style={{ width:36, height:36, borderRadius:"50%", background:"var(--brand-tint)", color:"var(--brand)",
+                  display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 8px" }}>
+                  <s.icon size={17} />
+                </div>
+                <div style={{ fontWeight:600, fontSize:13 }}>{s.label}</div>
+                <div style={{ fontSize:11.5, color:"var(--ink-soft)", marginTop:4, lineHeight:1.4 }}>{s.desc}</div>
+              </div>
+              {i < WORKFLOW_STAGES.length - 1 && (
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"center", flex:"0 0 28px", color:"var(--ink-soft)" }}>
+                  <ArrowRight size={16} />
+                </div>
+              )}
+            </React.Fragment>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

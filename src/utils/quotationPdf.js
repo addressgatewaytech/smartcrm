@@ -94,7 +94,7 @@ function drawBillTo(doc, quotation, rightX, y) {
 function drawTableHeader(doc, y, colX, tableRight) {
   doc.rect(MARGIN, y, tableRight - MARGIN, 22).fill(DARK_BG);
   doc.font("Inter-SemiBold").fontSize(9).fillColor("#FFFFFF");
-  doc.text("#", colX.idx, y + 7, { width: colX.desc - colX.idx - 5 });
+  doc.text("#", colX.idx + 5, y + 7, { width: colX.desc - colX.idx - 10 });
   doc.text("Item & Description", colX.desc, y + 7, { width: colX.rate - colX.desc - 5 });
   doc.text("Rate", colX.rate, y + 7, { width: colX.amount - colX.rate - 5, align: "right" });
   doc.text("Amount", colX.amount, y + 7, { width: tableRight - colX.amount - 5, align: "right" });
@@ -180,7 +180,7 @@ function generateQuotationPdf(quotation, res) {
     const rowHeight = Math.max(18, descHeight + noteHeight + 8);
 
     ensureTableRoom(rowHeight);
-    doc.font("Inter").fontSize(9.5).fillColor(INK).text(String(rowNumber), colX.idx, y + 6, { width: colX.desc - colX.idx - 5 });
+    doc.font("Inter").fontSize(9.5).fillColor(INK).text(String(rowNumber), colX.idx + 5, y + 6, { width: colX.desc - colX.idx - 10 });
     doc.text(descText, colX.desc, y + 6, { width: descWidth });
     if (it.note) {
       doc.font("Inter").fontSize(8).fillColor(GRAY).text(it.note, colX.desc, doc.y + 1, { width: descWidth });
