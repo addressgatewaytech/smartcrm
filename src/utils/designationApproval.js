@@ -7,6 +7,7 @@ const { isAdminLike } = require("../middleware/roles");
 const APPROVAL_TYPES = [
   { key: "quotation_approval", label: "Quotation Approval (before sending to client)", builtInRoles: ["Sales Manager", "Admin-tier"] },
   { key: "job_card_signoff", label: "Job Card Sign-off", builtInRoles: ["Accounts", "Admin-tier"] },
+  { key: "job_card_completion", label: "Job Card Completion Approval", builtInRoles: ["Operations Manager", "Admin-tier"] },
   { key: "leave_request", label: "Leave Request Approval", builtInRoles: ["HR", "Admin-tier"] },
   { key: "punch_request", label: "Punch Request Approval", builtInRoles: ["HR", "Admin-tier"] },
 ];

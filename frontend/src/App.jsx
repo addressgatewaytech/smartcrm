@@ -4120,7 +4120,7 @@ function JobsPage({ state, dispatch, role, userId }) {
       )}
 
       {assignFor && <AssignModal job={assignFor} dispatch={dispatch} employees={state.employees} onClose={()=>setAssignFor(null)} />}
-      {detail && <JobDetailModal job={detail} dispatch={dispatch} role={role} employees={state.employees} initialShowCancel={detailCancelOnOpen}
+      {detail && <JobDetailModal job={detail} dispatch={dispatch} role={role} userId={userId} employees={state.employees} approvalTypes={state.approvalTypes} initialShowCancel={detailCancelOnOpen}
         onClose={()=>{ setDetailId(null); setDetailCancelOnOpen(false); }} onReassign={()=>{ setAssignFor(detail); setDetailId(null); }} />}
       {newJob && <NewJobCardModal state={state} dispatch={dispatch} onClose={()=>setNewJob(false)} />}
     </div>
@@ -4187,7 +4187,7 @@ function AssignModal({ job, dispatch, employees, onClose }) {
   );
 }
 
-function JobDetailModal({ job, dispatch, role, employees, onClose, onReassign, initialShowCancel=false }) {
+function JobDetailModal({ job, dispatch, role, userId, employees, approvalTypes=[], onClose, onReassign, initialShowCancel=false }) {
   const [cancelReason, setCancelReason] = useState("");
   const [showCancel, setShowCancel] = useState(initialShowCancel);
   const [showReject, setShowReject] = useState(false);
@@ -4196,6 +4196,11 @@ function JobDetailModal({ job, dispatch, role, employees, onClose, onReassign, i
   const [confirmDelete, setConfirmDelete] = useState(false);
   const canManage = role === "ops_manager" || role === "ops_member" || ADMIN_LIKE.includes(role);
   const canApproveJob = role === "accounts" || ADMIN_LIKE.includes(role);
+  // Marking a job card Completed needs Operations Manager sign-off — narrower than canManage,
+  // which the assigned ops_member still needs for holds/checklist/cancel.
+  const myDesignation = employees.find(e=>e.id===userId)?.designation;
+  const completionApproverDesignations = approvalTypes.find(t=>t.key==="job_card_completion")?.approverDesignations || [];
+  const canCompleteJob = role === "ops_manager" || ADMIN_LIKE.includes(role) || (myDesignation && completionApproverDesignations.includes(myDesignation));
   const allDone = job.checklist.length > 0 && job.checklist.every(c => c.done);
   const pendingApproval = job.status === "Pending Approval";
   const locked = ["Completed","Cancelled"].includes(job.status) || pendingApproval;
@@ -4293,12 +4298,16 @@ function JobDetailModal({ job, dispatch, role, employees, onClose, onReassign, i
       {job.status === "Cancelled" && job.cancelReason && <div className="side-note" style={{ borderColor:"#EFC3BC", background:"var(--danger-tint)" }}><Ban size={13} style={{verticalAlign:-2,marginRight:4}}/>Cancelled: {job.cancelReason}</div>}
 
       {canManage && !pendingApproval && !["Completed","Cancelled"].includes(job.status) && job.assignees.length > 0 && (
-        <div style={{ display:"flex", gap:8, marginTop: 18, flexWrap:"wrap" }}>
+        <div style={{ display:"flex", gap:8, marginTop: 18, flexWrap:"wrap", alignItems:"center" }}>
           {job.status !== "On Hold" && <button className="btn" onClick={()=>dispatch({type:"SET_JOB_STATUS", id:job.id, status:"On Hold", by:"Operations"})}>Put on hold</button>}
           {job.status === "On Hold" && <button className="btn" onClick={()=>dispatch({type:"SET_JOB_STATUS", id:job.id, status:"In Progress", by:"Operations"})}>Resume</button>}
-          <button className="btn btn-primary" disabled={!allDone} onClick={()=>{ dispatch({type:"SET_JOB_STATUS", id:job.id, status:"Completed", by:"Operations"}); onClose(); }}>
-            Mark completed{!allDone && " (finish checklist first)"}
-          </button>
+          {canCompleteJob ? (
+            <button className="btn btn-primary" disabled={!allDone} onClick={()=>{ dispatch({type:"SET_JOB_STATUS", id:job.id, status:"Completed", by:"Operations"}); onClose(); }}>
+              Mark completed{!allDone && " (finish checklist first)"}
+            </button>
+          ) : allDone && (
+            <span className="side-note" style={{marginTop:0}}>Checklist done — ask your Operations Manager to mark this complete.</span>
+          )}
           <button className="btn" style={{ color:"var(--danger)" }} onClick={()=>setShowCancel(true)}>Cancel job</button>
         </div>
       )}

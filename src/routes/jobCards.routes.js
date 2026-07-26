@@ -3,7 +3,7 @@ const { query } = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
 const { requireRole, isAdminLike } = require("../middleware/roles");
 const { nextId, daysFromNow } = require("../utils/helpers");
-const { requireRoleOrApprovalTypeDesignation } = require("../utils/designationApproval");
+const { requireRoleOrApprovalTypeDesignation, isAssignedApprover } = require("../utils/designationApproval");
 
 const router = express.Router();
 router.use(requireAuth);
@@ -93,6 +93,11 @@ router.post("/:id/status", async (req, res) => {
     const [job] = await query("SELECT checklist FROM job_cards WHERE id = ?", [req.params.id]);
     const checklist = job.checklist || [];
     if (checklist.length > 0 && checklist.some((c) => !c.done)) return res.status(400).json({ error: "All checklist items must be completed first" });
+    // Whoever is assigned to the work (ops_member) can drive it to done, but only an Operations
+    // Manager (or Admin-tier, or an assigned "Job Card Completion Approval" designation) can
+    // actually mark it Completed.
+    const canComplete = req.user.roles.includes("ops_manager") || isAdminLike(req.user.roles) || (await isAssignedApprover(req.user.id, "job_card_completion"));
+    if (!canComplete) return res.status(403).json({ error: "Only an Operations Manager can mark a job card complete" });
   }
   await query("UPDATE job_cards SET status = ?, cancel_reason = ? WHERE id = ?", [status, status === "Cancelled" ? reason : null, req.params.id]);
   await query("INSERT INTO job_card_status_log (job_card_id, status, by_user, note) VALUES (?,?,?,?)", [req.params.id, status, req.user.id, reason || null]);
