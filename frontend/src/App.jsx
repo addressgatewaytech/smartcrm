@@ -696,6 +696,7 @@ const NAV = [
   { group: "People", items: [
     { key: "incentives", label: "Incentives", icon: Coins, roles: "all" },
     { key: "hr", label: "HR", icon: Briefcase, roles: "all" },
+    { key: "knowledgeBase", label: "Knowledge Base", icon: BookOpen, roles: "all" },
     { key: "users", label: "Users & Roles", icon: UserCog, roles: ["super_admin","admin"] },
     { key: "templates", label: "Checklist Templates", icon: ListChecks, roles: [...ADMIN_LIKE,"ops_manager"] },
   ]},
@@ -969,6 +970,7 @@ export default function App() {
     jobs: ["Job Cards", "Operations board — assignment through completion"],
     incentives: ["Incentives", "Daily, weekly and monthly incentive tracking"],
     hr: ["HR", "Employee records and document expiry"],
+    knowledgeBase: ["Knowledge Base", "How to use SMART CRM — guides and workflow reference"],
     users: ["Users & Roles", "Manage platform access"],
     templates: ["Checklist Templates", "Configure the job checklist for each service"],
     reports: ["Reports", "Business volume, collections, customers, incentives and operations — all Professional Fee based"],
@@ -1092,6 +1094,7 @@ export default function App() {
             {page === "jobs" && <JobsPage {...ctx} />}
             {page === "incentives" && <IncentivesPage {...ctx} />}
             {page === "hr" && <HrPage {...ctx} />}
+            {page === "knowledgeBase" && <KnowledgeBasePage />}
             {page === "users" && <UsersPage {...ctx} />}
             {page === "templates" && <TemplatesPage {...ctx} />}
             {page === "reports" && <ReportsPage {...ctx} />}
@@ -4606,7 +4609,6 @@ function HrPage({ state, dispatch, role, userId }) {
             {isAdmin ? "Punch requests" : "My punch requests"}
             {(isAdmin ? pendingPunchCount : myPendingPunchCount) > 0 && <span className="agw-nav-badge" style={{marginLeft:6}}>{isAdmin ? pendingPunchCount : myPendingPunchCount}</span>}
           </button>
-          <button className={`tab ${tab==="kb"?"active":""}`} onClick={()=>setTab("kb")}><BookOpen size={13} style={{verticalAlign:-2,marginRight:4}}/>Knowledge Base</button>
         </div>
         {tab === "team" && (
           <div style={{ display:"flex", gap:8, alignItems:"center" }}>
@@ -4679,8 +4681,6 @@ function HrPage({ state, dispatch, role, userId }) {
       {tab === "punch" && <PunchRequestsTable state={state} dispatch={dispatch} isAdmin={isAdmin} userId={userId} />}
 
       {tab === "attendance" && isAdmin && <HrAttendanceReport state={state} dispatch={dispatch} onMarkAttendance={(id)=>setAttendanceFor(id)} />}
-
-      {tab === "kb" && <KnowledgeBasePage />}
 
       {docsFor && <StaffDocsModal employee={docsFor} dispatch={dispatch} onClose={()=>setDocsFor(null)} />}
       {leaveFor && <LeaveRequestModal employee={leaveFor} dispatch={dispatch} onClose={()=>setLeaveFor(null)} />}
