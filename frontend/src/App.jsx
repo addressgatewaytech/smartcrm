@@ -6133,6 +6133,15 @@ function AddDataTab({ state, dispatch, role, userId }) {
     e.target.value = "";
   };
 
+  const downloadSampleTemplate = () => {
+    const headers = ["Company Name","Contact Person Name","Mobile Number","Email Address","Reference","Source","Business Category","Location"];
+    const sampleRow = ["Al Waha Trading","Ahmed Al Sayed","+974 5511 2233","ahmed@alwaha.qa","Referred by Sameer","LinkedIn","Trading","Doha"];
+    const ws = XLSX.utils.aoa_to_sheet([headers, sampleRow]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Data");
+    XLSX.writeFile(wb, "data-import-sample.xlsx");
+  };
+
   return (
     <div className="agw-grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 18 }}>
       <div className="agw-card">
@@ -6168,6 +6177,9 @@ function AddDataTab({ state, dispatch, role, userId }) {
       <div className="agw-card">
         <strong style={{ fontSize:14 }}>Import from Excel</strong>
         <p className="modal-sub">Upload a .xlsx, .xls or .csv file. Duplicate records (matched by mobile, email, or company name) are skipped automatically — the entire database stays duplicate-free.</p>
+        <button className="btn btn-sm btn-ghost" onClick={downloadSampleTemplate} style={{ marginBottom:10 }}>
+          <Download size={13} /> Download sample template
+        </button>
         {canManage && (
           <div className="field"><label>Import as</label>
             <select value={form.dataCategory} onChange={e=>setForm({...form,dataCategory:e.target.value})}>
