@@ -8,7 +8,8 @@ import {
   Plus, X, Check, ChevronRight, AlertTriangle, CircleDollarSign,
   UserPlus, ShieldCheck, Ban, Clock, ArrowRight, Search, Mail,
   BadgeCheck, CalendarClock, Briefcase, Copy, Files, Link2, Pencil, Trash2, Repeat, BarChart3, Download, MoreHorizontal, ChevronsLeft, ChevronsRight, Camera, Star,
-  Database, Upload, MessageCircle, Recycle, ArchiveX, ShieldAlert, Settings as SettingsIcon
+  Database, Upload, MessageCircle, Recycle, ArchiveX, ShieldAlert, Settings as SettingsIcon,
+  Sun, Moon
 } from "lucide-react";
 
 /* ---------------------------------------------------------------------- */
@@ -230,6 +231,9 @@ const CSS = `
   .side-note { font-size: 12px; color: var(--ink-soft); background: #F7F6F1; border: 1px dashed var(--hair);
     border-radius: 8px; padding: 9px 11px; margin-top: 10px; }
 
+  .no-spinner::-webkit-outer-spin-button, .no-spinner::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .no-spinner { -moz-appearance: textfield; }
+
   .agw-loader { height: 100%; min-height: 100vh; display: flex; align-items: center; justify-content: center;
     background: radial-gradient(circle at 50% 40%, #123a5c 0%, var(--sidebar) 62%); }
   .agw-loader-mark { position: relative; width: 132px; height: 132px; display: flex; align-items: center; justify-content: center; }
@@ -243,6 +247,37 @@ const CSS = `
   .agw-loader-text { margin-top: 14px; font-size: 12.5px; letter-spacing: .04em; color: var(--sidebar-text-dim); }
   @keyframes agw-spin { to { transform: rotate(360deg); } }
   @keyframes agw-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.045); } }
+
+  /* --- Dark theme --------------------------------------------------------------------------
+     Toggled via a class on <html> (not on each .agw root individually — there are three
+     independent ones: Login, LoadingScreen, and the main shell) so every screen picks it up.
+     Brand/accent hues (--brand, --gold, --sidebar*) stay the same in both themes; only the
+     surface/text/border tokens and the pastel "tint" backgrounds flip. Everything that already
+     reads var(--ink), var(--surface), etc. — which is nearly the whole app — re-themes for free;
+     only a handful of hardcoded literals (not var()) needed their own dark override below. */
+  html.dark .agw {
+    --ink:#E7EAEE; --ink-soft:#9AA4AE; --hair:#2B333C;
+    --page:#13171C; --surface:#1B2128;
+    --brand-tint:#0F2C33; --gold-tint:#3A2712; --success-tint:#12291F; --warning-tint:#332510; --danger-tint:#30201D; --info-tint:#1A2530;
+    color-scheme: dark;
+  }
+  html.dark .agw ::-webkit-scrollbar-thumb { background: #3A424C; }
+  html.dark .agw .stamp-success { border-color: #234433; }
+  html.dark .agw .stamp-warning { border-color: #4A3A18; }
+  html.dark .agw .stamp-danger  { border-color: #4A2F29; }
+  html.dark .agw .stamp-info    { border-color: #26384A; }
+  html.dark .agw .stamp-gold    { border-color: #4A3417; }
+  html.dark .agw .stamp-neutral { background: #262E37; }
+  html.dark .agw .pill { background: #262E37; }
+  html.dark .agw .agw-table tbody tr:hover { background: #20272F; }
+  html.dark .agw .side-note { background: #20272F; }
+  html.dark .agw .checkbox { background: var(--surface); }
+  html.dark .agw .board-col { background: #171D24; }
+  html.dark .agw .job-card:hover { border-color: var(--brand); }
+
+  .theme-toggle { width: 34px; height: 34px; border-radius: 50%; background: rgba(255,255,255,.18); border: none;
+    color: #fff; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .theme-toggle:hover { background: rgba(255,255,255,.3); }
 `;
 
 /* ---------------------------------------------------------------------- */
@@ -822,6 +857,15 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [activeRole, setActiveRole] = useState(null);
+  // Applied to <html> (not a prop threaded through every screen) since Login, LoadingScreen and
+  // the main shell each render their own independent .agw root — see the CSS block's dark-theme
+  // comment for why. Persisted so it survives a reload/reinstall as a PWA.
+  const [theme, setTheme] = useState(() => localStorage.getItem("agw_theme") || "light");
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", theme === "dark");
+    localStorage.setItem("agw_theme", theme);
+  }, [theme]);
+  const toggleTheme = () => setTheme((t) => (t === "dark" ? "light" : "dark"));
 
   // On load, if a token is already stored, verify it's still valid before showing the app.
   useEffect(() => {
@@ -1009,6 +1053,9 @@ export default function App() {
               <div className="agw-topbar-sub">{titles[page][1]}</div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+              <button className="theme-toggle" onClick={toggleTheme} title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}>
+                {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+              </button>
               <button className="agw-bell" onClick={() => setPage("notifications")}>
                 <Bell size={17} />
                 {unreadCount > 0 && <span className="dot" />}
@@ -1627,7 +1674,7 @@ function LeadsPage({ state, dispatch, userId, role }) {
       {convert && (
         <Modal title={`Convert ${convert.id} to a deal`} sub={`${convert.company} — ${convert.service}`} onClose={()=>setConvert(null)}>
           <div className="field"><label>Estimated deal value (QAR)</label>
-            <input type="number" value={dealValue} onChange={e=>setDealValue(Number(e.target.value))} />
+            <input type="number" inputMode="numeric" className="no-spinner" value={dealValue} onChange={e=>setDealValue(Number(e.target.value))} />
           </div>
           <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop: 16 }}>
             <button className="btn" onClick={()=>setConvert(null)}>Cancel</button>
@@ -3973,17 +4020,17 @@ function JobsPage({ state, dispatch, role, userId }) {
                 draggable={canManage && !["Completed","Cancelled","Pending Approval"].includes(j.status)}
                 onDragStart={(e)=>{ setDraggedJobId(j.id); e.dataTransfer.effectAllowed = "move"; }}
                 onDragEnd={()=>{ setDraggedJobId(null); setDragOverCol(null); }}
-                style={{ cursor:"pointer" }}>
-                <h5>{j.customer}</h5>
-                <div className="mono" style={{ fontSize:11, color:"var(--ink-soft)", marginTop:-4, marginBottom:4 }}>{j.id}</div>
-                <div className="meta">{j.service}{j.description && ` — ${j.description}`}</div>
-                <div className="meta" style={{ fontSize:11 }}>{j.leadCreatorName ? `Lead by ${j.leadCreatorName}` : ""}{j.leadCreatorName && " · "}{daysSince(j.createdAt)}d old</div>
+                style={{ cursor:"pointer" }} title="Click for full details">
+                <h5 style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{j.customer}</h5>
+                <div className="mono" style={{ fontSize:11, color:"var(--ink-soft)", marginTop:-4, marginBottom:4, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                  {j.id} · {j.service}
+                </div>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                   <div className="avatars">
                     {j.assignees.length === 0 ? <span className="pill">Unassigned</span> :
                       j.assignees.map(a => <span className="avatar" key={a}>{state.employees.find(t=>t.id===a)?.initials}</span>)}
                   </div>
-                  <span className="pill">{j.checklist.filter(c=>c.done).length}/{j.checklist.length}</span>
+                  {j.checklist.length > 0 && <span className="pill">{j.checklist.filter(c=>c.done).length}/{j.checklist.length}</span>}
                 </div>
                 {col === "Pending Approval" && (role==="accounts"||ADMIN_LIKE.includes(role)) &&
                   <button className="btn btn-sm btn-primary" style={{marginTop:8,width:"100%"}} onClick={(e)=>{e.stopPropagation(); openDetail(j);}}>Review for approval</button>}
@@ -4053,7 +4100,7 @@ function AssignModal({ job, dispatch, employees, onClose }) {
           <label key={t.id} style={{ display:"flex", alignItems:"center", gap:10, border:"1px solid var(--hair)", borderRadius:8, padding:"8px 10px" }}>
             <input type="checkbox" checked={selected.includes(t.id)} onChange={()=>toggle(t.id)} />
             <span className="avatar">{t.initials}</span>
-            <div><div style={{fontSize:13}}>{t.name}</div><div style={{fontSize:11,color:"var(--ink-soft)"}}>{t.roles.map(r=>ROLE_LABEL[r]).join(" + ")}</div></div>
+            <div><div style={{fontSize:13}}>{t.name}</div><div style={{fontSize:11,color:"var(--ink-soft)"}}>{t.designation}</div></div>
           </label>
         ))}
       </div>
