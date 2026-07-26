@@ -269,6 +269,10 @@ export const api = {
     get: () => get("/settings"),
     update: (payload) => patch("/settings", payload),
   },
+  approvalWorkflow: {
+    hierarchy: () => get("/approval-workflow/hierarchy"),
+    setApprover: (designation, parentDesignation) => request("PUT", "/approval-workflow/hierarchy", { designation, parentDesignation }),
+  },
 };
 
 export { ApiError };

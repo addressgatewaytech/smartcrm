@@ -4,6 +4,7 @@ const { requireAuth } = require("../middleware/auth");
 const { requireRole, isAdminLike } = require("../middleware/roles");
 const { nextId, nextSequentialId, daysFromNow, quoteTotal } = require("../utils/helpers");
 const { generateQuotationPdf } = require("../utils/quotationPdf");
+const { requireRoleOrDesignationApprover } = require("../utils/designationApproval");
 
 const router = express.Router();
 router.use(requireAuth);
@@ -106,8 +107,13 @@ router.post("/:id/revise", async (req, res) => {
   res.json({ ok: true });
 });
 
-// Sales Manager / Admin-tier approves a discounted quotation, moving it to Sent.
-router.post("/:id/approve-discount", requireRole(["sales_manager", "admin_like"]), async (req, res) => {
+// Sales Manager / Admin-tier approves a discounted quotation, moving it to Sent — or, if the
+// Approval Process Workflow (Users & Roles) has been configured, whoever's designation is set
+// as the quotation owner's approver can too.
+router.post("/:id/approve-discount", requireRoleOrDesignationApprover(["sales_manager", "admin_like"], async (req) => {
+  const [q] = await query("SELECT owner FROM quotations WHERE id = ?", [req.params.id]);
+  return q?.owner;
+}), async (req, res) => {
   await query("UPDATE quotations SET status = 'Sent' WHERE id = ? AND status = 'Pending Manager Approval'", [req.params.id]);
   res.json({ ok: true });
 });

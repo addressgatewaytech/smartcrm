@@ -5146,7 +5146,8 @@ function StaffDocsModal({ employee: e, dispatch, onClose }) {
 /* USERS & ROLES (ADMIN)                                                   */
 /* ---------------------------------------------------------------------- */
 
-function UsersPage({ state, dispatch }) {
+function UsersPage({ state, dispatch, role }) {
+  const [tab, setTab] = useState("users");
   const blank = { name:"", email:"", password:"", roles:["sales_exec"], dept:"Sales", initials:"", joinedDate: daysFromNow(0), dateOfBirth:"", designation:"" };
   const [showAdd, setShowAdd] = useState(false);
   const [editUser, setEditUser] = useState(null);
@@ -5182,9 +5183,17 @@ function UsersPage({ state, dispatch }) {
 
   return (
     <div>
-      <div style={{ display:"flex", justifyContent:"flex-end", marginBottom: 14 }}>
-        <button className="btn btn-primary" onClick={()=>{ setForm(blank); setSaveError(""); setShowAdd(true); }}><UserPlus size={15}/> Add user</button>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 14 }}>
+        <div className="tabbar" style={{ marginBottom:0, borderBottom:"none" }}>
+          <button className={`tab ${tab==="users"?"active":""}`} onClick={()=>setTab("users")}>Users</button>
+          <button className={`tab ${tab==="approval"?"active":""}`} onClick={()=>setTab("approval")}>Approval Process Workflow</button>
+        </div>
+        {tab === "users" && <button className="btn btn-primary" onClick={()=>{ setForm(blank); setSaveError(""); setShowAdd(true); }}><UserPlus size={15}/> Add user</button>}
       </div>
+
+      {tab === "approval" && <ApprovalWorkflowPage state={state} dispatch={dispatch} role={role} />}
+
+      {tab === "users" && <>
       <div className="agw-card" style={{ padding: 0 }}>
         <table className="agw-table">
           <thead><tr><th>User</th><th>Roles</th><th>Department</th><th>Status</th><th></th></tr></thead>
@@ -5204,6 +5213,7 @@ function UsersPage({ state, dispatch }) {
           </tbody>
         </table>
       </div>
+      </>}
 
       {(showAdd || editUser) && (
         <Modal title={editUser ? `Edit ${editUser.name}` : "Add user"} sub="A user can hold more than one role." onClose={closeModal}>
@@ -5246,6 +5256,106 @@ function UsersPage({ state, dispatch }) {
       {removeUser && <ConfirmModal title={`Remove ${removeUser.name}?`} body="This permanently deletes the user account. Consider Deactivate instead if you might need this account again." onConfirm={()=>dispatch({type:"DELETE_USER", id:removeUser.id})} onClose={()=>setRemoveUser(null)} />}
     </div>
   );
+}
+
+// Drives real approvals (quotation discounts, job card sign-off, leave and punch requests) — see
+// requireRoleOrDesignationApprover on the backend. Kanban-style: dragging a designation card into
+// another designation's column sets that column's designation as its approver. Existing role-based
+// approvals (Sales Manager, Accounts, HR, Admin) keep working untouched; this only adds routing
+// on top, and only once a chain is actually configured here.
+function ApprovalWorkflowPage({ state, dispatch, role }) {
+  const canEdit = ["super_admin","admin"].includes(role);
+  const designations = state.approvalHierarchy || [];
+  const [draggedDesignation, setDraggedDesignation] = useState(null);
+  const [dragOverCol, setDragOverCol] = useState(null);
+
+  const parentOfMap = new Map(designations.map(d => [d.designation, d.parentDesignation]));
+  const wouldCycle = (child, newParent) => {
+    if (!newParent) return false;
+    if (child === newParent) return true;
+    let cur = parentOfMap.get(newParent) || null;
+    let hops = 0;
+    while (cur && hops < 20) {
+      if (cur === child) return true;
+      cur = parentOfMap.get(cur) || null;
+      hops++;
+    }
+    return false;
+  };
+
+  const columns = [{ key: null, label: "Top of chain (no approver)" }, ...designations.map(d => ({ key: d.designation, label: d.designation }))];
+
+  const handleDrop = (parentKey) => {
+    setDragOverCol(null);
+    const child = draggedDesignation;
+    setDraggedDesignation(null);
+    if (!child || !canEdit) return;
+    if (parentKey === (parentOfMap.get(child) ?? null)) return;
+    if (wouldCycle(child, parentKey)) return;
+    dispatch({ type:"SET_DESIGNATION_APPROVER", designation: child, parentDesignation: parentKey });
+  };
+
+  return (
+    <div>
+      <div className="agw-card" style={{ marginBottom: 18 }}>
+        <strong style={{ fontSize:14 }}>Approval Process Workflow</strong>
+        <p className="modal-sub">
+          {canEdit
+            ? "Drag a designation card into another designation's column to set who approves its requests — quotation discounts, job card sign-off, leave and punch requests. Existing role-based approvals (Sales Manager, Accounts, HR, Admin) keep working regardless; this adds designation-based routing on top."
+            : "How approval requests route by designation. Only Super Admin / Admin can edit this."}
+        </p>
+      </div>
+
+      {designations.length === 0 ? (
+        <Empty icon={UserCog} text="No designations found yet — add designations to users under the Users tab first." />
+      ) : (
+      <div className="board" style={{ overflowX:"auto" }}>
+        {columns.map(col => (
+          <div className={`board-col ${dragOverCol===col.key ? "drag-over" : ""}`} key={col.key ?? "__root__"}
+            onDragOver={(e)=>{ e.preventDefault(); if (canEdit && dragOverCol!==col.key) setDragOverCol(col.key); }}
+            onDragLeave={()=>setDragOverCol(prev => prev===col.key ? null : prev)}
+            onDrop={(e)=>{ e.preventDefault(); handleDrop(col.key); }}>
+            <h4>{col.label}</h4>
+            {designations.filter(d => (d.parentDesignation ?? null) === col.key).map(d => (
+              <div className={`job-card ${draggedDesignation===d.designation ? "dragging" : ""}`} key={d.designation}
+                draggable={canEdit}
+                onDragStart={()=>setDraggedDesignation(d.designation)}
+                onDragEnd={()=>{ setDraggedDesignation(null); setDragOverCol(null); }}
+                style={{ cursor: canEdit ? "grab" : "default" }} title={canEdit ? "Drag onto another column to set its approver" : d.designation}>
+                <h5 style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{d.designation}</h5>
+              </div>
+            ))}
+            {designations.filter(d => (d.parentDesignation ?? null) === col.key).length === 0 && <div style={{fontSize:12,color:"var(--ink-soft)",padding:"6px 6px"}}>—</div>}
+          </div>
+        ))}
+      </div>
+      )}
+
+      {designations.length > 0 && (
+        <div className="agw-card" style={{ marginTop: 18 }}>
+          <strong style={{ fontSize:14 }}>Organization hierarchy</strong>
+          <OrgChartTree designations={designations} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function OrgChartTree({ designations }) {
+  const childrenOf = (parent) => designations.filter(d => (d.parentDesignation ?? null) === parent).map(d => d.designation);
+  const roots = childrenOf(null);
+
+  const renderNode = (name, depth) => (
+    <div key={name} style={{ marginLeft: depth * 24, marginTop: 8 }}>
+      <div style={{ display:"inline-flex", alignItems:"center", gap:6, background:"var(--page)", borderRadius:8, padding:"6px 12px", fontSize:12.5, fontWeight:500 }}>
+        <UserCog size={13} /> {name}
+      </div>
+      {childrenOf(name).map(child => renderNode(child, depth + 1))}
+    </div>
+  );
+
+  if (roots.length === 0) return <div style={{ fontSize:12, color:"var(--ink-soft)", marginTop:8 }}>Nothing configured yet — drag cards above to build the hierarchy.</div>;
+  return <div style={{ marginTop: 8 }}>{roots.map(r => renderNode(r, 0))}</div>;
 }
 
 /* ---------------------------------------------------------------------- */

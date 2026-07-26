@@ -3,10 +3,20 @@ const { query } = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
 const { requireRole, isAdminLike } = require("../middleware/roles");
 const { nextId, today } = require("../utils/helpers");
+const { requireRoleOrDesignationApprover } = require("../utils/designationApproval");
 
 const router = express.Router();
 router.use(requireAuth);
 const isHrAdmin = (roles) => isAdminLike(roles) || roles.includes("hr");
+
+const resolveLeaveRequester = async (req) => {
+  const [r] = await query("SELECT user_id FROM leave_requests WHERE id = ?", [req.params.id]);
+  return r?.user_id;
+};
+const resolvePunchRequester = async (req) => {
+  const [r] = await query("SELECT user_id FROM punch_requests WHERE id = ?", [req.params.id]);
+  return r?.user_id;
+};
 
 // --- Attendance --------------------------------------------------------------------------
 router.post("/attendance/mark", requireRole(["admin_like", "hr"]), async (req, res) => {
@@ -44,7 +54,7 @@ router.post("/leave-requests", async (req, res) => {
   res.status(201).json({ id });
 });
 
-router.post("/leave-requests/:id/decide", requireRole(["admin_like", "hr"]), async (req, res) => {
+router.post("/leave-requests/:id/decide", requireRoleOrDesignationApprover(["admin_like", "hr"], resolveLeaveRequester), async (req, res) => {
   const { status } = req.body; // Approved | Rejected
   await query("UPDATE leave_requests SET status = ?, decided_by = ? WHERE id = ?", [status, req.user.id, req.params.id]);
   res.json({ ok: true });
@@ -92,7 +102,7 @@ router.get("/punch-requests", async (req, res) => {
   res.json(rows);
 });
 
-router.post("/punch-requests/:id/decide", requireRole(["admin_like", "hr"]), async (req, res) => {
+router.post("/punch-requests/:id/decide", requireRoleOrDesignationApprover(["admin_like", "hr"], resolvePunchRequester), async (req, res) => {
   const { status } = req.body; // Approved | Rejected
   await query("UPDATE punch_requests SET status = ?, decided_by = ? WHERE id = ?", [status, req.user.id, req.params.id]);
 

@@ -36,6 +36,7 @@ app.use("/api/notifications", require("./src/routes/notifications.routes"));
 app.use("/api/reports", require("./src/routes/reports.routes"));
 app.use("/api/data-manager", require("./src/routes/dataManager.routes"));
 app.use("/api/settings", require("./src/routes/settings.routes"));
+app.use("/api/approval-workflow", require("./src/routes/approvalWorkflow.routes"));
 app.use("/api", require("./src/routes/templates.routes")); // /api/services, /api/quotation-templates, /api/checklist-templates
 
 // --- Frontend (built React app) ------------------------------------------------------------
