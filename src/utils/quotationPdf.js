@@ -136,8 +136,12 @@ function generateQuotationPdf(quotation, res) {
   doc.font("Inter").fontSize(9).fillColor(GRAY).text("Subject :", MARGIN, y);
   y = doc.y + 1;
   doc.font("Inter").fontSize(10).fillColor(INK).text(quotation.subject || items[0]?.service || "Quotation", MARGIN, y, { width: tableRight - MARGIN });
-  y = doc.y + (quotation.fee_type === "Government Fee" ? 4 : 14);
-  if (quotation.fee_type === "Government Fee") {
+  // A quotation created under the single-quotation model can mix Professional Fee and Government
+  // Fee line items (tagged per item — see quotations.items) instead of being a whole-document
+  // Government Fee quotation, so this disclaimer needs to catch both cases.
+  const hasGovernmentFeeItems = quotation.fee_type === "Government Fee" || items.some((it) => it.feeType === "Government Fee");
+  y = doc.y + (hasGovernmentFeeItems ? 4 : 14);
+  if (hasGovernmentFeeItems) {
     doc.font("Inter").fontSize(8).fillColor(GRAY)
       .text("Pass-through government charges — excluded from Address Gateway's business volume and incentive calculations.", MARGIN, y, { width: tableRight - MARGIN });
     y = doc.y + 14;

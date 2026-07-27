@@ -58,15 +58,16 @@ export const mapCustomer = (c) => ({
 
 export const mapSalesOrder = (so) => ({
   id: so.id, quotationId: so.quotation_id, customer: so.customer, service: so.service,
-  feeType: so.fee_type, amount: Number(so.amount), orderDiscount: Number(so.order_discount || 0),
-  createdAt: so.created_at,
+  feeType: so.fee_type, amount: Number(so.amount), professionalFeeAmount: Number(so.professional_fee_amount ?? so.amount),
+  orderDiscount: Number(so.order_discount || 0), createdAt: so.created_at,
 });
 
 export const mapPayment = (p) => ({ id: p.id, amount: Number(p.amount), mode: p.mode, date: p.paid_at, by: p.recorded_by });
 
 export const mapInvoice = (inv) => ({
   id: inv.id, salesOrderId: inv.sales_order_id, subscriptionId: inv.subscription_id, customer: inv.customer,
-  feeType: inv.fee_type, amount: Number(inv.amount), status: inv.status, dueDate: inv.due_date, createdAt: inv.created_at,
+  feeType: inv.fee_type, amount: Number(inv.amount), professionalFeeAmount: Number(inv.professional_fee_amount ?? inv.amount),
+  status: inv.status, dueDate: inv.due_date, createdAt: inv.created_at,
   emailedToClient: !!inv.emailed_to_client, emailedAt: inv.emailed_at, emailCc: inv.email_cc || [],
   payments: (inv.payments || []).map(mapPayment),
 });

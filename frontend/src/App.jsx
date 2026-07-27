@@ -314,6 +314,36 @@ const ROLE_LABEL = {
 const ADMIN_LIKE = ["super_admin", "admin", "admin_exec"];
 
 const money = (n) => "QAR " + Number(n || 0).toLocaleString("en-US", { maximumFractionDigits: 0 });
+// Mirrors src/utils/helpers.js's professionalFeeTotal exactly — only Professional Fee line items
+// count toward business volume, pipeline value, and incentive calculations. A line's effective fee
+// type is its own `feeType` if tagged, else the quotation's whole-document `feeType` (so a
+// pre-single-quotation-model record, whose items were never tagged individually, still resolves
+// correctly). Order-level discount is allocated proportionally across the two subtotals.
+const professionalFeeAmount = (items, orderDiscount, quotationFeeType) => {
+  const list = items || [];
+  const lineAmount = (it) => it.qty * it.price * (1 - (it.discountPct || 0) / 100);
+  const isGovernmentFee = (it) => (it.feeType || quotationFeeType || "Professional Fee") === "Government Fee";
+  const subtotal = list.reduce((a, it) => a + lineAmount(it), 0);
+  if (subtotal <= 0) return 0;
+  const profSubtotal = list.filter((it) => !isGovernmentFee(it)).reduce((a, it) => a + lineAmount(it), 0);
+  const profShare = profSubtotal / subtotal;
+  return Math.max(0, profSubtotal - (orderDiscount || 0) * profShare);
+};
+// Single-quotation model: a quotation's real fee-type makeup can now be a mix — this reflects
+// that in badges/exports instead of a possibly-misleading single "Professional Fee" label.
+const quotationFeeTypeLabel = (q) => {
+  const items = q.items || [];
+  const effectiveType = (it) => it.feeType || q.feeType || "Professional Fee";
+  const hasGov = items.some((it) => effectiveType(it) === "Government Fee");
+  const hasProf = items.some((it) => effectiveType(it) !== "Government Fee");
+  if (hasGov && hasProf) return "Professional + Government Fee";
+  if (hasGov) return "Government Fee";
+  return "Professional Fee";
+};
+const quotationFeeTypeTone = (q) => {
+  const label = quotationFeeTypeLabel(q);
+  return label === "Government Fee" ? "neutral" : label === "Professional + Government Fee" ? "info" : "success";
+};
 const daysFromNow = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0,10); };
 // new Date(null) resolves to the 1970 epoch instead of "Invalid Date" — every call site across
 // the app assumed a date field would always be set, so this silently printed "01 Jan 1970" the
@@ -1182,7 +1212,9 @@ function Dashboard({ state, role, userId, setPage }) {
   const openLeads = state.leads.filter(l => !["Unqualified"].includes(l.status)).length;
   const pipelineValue = state.deals.filter(d => d.stage !== "Lost").reduce((a,d) => a + d.value, 0);
   const outstanding = state.invoices.reduce((a,inv) => a + Math.max(0, inv.amount - inv.payments.reduce((x,p)=>x+p.amount,0)), 0);
-  const quoteAmount = (q) => Math.max(0, q.items.reduce((s,it)=>s+it.qty*it.price*(1-(it.discountPct||0)/100),0) - (q.orderDiscount||0));
+  // Only the Professional Fee portion of a quotation counts as business volume — see
+  // professionalFeeAmount above (handles quotations that mix Professional + Government Fee items).
+  const quoteAmount = (q) => professionalFeeAmount(q.items, q.orderDiscount, q.feeType);
 
   const periodQuotes = state.quotations.filter(q => q.status === "Approved" && q.feeType !== "Government Fee" && inRange(q.createdAt, range));
   const businessVolume = periodQuotes.reduce((a,q) => a + quoteAmount(q), 0);
@@ -1918,7 +1950,12 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
   const subtotal = items.reduce((a,it) => a + it.qty*it.price*(1-(it.discountPct||0)/100), 0);
   const total = Math.max(0, subtotal - (orderDiscount || 0));
   const hasDiscount = items.some(it => it.discountPct > 0) || orderDiscount > 0;
-  const tpl = templates[templateService]?.[feeType];
+  // Single-quotation model: a new quotation is always built starting from its Professional Fee
+  // template — Government Fee content, when needed, gets merged in as tagged line items (below),
+  // not picked as a whole-document alternative. Editing an existing quotation from before that
+  // change still respects whatever type it was actually saved as.
+  const baseFeeType = editQuotation ? feeType : "Professional Fee";
+  const tpl = templates[templateService]?.[baseFeeType];
   const categories = [...new Set(items.map(it => it.category).filter(Boolean))];
 
   const update = (i, field, val) => setItems(items.map((it,idx) => idx===i ? { ...it, [field]: val } : it));
@@ -2007,18 +2044,18 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
     setSaving(true);
     setSaveError("");
     try {
-      const payload = { dealId: editQuotation ? editQuotation.dealId : dealId, customer, items, terms, notes, subject, feeType, orderDiscount, bank, footerNote };
+      // Single-quotation model: Government Fee content is appended as its own tagged line items
+      // on this same document (only Government-Fee-tagged items are excluded from business volume
+      // and pipeline value — see professionalFeeTotal on the backend) rather than becoming a
+      // second, separate quotation record.
+      const combinedItems = (!editQuotation && alsoGovFee && govFeeTpl)
+        ? [...items, ...buildGovFeeItems().map(it => ({ ...it, feeType: "Government Fee" }))]
+        : items;
+      const payload = { dealId: editQuotation ? editQuotation.dealId : dealId, customer, items: combinedItems, terms, notes, subject, feeType, orderDiscount, bank, footerNote };
       if (editQuotation) {
         await dispatch({ type:"UPDATE_QUOTATION", id: editQuotation.id, payload });
       } else {
         await dispatch({ type:"CREATE_QUOTATION", payload });
-        if (alsoGovFee && govFeeTpl) {
-          await dispatch({ type:"CREATE_QUOTATION", payload: {
-            dealId, customer, items: buildGovFeeItems(), terms: govFeeTpl.terms || "", notes: govFeeTpl.notes || "",
-            subject: govFeeTpl.subject || "", feeType: "Government Fee", orderDiscount: govFeeTpl.orderDiscount || 0,
-            bank: govFeeTpl.bank || "", footerNote: govFeeTpl.footerNote || "",
-          }});
-        }
       }
       onClose();
     } catch (err) {
@@ -2030,25 +2067,32 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
 
   return (
     <Modal title={editQuotation ? `Edit ${editQuotation.id}` : "Build quotation"} sub={editableCustomer || editQuotation ? "All amounts in QAR" : `${customer} — all amounts in QAR`} onClose={onClose} width={700}>
-      <div className="row2">
-        <div className="field">
-          <label>Fee type</label>
-          <select value={feeType} onChange={e=>setFeeType(e.target.value)}>
-            {FEE_TYPES.map(f=><option key={f}>{f}</option>)}
-          </select>
+      {editQuotation && (
+        <div className="row2">
+          <div className="field">
+            <label>Fee type</label>
+            <select value={feeType} onChange={e=>setFeeType(e.target.value)}>
+              {FEE_TYPES.map(f=><option key={f}>{f}</option>)}
+            </select>
+          </div>
+          <div />
         </div>
-        <div />
-      </div>
+      )}
       {feeType === "Government Fee" && (
         <div className="side-note" style={{ marginTop:-4, marginBottom:12 }}>
           <AlertTriangle size={13} style={{verticalAlign:-2, marginRight:4}}/>Government Fee quotations are pass-through — they're excluded from business volume and incentive calculations.
         </div>
       )}
-      {!editQuotation && feeType === "Professional Fee" && govFeeTpl && (
+      {!editQuotation && govFeeTpl && (
         <label style={{ display:"flex", alignItems:"center", gap:8, fontSize:13, marginTop:-4, marginBottom:14, background:"var(--gold-tint)", border:"1px solid #F2C089", borderRadius:8, padding:"9px 12px", cursor:"pointer" }}>
           <input type="checkbox" checked={alsoGovFee} onChange={e=>toggleAlsoGovFee(e.target.checked)} />
-          Also create the Government Fee quotation for {templateService} (most clients need both)
+          Also include the Government Fee items for {templateService} in this quotation (most clients need both)
         </label>
+      )}
+      {!editQuotation && alsoGovFee && (
+        <div className="side-note" style={{ marginTop:-4, marginBottom:12 }}>
+          <AlertTriangle size={13} style={{verticalAlign:-2, marginRight:4}}/>The Government Fee items included below are pass-through — only the Professional Fee portion counts toward business volume and incentive calculations.
+        </div>
       )}
       {(editableCustomer || editQuotation) && (
         <div className="row2">
@@ -2075,7 +2119,7 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
       {showNewService && <AddServiceOptionModal dispatch={dispatch} onClose={()=>setShowNewService(false)} onCreated={(name)=>setTemplateService(name)} />}
       {tpl && (
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 14, background:"var(--gold-tint)", border:"1px solid #F2C089", borderRadius:8, padding:"9px 12px" }}>
-          <span style={{ fontSize:12.5, color:"var(--gold)" }}><Files size={13} style={{verticalAlign:-2,marginRight:5}}/>A saved {feeType} template exists for {templateService}.</span>
+          <span style={{ fontSize:12.5, color:"var(--gold)" }}><Files size={13} style={{verticalAlign:-2,marginRight:5}}/>A saved {baseFeeType} template exists for {templateService}.</span>
           <button className="btn btn-sm" onClick={loadTemplate}>Load template</button>
         </div>
       )}
@@ -2197,7 +2241,7 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
       <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop: 16 }}>
         <button className="btn" onClick={onClose}>Cancel</button>
         <button className="btn btn-primary" disabled={saving || !customer} onClick={handleSubmit}>
-          {saving ? "Saving…" : editQuotation ? "Save changes" : alsoGovFee ? "Save both quotations" : "Save quotation"}
+          {saving ? "Saving…" : editQuotation ? "Save changes" : "Save quotation"}
         </button>
       </div>
     </Modal>
@@ -2254,7 +2298,7 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, onHighligh
           </div>
           <button className="btn btn-sm" onClick={()=>exportCSV("quotations.csv",
             ["Quotation ID","Customer","Fee Type","Amount (QAR)","Valid Till","Status"],
-            rows.map(q=>[q.id, q.customer, q.feeType||"Professional Fee", total(q), q.validTill, q.status]))}>
+            rows.map(q=>[q.id, q.customer, quotationFeeTypeLabel(q), total(q), q.validTill, q.status]))}>
             <Download size={13}/> Export
           </button>
           <button className="btn btn-primary" onClick={()=>setNewQuote(true)}><Plus size={15}/> New quotation</button>
@@ -2277,7 +2321,7 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, onHighligh
                 </td>
                 <td className="mono">{q.id}</td>
                 <td>{q.customer}</td>
-                <td><Stamp tone={q.feeType==="Government Fee" ? "neutral" : "success"}>{q.feeType || "Professional Fee"}</Stamp></td>
+                <td><Stamp tone={quotationFeeTypeTone(q)}>{quotationFeeTypeLabel(q)}</Stamp></td>
                 <td className="mono">{money(total(q))}</td>
                 <td className="mono" style={{fontSize:12}}>{fmtDate(q.validTill)}</td>
                 <td><Stamp tone={statusTone(q.status)}>{q.status}</Stamp></td>
@@ -2406,11 +2450,16 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
         <>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
             <Rail steps={["Draft","Pending Manager Approval","Sent","Approved"]} current={q.status === "Rejected" || q.status === "Expired" ? "Sent" : q.status} />
-            <Stamp tone={q.feeType==="Government Fee" ? "neutral" : "success"}>{q.feeType || "Professional Fee"}</Stamp>
+            <Stamp tone={quotationFeeTypeTone(q)}>{quotationFeeTypeLabel(q)}</Stamp>
           </div>
           {q.feeType === "Government Fee" && (
             <div className="side-note" style={{marginBottom:10}}>
               <AlertTriangle size={13} style={{verticalAlign:-2, marginRight:4}}/>Government Fee quotations are for viewing and sharing as PDF only — excluded from business volume and incentive calculations, and they don't create a Sales Order, Invoice, or Job Card.
+            </div>
+          )}
+          {q.feeType !== "Government Fee" && q.items.some(it=>it.feeType==="Government Fee") && (
+            <div className="side-note" style={{marginBottom:10}}>
+              <AlertTriangle size={13} style={{verticalAlign:-2, marginRight:4}}/>Includes Government Fee line items — those are pass-through charges, excluded from business volume and incentive calculations.
             </div>
           )}
 
@@ -2558,9 +2607,9 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
             {editingNow ? (
               <input style={{ ...inputStyle, fontSize:13.5, marginBottom:12 }} value={src.subject} onChange={e=>updDraft("subject", e.target.value)} placeholder="Quotation subject" />
             ) : (
-              <div style={{ fontSize:13.5, marginBottom: q.feeType==="Government Fee" ? 8 : 20 }}>{src.subject || src.items[0]?.service || "Quotation"}</div>
+              <div style={{ fontSize:13.5, marginBottom: (q.feeType==="Government Fee" || src.items.some(it=>it.feeType==="Government Fee")) ? 8 : 20 }}>{src.subject || src.items[0]?.service || "Quotation"}</div>
             )}
-            {q.feeType === "Government Fee" && (
+            {(q.feeType === "Government Fee" || src.items.some(it=>it.feeType==="Government Fee")) && (
               <div style={{ fontSize:10.5, color:"var(--ink-soft)", marginBottom:20 }}>Pass-through government charges — excluded from Address Gateway's business volume and incentive calculations.</div>
             )}
 
@@ -3262,7 +3311,7 @@ function CustomerDashboard({ customer: c, state }) {
             {quotations.map(q => (
               <tr key={q.id}>
                 <td className="mono">{q.id}</td>
-                <td><Stamp tone={q.feeType==="Government Fee" ? "neutral" : "success"}>{q.feeType || "Professional Fee"}</Stamp></td>
+                <td><Stamp tone={quotationFeeTypeTone(q)}>{quotationFeeTypeLabel(q)}</Stamp></td>
                 <td className="mono">{money(quoteTotal(q))}</td>
                 <td><Stamp tone={statusTone(q.status)}>{q.status}</Stamp></td>
               </tr>
@@ -5704,7 +5753,9 @@ function ReportTableCard({ title, onExport, children, empty, emptyIcon }) {
   );
 }
 
-const quoteAmount = (q) => Math.max(0, q.items.reduce((s,it)=>s+it.qty*it.price*(1-(it.discountPct||0)/100),0) - (q.orderDiscount||0));
+// Only the Professional Fee portion of a quotation counts as business volume — see
+// professionalFeeAmount above (handles quotations that mix Professional + Government Fee items).
+const quoteAmount = (q) => professionalFeeAmount(q.items, q.orderDiscount, q.feeType);
 
 function VolumeReport({ state, range }) {
   const quotes = state.quotations.filter(q => q.feeType !== "Government Fee" && inRange(q.createdAt, range));

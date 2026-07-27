@@ -32,8 +32,8 @@ router.post("/:id/onboard", async (req, res) => {
 
     const invoiceId = nextId("INV");
     await conn.execute(
-      `INSERT INTO invoices (id, sales_order_id, customer, fee_type, amount, status, due_date) VALUES (?,?,?,?,?, 'Sent', ?)`,
-      [invoiceId, so.id, so.customer, so.fee_type, so.amount, daysFromNow(14)]
+      `INSERT INTO invoices (id, sales_order_id, customer, fee_type, amount, professional_fee_amount, status, due_date) VALUES (?,?,?,?,?,?, 'Sent', ?)`,
+      [invoiceId, so.id, so.customer, so.fee_type, so.amount, so.professional_fee_amount, daysFromNow(14)]
     );
 
     const jobId = nextId("JC");

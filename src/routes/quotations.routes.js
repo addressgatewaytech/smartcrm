@@ -2,7 +2,7 @@ const express = require("express");
 const { query, withTransaction } = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
 const { requireRole, isAdminLike } = require("../middleware/roles");
-const { nextId, nextSequentialId, daysFromNow, quoteTotal } = require("../utils/helpers");
+const { nextId, nextSequentialId, daysFromNow, quoteTotal, professionalFeeTotal } = require("../utils/helpers");
 const { generateQuotationPdf } = require("../utils/quotationPdf");
 const { requireRoleOrApprovalTypeDesignation, isAssignedApprover } = require("../utils/designationApproval");
 
@@ -191,6 +191,11 @@ router.post("/:id/convert-to-sales-order", async (req, res) => {
     const [[q]] = await conn.execute("SELECT * FROM quotations WHERE id = ?", [req.params.id]);
     if (!q) throw new Error("Quotation not found");
 
+    // Backward compatibility: a quotation created before per-item fee-type tagging existed is
+    // still a single whole-document type — a pure Government Fee one (from that era) still never
+    // creates a Sales Order. New quotations are always saved as top-level "Professional Fee" even
+    // when they contain Government Fee line items internally (tagged per-item instead), so this
+    // branch now only ever fires for historical standalone Government Fee quotations.
     if (q.fee_type === "Government Fee") {
       await conn.execute("UPDATE quotations SET status = 'Approved' WHERE id = ?", [q.id]);
       return { salesOrderId: null, governmentFee: true };
@@ -199,10 +204,11 @@ router.post("/:id/convert-to-sales-order", async (req, res) => {
     await conn.execute("UPDATE quotations SET status = 'Approved' WHERE id = ?", [q.id]);
     const items = q.items;
     const { total } = quoteTotal(items, q.order_discount);
+    const professionalFeeAmount = professionalFeeTotal(items, q.order_discount, q.fee_type);
     const soId = nextId("SO");
     await conn.execute(
-      `INSERT INTO sales_orders (id, quotation_id, customer, service, fee_type, amount, order_discount) VALUES (?,?,?,?,?,?,?)`,
-      [soId, q.id, q.customer, items[0]?.service || null, q.fee_type, total, q.order_discount]
+      `INSERT INTO sales_orders (id, quotation_id, customer, service, fee_type, amount, professional_fee_amount, order_discount) VALUES (?,?,?,?,?,?,?,?)`,
+      [soId, q.id, q.customer, items[0]?.service || null, q.fee_type, total, professionalFeeAmount, q.order_discount]
     );
     if (q.deal_id) await conn.execute("UPDATE deals SET stage = 'Won' WHERE id = ?", [q.deal_id]);
     return { salesOrderId: soId, governmentFee: false };

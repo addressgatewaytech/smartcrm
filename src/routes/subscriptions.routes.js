@@ -107,8 +107,8 @@ router.post("/", async (req, res) => {
   );
 
   if (b.alsoInvoice) {
-    await query(`INSERT INTO invoices (id, customer, fee_type, amount, status, due_date, subscription_id) VALUES (?,?, 'Professional Fee', ?, 'Sent', ?, ?)`,
-      [nextId("INV"), b.customer, tier.annual_fee, daysFromNow(14), id]);
+    await query(`INSERT INTO invoices (id, customer, fee_type, amount, professional_fee_amount, status, due_date, subscription_id) VALUES (?,?, 'Professional Fee', ?, ?, 'Sent', ?, ?)`,
+      [nextId("INV"), b.customer, tier.annual_fee, tier.annual_fee, daysFromNow(14), id]);
   }
   res.status(201).json({ id });
 });
@@ -122,8 +122,8 @@ router.post("/:id/renew", async (req, res) => {
   );
   if (req.body.alsoInvoice) {
     const [sub] = await query("SELECT customer, annual_fee FROM customer_subscriptions WHERE id = ?", [req.params.id]);
-    await query(`INSERT INTO invoices (id, customer, fee_type, amount, status, due_date, subscription_id) VALUES (?,?, 'Professional Fee', ?, 'Sent', ?, ?)`,
-      [nextId("INV"), sub.customer, sub.annual_fee, daysFromNow(14), req.params.id]);
+    await query(`INSERT INTO invoices (id, customer, fee_type, amount, professional_fee_amount, status, due_date, subscription_id) VALUES (?,?, 'Professional Fee', ?, ?, 'Sent', ?, ?)`,
+      [nextId("INV"), sub.customer, sub.annual_fee, sub.annual_fee, daysFromNow(14), req.params.id]);
   }
   res.json({ ok: true });
 });

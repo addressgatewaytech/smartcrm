@@ -228,9 +228,14 @@ CREATE TABLE IF NOT EXISTS quotations (
   id               VARCHAR(20) PRIMARY KEY,
   deal_id          VARCHAR(20),
   customer         VARCHAR(200) NOT NULL,
+  -- Historical/whole-document fee type. New quotations are always created as 'Professional Fee'
+  -- even when they contain Government Fee line items internally (see items.feeType below) — this
+  -- column only still holds 'Government Fee' for quotations created before line items were tagged
+  -- individually, so old standalone Government Fee quotations (never converted to a Sales Order,
+  -- excluded from business volume) keep behaving exactly as before.
   fee_type         ENUM('Professional Fee','Government Fee') DEFAULT 'Professional Fee',
   subject          VARCHAR(500),
-  items            JSON NOT NULL,     -- [{category, service, description, note, qty, price, discountPct}]
+  items            JSON NOT NULL,     -- [{category, service, description, note, qty, price, discountPct, feeType}] — feeType is optional per item ('Professional Fee' | 'Government Fee'); missing means "inherit the quotation's own fee_type" (pre-existing rows)
   order_discount   DECIMAL(12,2) DEFAULT 0,
   bank             TEXT,
   footer_note      TEXT,
@@ -255,6 +260,11 @@ CREATE TABLE IF NOT EXISTS sales_orders (
   service        VARCHAR(150),
   fee_type       ENUM('Professional Fee','Government Fee') DEFAULT 'Professional Fee',
   amount         DECIMAL(12,2) NOT NULL,
+  -- Since a quotation can now mix Professional Fee and Government Fee line items in one document
+  -- (see quotations.items), the rolled-up `amount` above is the full client-billed total, while
+  -- this is just the Professional Fee portion — the only part that counts toward business volume,
+  -- pipeline value, and incentives. Equals `amount` for a pure Professional Fee order.
+  professional_fee_amount DECIMAL(12,2) DEFAULT 0,
   order_discount DECIMAL(12,2) DEFAULT 0,
   created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (quotation_id) REFERENCES quotations(id) ON DELETE CASCADE
@@ -267,6 +277,7 @@ CREATE TABLE IF NOT EXISTS invoices (
   customer          VARCHAR(200) NOT NULL,
   fee_type          ENUM('Professional Fee','Government Fee') DEFAULT 'Professional Fee',
   amount            DECIMAL(12,2) NOT NULL,
+  professional_fee_amount DECIMAL(12,2) DEFAULT 0,  -- see sales_orders.professional_fee_amount
   status            ENUM('Sent','Partially Paid','Paid','Overdue') DEFAULT 'Sent',
   due_date          DATE,
   emailed_to_client TINYINT(1) DEFAULT 0,

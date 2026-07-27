@@ -71,4 +71,25 @@ function quoteTotal(items, orderDiscount = 0) {
   return { subtotal, total: Math.max(0, subtotal - (orderDiscount || 0)) };
 }
 
-module.exports = { nextId, nextSequentialId, today, daysFromNow, normPhone, normEmail, normCompany, money, quoteTotal, findDuplicateCustomer };
+/**
+ * Only Professional Fee line items count toward business volume, pipeline value, and incentive
+ * calculations — Government Fee items are pass-through with no markup. A line item's effective
+ * fee type is its own `feeType` if tagged, falling back to the quotation's whole-document
+ * `feeType` for quotations created before per-line tagging existed (so a historical standalone
+ * Government Fee quotation, whose items were never individually tagged, still resolves to fully
+ * excluded — same as before). The order-level discount is allocated proportionally across the
+ * two fee-type subtotals, so it degrades to the exact old value for a quotation that's 100% one
+ * type either way.
+ */
+function professionalFeeTotal(items, orderDiscount, quotationFeeType) {
+  const list = items || [];
+  const lineAmount = (it) => it.qty * it.price * (1 - (it.discountPct || 0) / 100);
+  const isGovernmentFee = (it) => (it.feeType || quotationFeeType || "Professional Fee") === "Government Fee";
+  const subtotal = list.reduce((a, it) => a + lineAmount(it), 0);
+  if (subtotal <= 0) return 0;
+  const profSubtotal = list.filter((it) => !isGovernmentFee(it)).reduce((a, it) => a + lineAmount(it), 0);
+  const profShare = profSubtotal / subtotal;
+  return Math.max(0, profSubtotal - (orderDiscount || 0) * profShare);
+}
+
+module.exports = { nextId, nextSequentialId, today, daysFromNow, normPhone, normEmail, normCompany, money, quoteTotal, professionalFeeTotal, findDuplicateCustomer };
