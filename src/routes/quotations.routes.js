@@ -3,7 +3,8 @@ const { query, withTransaction } = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
 const { requireRole, isAdminLike } = require("../middleware/roles");
 const { nextId, nextSequentialId, daysFromNow, quoteTotal, professionalFeeTotal } = require("../utils/helpers");
-const { generateQuotationPdf } = require("../utils/quotationPdf");
+const { generateQuotationPdf, THEMES } = require("../utils/quotationPdf");
+const validTheme = (t) => (t && THEMES[t] ? t : "charcoal");
 const { requireRoleOrApprovalTypeDesignation, isAssignedApprover } = require("../utils/designationApproval");
 
 // Sales Manager / Admin-tier can always send a quotation straight to the client; anyone else
@@ -68,9 +69,9 @@ router.post("/", async (req, res) => {
   owner = owner || req.user.id;
 
   await query(
-    `INSERT INTO quotations (id, deal_id, customer, fee_type, subject, items, order_discount, bank, footer_note, notes, terms, status, valid_till, owner, favorite)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)`,
-    [id, b.dealId || null, b.customer, b.feeType || "Professional Fee", b.subject || null, JSON.stringify(b.items || []), b.orderDiscount || 0,
+    `INSERT INTO quotations (id, deal_id, customer, fee_type, theme, subject, items, order_discount, bank, footer_note, notes, terms, status, valid_till, owner, favorite)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)`,
+    [id, b.dealId || null, b.customer, b.feeType || "Professional Fee", validTheme(b.theme), b.subject || null, JSON.stringify(b.items || []), b.orderDiscount || 0,
       b.bank || null, b.footerNote || null, b.notes || null, b.terms || null, status, daysFromNow(14), owner]
   );
   if (b.dealId) await query("UPDATE deals SET stage = 'Quotation Sent' WHERE id = ?", [b.dealId]);
@@ -78,22 +79,23 @@ router.post("/", async (req, res) => {
 });
 
 router.patch("/:id", async (req, res) => {
-  const [row] = await query("SELECT customer, fee_type, status FROM quotations WHERE id = ?", [req.params.id]);
+  const [row] = await query("SELECT customer, fee_type, theme, status FROM quotations WHERE id = ?", [req.params.id]);
   if (!row) return res.status(404).json({ error: "Not found" });
   if (!["Draft", "Pending Manager Approval"].includes(row.status)) {
     return res.status(400).json({ error: "Only Draft or Pending Manager Approval quotations can be edited" });
   }
   const b = req.body;
   // Visual edit (the only edit path in the UI) only ever sends subject/items/notes/terms/discount/
-  // bank/footerNote — customer and feeType aren't part of that form, so fall back to the existing
-  // row rather than writing a SQL NULL bind error every single save.
+  // bank/footerNote/theme — customer and feeType aren't part of that form, so fall back to the
+  // existing row rather than writing a SQL NULL bind error every single save.
   const customer = b.customer ?? row.customer;
   const feeType = b.feeType ?? row.fee_type;
+  const theme = b.theme !== undefined ? validTheme(b.theme) : row.theme;
   const hasDiscount = (b.items || []).some((it) => it.discountPct > 0) || (b.orderDiscount || 0) > 0;
   await query(
-    `UPDATE quotations SET customer=?, fee_type=?, subject=?, items=?, order_discount=?, bank=?, footer_note=?, notes=?, terms=?, status=?
+    `UPDATE quotations SET customer=?, fee_type=?, theme=?, subject=?, items=?, order_discount=?, bank=?, footer_note=?, notes=?, terms=?, status=?
      WHERE id = ?`,
-    [customer, feeType, b.subject || null, JSON.stringify(b.items || []), b.orderDiscount || 0, b.bank || null, b.footerNote || null,
+    [customer, feeType, theme, b.subject || null, JSON.stringify(b.items || []), b.orderDiscount || 0, b.bank || null, b.footerNote || null,
       b.notes || null, b.terms || null, hasDiscount ? "Pending Manager Approval" : "Draft", req.params.id]
   );
   res.json({ ok: true });
@@ -181,9 +183,9 @@ router.post("/:id/clone", async (req, res) => {
   const customer = req.body.customer || src.customer;
   const dealId = req.body.customer && req.body.customer !== src.customer ? null : src.deal_id;
   await query(
-    `INSERT INTO quotations (id, deal_id, customer, fee_type, subject, items, order_discount, bank, footer_note, notes, terms, status, valid_till, owner, favorite)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,'Draft',?,?,0)`,
-    [id, dealId, customer, src.fee_type, src.subject, src.items, src.order_discount, src.bank, src.footer_note, src.notes, src.terms, daysFromNow(14), req.user.id]
+    `INSERT INTO quotations (id, deal_id, customer, fee_type, theme, subject, items, order_discount, bank, footer_note, notes, terms, status, valid_till, owner, favorite)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'Draft',?,?,0)`,
+    [id, dealId, customer, src.fee_type, src.theme, src.subject, src.items, src.order_discount, src.bank, src.footer_note, src.notes, src.terms, daysFromNow(14), req.user.id]
   );
   res.status(201).json({ id });
 });

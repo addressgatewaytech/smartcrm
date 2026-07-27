@@ -37,7 +37,7 @@ export const mapDeal = (d) => ({
 
 export const mapQuotation = (q) => ({
   id: q.id, dealId: q.deal_id, customer: q.customer, owner: q.owner,
-  subject: q.subject, feeType: q.fee_type, orderDiscount: Number(q.order_discount || 0),
+  subject: q.subject, feeType: q.fee_type, theme: q.theme || "charcoal", orderDiscount: Number(q.order_discount || 0),
   items: (q.items || []).map((it) => ({ ...it, qty: Number(it.qty), price: Number(it.price), discountPct: Number(it.discountPct || 0) })),
   status: q.status, validTill: q.valid_till, createdAt: q.created_at,
   bank: q.bank || "", footerNote: q.footer_note || "", notes: q.notes || "", terms: q.terms || "",

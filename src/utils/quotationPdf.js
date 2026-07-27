@@ -35,6 +35,16 @@ const DARK_BG = "#2A2E33";
 const HAIR = "#E1E6E8";
 const LIGHT_BG = "#F5F6F6";
 
+// Quotation color themes — selectable per quotation (quotations.theme). Each controls the table
+// header band, the shaded Total row, and the section headings (Terms & Conditions, Bank Account
+// Details, Acceptance Form) that follow the item table.
+const THEMES = {
+  charcoal: { label: "Modern Charcoal", headerBg: DARK_BG, totalBg: LIGHT_BG, totalText: INK, heading: INK },
+  teal:     { label: "Teal Classic",    headerBg: "#0D7288", totalBg: "#E1F2F5", totalText: "#0D7288", heading: "#0D7288" },
+  gold:     { label: "Gold Accent",     headerBg: "#C05F0F", totalBg: "#FCEBDA", totalText: "#C05F0F", heading: "#C05F0F" },
+};
+const themeFor = (key) => THEMES[key] || THEMES.charcoal;
+
 const FONTS_DIR = path.join(__dirname, "../assets/fonts");
 // Same logo file the app's own sidebar uses (frontend/public/logo-address-gateway.png) — real
 // PNG, not a font-drawn recreation, so the PDF and the UI always show the exact same wordmark.
@@ -91,8 +101,8 @@ function drawBillTo(doc, quotation, rightX, y) {
   return y;
 }
 
-function drawTableHeader(doc, y, colX, tableRight) {
-  doc.rect(MARGIN, y, tableRight - MARGIN, 22).fill(DARK_BG);
+function drawTableHeader(doc, y, colX, tableRight, headerBg) {
+  doc.rect(MARGIN, y, tableRight - MARGIN, 22).fill(headerBg || DARK_BG);
   doc.font("Inter-SemiBold").fontSize(9).fillColor("#FFFFFF");
   doc.text("#", colX.idx + 5, y + 7, { width: colX.desc - colX.idx - 10 });
   doc.text("Item & Description", colX.desc, y + 7, { width: colX.rate - colX.desc - 5 });
@@ -107,6 +117,7 @@ function generateQuotationPdf(quotation, res) {
   const items = quotation.items || [];
   const orderDiscount = Number(quotation.order_discount ?? quotation.orderDiscount ?? 0);
   const { subtotal, total } = quoteTotal(items, orderDiscount);
+  const theme = themeFor(quotation.theme);
 
   const doc = new PDFDocument({ size: "A4", margin: MARGIN, bufferPages: true });
   registerFonts(doc);
@@ -136,16 +147,7 @@ function generateQuotationPdf(quotation, res) {
   doc.font("Inter").fontSize(9).fillColor(GRAY).text("Subject :", MARGIN, y);
   y = doc.y + 1;
   doc.font("Inter").fontSize(10).fillColor(INK).text(quotation.subject || items[0]?.service || "Quotation", MARGIN, y, { width: tableRight - MARGIN });
-  // A quotation created under the single-quotation model can mix Professional Fee and Government
-  // Fee line items (tagged per item — see quotations.items) instead of being a whole-document
-  // Government Fee quotation, so this disclaimer needs to catch both cases.
-  const hasGovernmentFeeItems = quotation.fee_type === "Government Fee" || items.some((it) => it.feeType === "Government Fee");
-  y = doc.y + (hasGovernmentFeeItems ? 4 : 14);
-  if (hasGovernmentFeeItems) {
-    doc.font("Inter").fontSize(8).fillColor(GRAY)
-      .text("Pass-through government charges — excluded from Address Gateway's business volume and incentive calculations.", MARGIN, y, { width: tableRight - MARGIN });
-    y = doc.y + 14;
-  }
+  y = doc.y + 14;
 
   // --- Line items table (grouped by category, matching the on-screen PDF preview) --------------
   // Table-only page breaks re-draw the dark column header; every section after the table just
@@ -160,11 +162,11 @@ function generateQuotationPdf(quotation, res) {
   const ensureTableRoom = (needed) => {
     if (y + needed > doc.page.height - MARGIN - 40) {
       doc.addPage();
-      y = drawTableHeader(doc, MARGIN, colX, tableRight);
+      y = drawTableHeader(doc, MARGIN, colX, tableRight, theme.headerBg);
     }
   };
 
-  y = drawTableHeader(doc, y, colX, tableRight);
+  y = drawTableHeader(doc, y, colX, tableRight, theme.headerBg);
   let lastCategory = null;
   let rowNumber = 0;
   items.forEach((it) => {
@@ -209,8 +211,8 @@ function generateQuotationPdf(quotation, res) {
     doc.font("Inter").fontSize(9.5).fillColor(INK).text(`(-) ${money2(orderDiscount)}`, totalsX + 110, y, { width: totalsWidth - 110, align: "right" });
     y += 16;
   }
-  doc.rect(totalsX, y - 2, totalsWidth, 20).fill(LIGHT_BG);
-  doc.font("Inter-SemiBold").fontSize(10.5).fillColor(INK).text("Total", totalsX + 6, y + 3, { width: 104 });
+  doc.rect(totalsX, y - 2, totalsWidth, 20).fill(theme.totalBg);
+  doc.font("Inter-SemiBold").fontSize(10.5).fillColor(theme.totalText).text("Total", totalsX + 6, y + 3, { width: 104 });
   doc.font("Inter-Bold").fontSize(10.5).text(`QAR${money2(total)}`, totalsX + 110, y + 3, { width: totalsWidth - 116, align: "right" });
   y += 30;
 
@@ -236,7 +238,7 @@ function generateQuotationPdf(quotation, res) {
     ensureRoom(40);
     doc.moveTo(MARGIN, y).lineTo(tableRight, y).strokeColor(HAIR).stroke();
     y += 12;
-    doc.font("Inter-SemiBold").fontSize(11).fillColor(INK).text("Terms & Conditions", MARGIN, y);
+    doc.font("Inter-SemiBold").fontSize(11).fillColor(theme.heading).text("Terms & Conditions", MARGIN, y);
     y = doc.y + 8;
     termLines.forEach((line, i) => {
       const width = tableRight - MARGIN - 16;
@@ -250,7 +252,7 @@ function generateQuotationPdf(quotation, res) {
   }
 
   ensureRoom(60);
-  doc.font("Inter-SemiBold").fontSize(11).fillColor(INK).text("Bank Account Details", MARGIN, y);
+  doc.font("Inter-SemiBold").fontSize(11).fillColor(theme.heading).text("Bank Account Details", MARGIN, y);
   y = doc.y + 8;
   const bankLines = (quotation.bank || DEFAULT_BANK).split("\n").map((t) => t.trim()).filter(Boolean);
   bankLines.forEach((line) => {
@@ -270,7 +272,7 @@ function generateQuotationPdf(quotation, res) {
 
   // --- Acceptance form ---------------------------------------------------------------------------
   ensureRoom(90);
-  doc.font("Inter-SemiBold").fontSize(10).fillColor(INK).text("ACCEPTANCE FORM:", MARGIN, y);
+  doc.font("Inter-SemiBold").fontSize(10).fillColor(theme.heading).text("ACCEPTANCE FORM:", MARGIN, y);
   y = doc.y + 6;
   doc.font("Inter").fontSize(9).fillColor(INK)
     .text("I hereby, accept the above offer and I will endeavor to complete/submit all the required documents along with the agreed payment terms.", MARGIN, y, { width: tableRight - MARGIN });
@@ -312,4 +314,4 @@ function generateQuotationPdf(quotation, res) {
   doc.end();
 }
 
-module.exports = { generateQuotationPdf, DEFAULT_BANK, DEFAULT_FOOTER_NOTE };
+module.exports = { generateQuotationPdf, DEFAULT_BANK, DEFAULT_FOOTER_NOTE, THEMES };

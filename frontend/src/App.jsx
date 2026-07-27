@@ -297,6 +297,15 @@ const SERVICES = [
 
 const FEE_TYPES = ["Professional Fee", "Government Fee"];
 
+// Quotation color themes — mirrors THEMES in src/utils/quotationPdf.js so the on-screen preview
+// matches the real generated PDF exactly.
+const QUOTE_THEMES = {
+  charcoal: { label: "Modern Charcoal", headerBg: "#2A2E33", totalBg: "#F5F6F6", totalText: "#151A1F", heading: "#151A1F" },
+  teal:     { label: "Teal Classic",    headerBg: "#0D7288", totalBg: "#E1F2F5", totalText: "#0D7288", heading: "#0D7288" },
+  gold:     { label: "Gold Accent",     headerBg: "#C05F0F", totalBg: "#FCEBDA", totalText: "#C05F0F", heading: "#C05F0F" },
+};
+const QUOTE_THEME_KEYS = Object.keys(QUOTE_THEMES);
+
 const DEFAULT_BANK = "ADDRESS GATEWAY BUSINESS SERVICES\nBank - Commercial Bank, Account Number - 4680-21670035-001\nIBAN - QA14CBQA000000468021670035001, Company Fawran - ER-17274261\nDoha, Qatar";
 const DEFAULT_FOOTER_NOTE = "This quotation is provided for estimation purposes only and does not constitute legal or financial advice; signature is not required.";
 
@@ -380,6 +389,28 @@ function BrandLogo({ scale = 1, onDark = false }) {
 
 function Stamp({ children, tone = "neutral" }) {
   return <span className={`stamp stamp-${tone}`}><span className="ring" />{children}</span>;
+}
+
+function ThemePicker({ value, onChange }) {
+  return (
+    <div style={{ display:"flex", gap:10 }}>
+      {QUOTE_THEME_KEYS.map(key => {
+        const t = QUOTE_THEMES[key];
+        const active = value === key;
+        return (
+          <button key={key} type="button" onClick={()=>onChange(key)} title={t.label}
+            style={{
+              display:"flex", alignItems:"center", gap:6, padding:"5px 10px 5px 6px", borderRadius:20,
+              border: active ? `1.5px solid ${t.headerBg}` : "1px solid var(--hair)",
+              background: active ? t.totalBg : "var(--surface)", cursor:"pointer", fontSize:12,
+            }}>
+            <span style={{ width:16, height:16, borderRadius:"50%", background:t.headerBg, display:"inline-block", flexShrink:0 }} />
+            <span style={{ color: active ? t.totalText : "var(--ink)", fontWeight: active ? 600 : 400 }}>{t.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 function statusTone(status) {
@@ -1931,22 +1962,22 @@ function EditDealModal({ deal: d, state, dispatch, onClose }) {
   );
 }
 
-function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVICES[0], editableCustomer=false, customerOptions=[], services=SERVICES, dispatch, templates, onClose, editQuotation=null }) {
+function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVICES[0], editableCustomer=false, customerOptions=[], services=SERVICES, dispatch, templates, onClose }) {
   const [showNewService, setShowNewService] = useState(false);
-  const [customer, setCustomer] = useState(editQuotation ? editQuotation.customer : customerName);
+  const [customer, setCustomer] = useState(customerName);
   const [showNewCustomer, setShowNewCustomer] = useState(false);
-  const [templateService, setTemplateService] = useState(editQuotation ? (editQuotation.items[0]?.service || defaultService) : defaultService);
-  const [feeType, setFeeType] = useState(editQuotation ? (editQuotation.feeType || "Professional Fee") : "Professional Fee");
-  const [subject, setSubject] = useState(editQuotation ? (editQuotation.subject || "") : "");
+  const [templateService, setTemplateService] = useState(defaultService);
+  const [theme, setTheme] = useState("teal");
+  const [subject, setSubject] = useState("");
   // Deliberately starts at 0, not the deal's estimated value — that figure is just a sales-stage
   // guess entered when converting the lead, not the real fee, which should come from loading the
   // service's fee template below (or be typed in manually) so it's never mistaken for one.
-  const [items, setItems] = useState(editQuotation ? editQuotation.items.map(it=>({...it})) : [{ category: "", service: defaultService, description: "", note: "", qty: 1, price: 0, discountPct: 0 }]);
-  const [orderDiscount, setOrderDiscount] = useState(editQuotation ? (editQuotation.orderDiscount || 0) : 0);
-  const [bank, setBank] = useState(editQuotation ? (editQuotation.bank || "") : "");
-  const [footerNote, setFooterNote] = useState(editQuotation ? (editQuotation.footerNote || "") : "");
-  const [notes, setNotes] = useState(editQuotation ? (editQuotation.notes || "") : "");
-  const [terms, setTerms] = useState(editQuotation ? (editQuotation.terms || "") : "");
+  const [items, setItems] = useState([{ category: "", service: defaultService, description: "", note: "", qty: 1, price: 0, discountPct: 0 }]);
+  const [orderDiscount, setOrderDiscount] = useState(0);
+  const [bank, setBank] = useState("");
+  const [footerNote, setFooterNote] = useState("");
+  const [notes, setNotes] = useState("");
+  const [terms, setTerms] = useState("");
   const subtotal = items.reduce((a,it) => a + it.qty*it.price*(1-(it.discountPct||0)/100), 0);
   const total = Math.max(0, subtotal - (orderDiscount || 0));
   const hasDiscount = items.some(it => it.discountPct > 0) || orderDiscount > 0;
@@ -1989,12 +2020,10 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
     applyTemplate(tpl, tpl.items);
   };
 
-  // New quotations: picking the service already tells us which template applies, so load it the
-  // moment it's selected (or on open, for whatever service the modal started on) instead of
-  // requiring a separate "Load template" click. Editing an existing quotation keeps that manual
-  // step (via the banner below) so an in-progress edit is never silently overwritten.
+  // Picking the service already tells us which template applies, so load it the moment it's
+  // selected (or on open, for whatever service the modal started on) instead of requiring a
+  // separate "Load template" click.
   useEffect(() => {
-    if (editQuotation) return;
     if (!tpl) return;
     loadTemplate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2029,12 +2058,8 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
     setSaving(true);
     setSaveError("");
     try {
-      const payload = { dealId: editQuotation ? editQuotation.dealId : dealId, customer, items, terms, notes, subject, feeType, orderDiscount, bank, footerNote };
-      if (editQuotation) {
-        await dispatch({ type:"UPDATE_QUOTATION", id: editQuotation.id, payload });
-      } else {
-        await dispatch({ type:"CREATE_QUOTATION", payload });
-      }
+      const payload = { dealId, customer, items, terms, notes, subject, theme, orderDiscount, bank, footerNote };
+      await dispatch({ type:"CREATE_QUOTATION", payload });
       onClose();
     } catch (err) {
       setSaveError(err instanceof ApiError ? err.message : "Couldn't save — please try again.");
@@ -2044,24 +2069,8 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
   };
 
   return (
-    <Modal title={editQuotation ? `Edit ${editQuotation.id}` : "Build quotation"} sub={editableCustomer || editQuotation ? "All amounts in QAR" : `${customer} — all amounts in QAR`} onClose={onClose} width={700}>
-      {editQuotation && (
-        <div className="row2">
-          <div className="field">
-            <label>Fee type</label>
-            <select value={feeType} onChange={e=>setFeeType(e.target.value)}>
-              {FEE_TYPES.map(f=><option key={f}>{f}</option>)}
-            </select>
-          </div>
-          <div />
-        </div>
-      )}
-      {feeType === "Government Fee" && (
-        <div className="side-note" style={{ marginTop:-4, marginBottom:12 }}>
-          <AlertTriangle size={13} style={{verticalAlign:-2, marginRight:4}}/>Government Fee quotations are pass-through — they're excluded from business volume and incentive calculations.
-        </div>
-      )}
-      {(editableCustomer || editQuotation) && (
+    <Modal title="Build quotation" sub={editableCustomer ? "All amounts in QAR" : `${customer} — all amounts in QAR`} onClose={onClose} width={700}>
+      {editableCustomer && (
         <div className="row2">
           <div className="field">
             <label>Customer</label>
@@ -2084,17 +2093,15 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
       )}
       {showNewCustomer && <NewCustomerModal dispatch={dispatch} onClose={()=>setShowNewCustomer(false)} onCreated={(name)=>setCustomer(name)} />}
       {showNewService && <AddServiceOptionModal dispatch={dispatch} onClose={()=>setShowNewService(false)} onCreated={(name)=>setTemplateService(name)} />}
-      {editQuotation && tpl && (
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 14, background:"var(--gold-tint)", border:"1px solid #F2C089", borderRadius:8, padding:"9px 12px" }}>
-          <span style={{ fontSize:12.5, color:"var(--gold)" }}><Files size={13} style={{verticalAlign:-2,marginRight:5}}/>A saved template exists for {templateService}.</span>
-          <button className="btn btn-sm" onClick={loadTemplate}>Load template</button>
-        </div>
-      )}
-      {!editQuotation && tpl && (
+      {tpl && (
         <div style={{ fontSize:12, color:"var(--ink-soft)", marginBottom:14 }}>
           <Files size={13} style={{verticalAlign:-2,marginRight:5}}/>Loaded the saved {templateService} template — edit any line below if this job needs something different.
         </div>
       )}
+      <div className="field">
+        <label>Template theme</label>
+        <ThemePicker value={theme} onChange={setTheme} />
+      </div>
       {activityPrompt && (
         <Modal title="Business activities" sub="One Activity Fees line will be added per activity, numbered in order." onClose={()=>setActivityPrompt(null)} width={480}>
           {activityPrompt.activities.map((a, i) => (
@@ -2187,7 +2194,7 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
       <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop: 16 }}>
         <button className="btn" onClick={onClose}>Cancel</button>
         <button className="btn btn-primary" disabled={saving || !customer} onClick={handleSubmit}>
-          {saving ? "Saving…" : editQuotation ? "Save changes" : "Save quotation"}
+          {saving ? "Saving…" : "Save quotation"}
         </button>
       </div>
     </Modal>
@@ -2205,7 +2212,6 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, onHighligh
   const open = openId ? state.quotations.find(q => q.id === openId) : null;
   const [newQuote, setNewQuote] = useState(false);
   const [cloneFor, setCloneFor] = useState(null);
-  const [editQuote, setEditQuote] = useState(null);
   const [removeQuote, setRemoveQuote] = useState(null);
   const [favoritesOnly, setFavoritesOnly] = useState(false);
 
@@ -2217,7 +2223,6 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, onHighligh
   const favoriteCount = owned.filter(q => q.favorite).length;
   const total = q => Math.max(0, q.items.reduce((a,it)=>a+it.qty*it.price*(1-(it.discountPct||0)/100),0) - (q.orderDiscount||0));
   const customerOptions = state.customers.map(c=>c.name);
-  const editable = q => ["Draft","Pending Manager Approval"].includes(q.status);
   const isAdmin = ADMIN_LIKE.includes(role);
 
   // Scrolls the row "View quotation" (from Deals) pointed at into view — otherwise it's easy to
@@ -2273,10 +2278,7 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, onHighligh
                 <td><Stamp tone={statusTone(q.status)}>{q.status}</Stamp></td>
                 <td><button className="btn btn-sm btn-ghost" title="Clone" onClick={(e)=>{ e.stopPropagation(); setCloneFor(q); }}><Copy size={13}/></button></td>
                 <td>
-                  <RowActions
-                    onEdit={editable(q) ? ()=>setEditQuote(q) : null}
-                    onRemove={q.status==="Draft" && isAdmin ? ()=>setRemoveQuote(q) : null}
-                  />
+                  <RowActions onRemove={q.status==="Draft" && isAdmin ? ()=>setRemoveQuote(q) : null} />
                 </td>
               </tr>
             ))}
@@ -2286,7 +2288,6 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, onHighligh
       {open && <QuoteDetailModal quotation={open} state={state} dispatch={dispatch} role={role} userId={userId} customerOptions={customerOptions} templates={state.quotationTemplates} onClose={()=>setOpenId(null)} />}
       {newQuote && <QuoteBuilderModal editableCustomer customerOptions={customerOptions} defaultService={state.services[0]} services={state.services} dispatch={dispatch} templates={state.quotationTemplates} onClose={()=>setNewQuote(false)} />}
       {cloneFor && <CloneQuoteModal quotation={cloneFor} customerOptions={customerOptions} dispatch={dispatch} onClose={()=>setCloneFor(null)} />}
-      {editQuote && <QuoteBuilderModal editQuotation={editQuote} customerOptions={customerOptions} services={state.services} dispatch={dispatch} templates={state.quotationTemplates} onClose={()=>setEditQuote(null)} />}
       {removeQuote && <ConfirmModal title={`Remove ${removeQuote.id}?`} body={`${removeQuote.customer} — this draft quotation can't be recovered once removed.`} onConfirm={()=>dispatch({type:"DELETE_QUOTATION", id:removeQuote.id})} onClose={()=>setRemoveQuote(null)} />}
     </div>
   );
@@ -2336,6 +2337,7 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
   const [content, setContent] = useState(() => ({
     subject: q.subject || "", items: q.items.map(it => ({...it})), notes: q.notes || "",
     terms: q.terms || "", orderDiscount: q.orderDiscount || 0, bank: q.bank || "", footerNote: q.footerNote || "",
+    theme: q.theme || "charcoal",
   }));
   const [visualEdit, setVisualEdit] = useState(false);
   const [draft, setDraft] = useState(null);
@@ -2510,6 +2512,7 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
       {view === "pdf" && (() => {
         const src = visualEdit && draft ? draft : content;
         const editingNow = visualEdit && !!draft;
+        const themeColors = QUOTE_THEMES[src.theme] || QUOTE_THEMES.charcoal;
         const inputStyle = { border:"none", borderBottom:"1px dashed var(--hair)", background:"var(--gold-tint)", font:"inherit", color:"inherit", padding:"1px 2px", width:"100%" };
 
         let lastCategory = null;
@@ -2542,6 +2545,12 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
             ))}
           </div>
           {visualSaveError && <div className="side-note" style={{ color:"var(--danger)", marginBottom:12 }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{visualSaveError}</div>}
+          {editingNow && (
+            <div style={{ marginBottom:12 }}>
+              <div style={{ fontSize:11, color:"var(--ink-soft)", marginBottom:6 }}>Template theme</div>
+              <ThemePicker value={src.theme} onChange={(t)=>updDraft("theme", t)} />
+            </div>
+          )}
 
           <div style={{ border:"1px solid var(--hair)", borderRadius:8, padding:"32px 36px", background:"#fff" }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:24 }}>
@@ -2572,15 +2581,12 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
             {editingNow ? (
               <input style={{ ...inputStyle, fontSize:13.5, marginBottom:12 }} value={src.subject} onChange={e=>updDraft("subject", e.target.value)} placeholder="Quotation subject" />
             ) : (
-              <div style={{ fontSize:13.5, marginBottom: (q.feeType==="Government Fee" || src.items.some(it=>it.feeType==="Government Fee")) ? 8 : 20 }}>{src.subject || src.items[0]?.service || "Quotation"}</div>
-            )}
-            {(q.feeType === "Government Fee" || src.items.some(it=>it.feeType==="Government Fee")) && (
-              <div style={{ fontSize:10.5, color:"var(--ink-soft)", marginBottom:20 }}>Pass-through government charges — excluded from Address Gateway's business volume and incentive calculations.</div>
+              <div style={{ fontSize:13.5, marginBottom:20 }}>{src.subject || src.items[0]?.service || "Quotation"}</div>
             )}
 
             <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12.5, marginBottom:8 }}>
               <thead>
-                <tr style={{ background:"#2A2E33" }}>
+                <tr style={{ background:themeColors.headerBg }}>
                   <th style={{ color:"#fff", textAlign:"left", padding:"9px 10px", fontWeight:500, width:30 }}>#</th>
                   <th style={{ color:"#fff", textAlign:"left", padding:"9px 10px", fontWeight:500 }}>Item & Description</th>
                   <th style={{ color:"#fff", textAlign:"right", padding:"9px 10px", fontWeight:500, width:90 }}>Rate</th>
@@ -2649,7 +2655,7 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
                       </td>
                     </tr>
                   )}
-                  <tr style={{ background:"var(--page)" }}><td style={{ padding:"7px 16px 7px 0", fontWeight:600 }}>Total</td><td className="mono" style={{ padding:"7px 0", textAlign:"right", fontWeight:600 }}>QAR{pdfTotal.toFixed(2)}</td></tr>
+                  <tr style={{ background:themeColors.totalBg }}><td style={{ padding:"7px 16px 7px 0", fontWeight:600, color:themeColors.totalText }}>Total</td><td className="mono" style={{ padding:"7px 0", textAlign:"right", fontWeight:600, color:themeColors.totalText }}>QAR{pdfTotal.toFixed(2)}</td></tr>
                 </tbody>
               </table>
             </div>
@@ -2673,7 +2679,7 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
           <div style={{ border:"1px solid var(--hair)", borderRadius:8, padding:"32px 36px", background:"#fff", marginTop:16 }}>
             {(editingNow || termLines.length > 0) && (
               <div style={{ marginBottom:24 }}>
-                <div className="disp" style={{ fontSize:14, fontWeight:500, marginBottom:10 }}>Terms & Conditions</div>
+                <div className="disp" style={{ fontSize:14, fontWeight:500, marginBottom:10, color:themeColors.heading }}>Terms & Conditions</div>
                 {editingNow ? (
                   <textarea rows={5} style={{ ...inputStyle, borderBottom:"1px solid var(--hair)", fontSize:12 }} value={src.terms} onChange={e=>updDraft("terms", e.target.value)} placeholder="One term per line — numbered automatically" />
                 ) : (
@@ -2685,7 +2691,7 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
             )}
 
             <div style={{ marginBottom:24 }}>
-              <div className="disp" style={{ fontSize:14, fontWeight:500, marginBottom:8 }}>Bank Account Details</div>
+              <div className="disp" style={{ fontSize:14, fontWeight:500, marginBottom:8, color:themeColors.heading }}>Bank Account Details</div>
               {editingNow ? (
                 <textarea rows={4} style={{ ...inputStyle, borderBottom:"1px solid var(--hair)", fontSize:12 }} value={src.bank} onChange={e=>updDraft("bank", e.target.value)} placeholder={DEFAULT_BANK} />
               ) : (
@@ -2701,7 +2707,7 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
               Ministry fees are subject to change and may vary depending on the time of submission and the applicable government rules and regulations in effect at that time. Approval timelines, including company formation and visa approval, are also dependent on the decisions and processing timeframes of the relevant government authorities.
             </div>
 
-            <div className="disp" style={{ fontSize:13, fontWeight:500, marginBottom:10 }}>ACCEPTANCE FORM:</div>
+            <div className="disp" style={{ fontSize:13, fontWeight:500, marginBottom:10, color:themeColors.heading }}>ACCEPTANCE FORM:</div>
             <div style={{ fontSize:12, marginBottom:20 }}>I hereby, accept the above offer and I will endeavor to complete/submit all the required documents along with the agreed payment terms.</div>
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"24px 40px", fontSize:12.5 }}>
               <div>Name: <span style={{ display:"inline-block", borderBottom:"1px solid var(--hair)", width:"75%" }}>&nbsp;</span></div>

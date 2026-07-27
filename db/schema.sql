@@ -236,6 +236,9 @@ CREATE TABLE IF NOT EXISTS quotations (
   -- individually, so old standalone Government Fee quotations (never converted to a Sales Order,
   -- excluded from business volume) keep behaving exactly as before.
   fee_type         ENUM('Professional Fee','Government Fee') DEFAULT 'Professional Fee',
+  -- Color theme for the on-screen preview and the generated PDF — see THEMES in
+  -- src/utils/quotationPdf.js for what each one actually looks like.
+  theme            ENUM('charcoal','teal','gold') DEFAULT 'charcoal',
   subject          VARCHAR(500),
   items            JSON NOT NULL,     -- [{category, service, description, note, qty, price, discountPct, feeType}] — feeType is optional per item ('Professional Fee' | 'Government Fee'); missing means "inherit the quotation's own fee_type" (pre-existing rows)
   order_discount   DECIMAL(12,2) DEFAULT 0,
