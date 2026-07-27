@@ -3,6 +3,7 @@ const { query } = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
 const { requireRole, isAdminLike } = require("../middleware/roles");
 const { nextId } = require("../utils/helpers");
+const { generateInvoicePdf } = require("../utils/invoicePdf");
 
 const router = express.Router();
 router.use(requireAuth);
@@ -29,6 +30,22 @@ router.get("/", async (req, res) => {
     email_cc: inv.email_cc || [],
     payments: payments.filter((p) => p.invoice_id === inv.id),
   })));
+});
+
+// Real server-side A4 PDF (PDFKit), same pattern as quotations' /:id/pdf. An invoice only stores a
+// rolled-up amount, so its line items are traced back through the sales order to the quotation it
+// was converted from (subscription-billed invoices have neither — nothing to trace, so no items).
+router.get("/:id/pdf", async (req, res) => {
+  const [row] = await query("SELECT * FROM invoices WHERE id = ?", [req.params.id]);
+  if (!row) return res.status(404).json({ error: "Not found" });
+  const payments = await query("SELECT * FROM invoice_payments WHERE invoice_id = ? ORDER BY paid_at", [row.id]);
+  const [items] = row.sales_order_id
+    ? await query(
+        `SELECT q.items FROM sales_orders so LEFT JOIN quotations q ON q.id = so.quotation_id WHERE so.id = ?`,
+        [row.sales_order_id]
+      )
+    : [];
+  generateInvoicePdf({ ...row, items: items?.items || [], payments }, res);
 });
 
 router.post("/:id/payments", async (req, res) => {

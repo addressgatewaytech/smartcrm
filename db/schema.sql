@@ -120,17 +120,19 @@ CREATE TABLE IF NOT EXISTS checklist_templates (
   FOREIGN KEY (service) REFERENCES services(name) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
+-- One template per service (not per fee type) — a service's Government Fee line items live
+-- alongside its Professional Fee ones in the same `items` array, tagged per-item via an optional
+-- "feeType" key (defaults to Professional Fee when absent), matching how quotations themselves
+-- represent mixed fee types since the single-quotation-model change.
 CREATE TABLE IF NOT EXISTS quotation_templates (
-  service      VARCHAR(150) NOT NULL,
-  fee_type     ENUM('Professional Fee','Government Fee') NOT NULL,
+  service      VARCHAR(150) PRIMARY KEY,
   subject      VARCHAR(500),
-  items        JSON NOT NULL,      -- [{category, service, description, note, qty, price, discountPct}]
+  items        JSON NOT NULL,      -- [{category, service, description, note, qty, price, discountPct, feeType?}]
   notes        TEXT,
   terms        TEXT,
   order_discount DECIMAL(12,2) DEFAULT 0,
   bank         TEXT,
   footer_note  TEXT,
-  PRIMARY KEY (service, fee_type),
   FOREIGN KEY (service) REFERENCES services(name) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 

@@ -25,26 +25,24 @@ router.delete("/services/:name", requireRole(["admin_like"]), async (req, res) =
   res.json({ ok: true });
 });
 
-// --- Quotation templates (keyed by service + feeType) -------------------------------------
+// --- Quotation templates (one per service — Government Fee lines live alongside Professional
+// Fee ones in the same `items` array, tagged per-item; see quotation_templates in schema.sql) ---
 router.get("/quotation-templates", async (req, res) => {
   const rows = await query("SELECT * FROM quotation_templates");
   const grouped = {};
-  for (const r of rows) {
-    grouped[r.service] = grouped[r.service] || {};
-    grouped[r.service][r.fee_type] = { ...r, items: r.items || [] };
-  }
+  for (const r of rows) grouped[r.service] = { ...r, items: r.items || [] };
   res.json(grouped);
 });
 
-router.put("/quotation-templates/:service/:feeType", requireRole(["admin_like", "sales_manager"]), async (req, res) => {
-  const { service, feeType } = req.params;
+router.put("/quotation-templates/:service", requireRole(["admin_like", "sales_manager"]), async (req, res) => {
+  const { service } = req.params;
   const b = req.body;
   await query(
-    `INSERT INTO quotation_templates (service, fee_type, subject, items, notes, terms, order_discount, bank, footer_note)
-     VALUES (?,?,?,?,?,?,?,?,?)
+    `INSERT INTO quotation_templates (service, subject, items, notes, terms, order_discount, bank, footer_note)
+     VALUES (?,?,?,?,?,?,?,?)
      ON DUPLICATE KEY UPDATE subject=VALUES(subject), items=VALUES(items), notes=VALUES(notes), terms=VALUES(terms),
        order_discount=VALUES(order_discount), bank=VALUES(bank), footer_note=VALUES(footer_note)`,
-    [service, decodeURIComponent(feeType), b.subject || null, JSON.stringify(b.items || []), b.notes || null, b.terms || null, b.orderDiscount || 0, b.bank || null, b.footerNote || null]
+    [service, b.subject || null, JSON.stringify(b.items || []), b.notes || null, b.terms || null, b.orderDiscount || 0, b.bank || null, b.footerNote || null]
   );
   res.json({ ok: true });
 });

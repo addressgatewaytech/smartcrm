@@ -1950,12 +1950,10 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
   const subtotal = items.reduce((a,it) => a + it.qty*it.price*(1-(it.discountPct||0)/100), 0);
   const total = Math.max(0, subtotal - (orderDiscount || 0));
   const hasDiscount = items.some(it => it.discountPct > 0) || orderDiscount > 0;
-  // Single-quotation model: a new quotation is always built starting from its Professional Fee
-  // template — Government Fee content, when needed, gets merged in as tagged line items (below),
-  // not picked as a whole-document alternative. Editing an existing quotation from before that
-  // change still respects whatever type it was actually saved as.
-  const baseFeeType = editQuotation ? feeType : "Professional Fee";
-  const tpl = templates[templateService]?.[baseFeeType];
+  // One merged template per service (Professional Fee and Government Fee lines share the same
+  // template, tagged per item — see quotation_templates in schema.sql), so there's no fee-type
+  // keying to do here anymore.
+  const tpl = templates[templateService];
   const categories = [...new Set(items.map(it => it.category).filter(Boolean))];
 
   const update = (i, field, val) => setItems(items.map((it,idx) => idx===i ? { ...it, [field]: val } : it));
@@ -1963,8 +1961,10 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
   // "Activity Fees" is the one template line that's genuinely different per quotation — it's
   // priced per business activity, not a flat fee — so loading a template that has it pauses to
   // ask which activities apply, then expands it into one numbered line per activity (matching
-  // how these are actually written up: "1 - Retail Sale of...", "2 - ...").
-  const [activityPrompt, setActivityPrompt] = useState(null); // { tpl, activityIdx, activities: string[] }
+  // how these are actually written up: "1 - Retail Sale of...", "2 - ..."). A merged template can
+  // have up to two such lines (one Professional Fee, one Government Fee) — the same activity list
+  // fills in both, since they describe the same business activities.
+  const [activityPrompt, setActivityPrompt] = useState(null); // { tpl, activityIdxs, activities: string[] }
 
   const applyTemplate = (loadedTpl, loadedItems) => {
     setItems(loadedItems.map(it => ({ ...it })));
@@ -1978,24 +1978,38 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
 
   const loadTemplate = () => {
     if (!tpl) return;
-    const activityIdx = tpl.items.findIndex(it => (it.description || "").trim().toLowerCase() === "activity fees");
-    if (activityIdx !== -1) {
-      setActivityPrompt({ tpl, activityIdx, activities: [""] });
+    const activityIdxs = tpl.items.reduce((acc, it, idx) => {
+      if ((it.description || "").trim().toLowerCase() === "activity fees") acc.push(idx);
+      return acc;
+    }, []);
+    if (activityIdxs.length) {
+      setActivityPrompt({ tpl, activityIdxs, activities: [""] });
       return;
     }
     applyTemplate(tpl, tpl.items);
   };
 
+  // New quotations: picking the service already tells us which template applies, so load it the
+  // moment it's selected (or on open, for whatever service the modal started on) instead of
+  // requiring a separate "Load template" click. Editing an existing quotation keeps that manual
+  // step (via the banner below) so an in-progress edit is never silently overwritten.
+  useEffect(() => {
+    if (editQuotation) return;
+    if (!tpl) return;
+    loadTemplate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [templateService]);
+
   const confirmActivities = () => {
-    const { tpl: pendingTpl, activityIdx, activities } = activityPrompt;
-    const activityTemplateItem = pendingTpl.items[activityIdx];
+    const { tpl: pendingTpl, activityIdxs, activities } = activityPrompt;
     const named = activities.map(a => a.trim()).filter(Boolean);
-    // One row, not one per activity — qty carries the activity count so Amount (qty × rate)
-    // still comes out correct, and every activity is listed in the note, numbered in order.
-    const activityItem = named.length
-      ? { ...activityTemplateItem, qty: named.length, note: named.map((text, i) => `${i + 1} - ${text}`).join("\n") }
-      : activityTemplateItem; // nothing entered — keep the generic single line rather than lose it
-    const newItems = [...pendingTpl.items.slice(0, activityIdx), activityItem, ...pendingTpl.items.slice(activityIdx + 1)];
+    // One row per Activity Fees line, not one per activity — qty carries the activity count so
+    // Amount (qty × rate) still comes out correct, and every activity is listed in the note,
+    // numbered in order.
+    const newItems = pendingTpl.items.map((it, idx) => {
+      if (!activityIdxs.includes(idx) || !named.length) return it;
+      return { ...it, qty: named.length, note: named.map((text, i) => `${i + 1} - ${text}`).join("\n") };
+    });
     applyTemplate(pendingTpl, newItems);
     setActivityPrompt(null);
   };
@@ -2008,50 +2022,14 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
     setItems([...items, { category: "", service: templateService, description: "", note: "", qty: 1, price: 0, discountPct: 0 }]);
   };
 
-  // Company Formation (and similar) services almost always need BOTH a Professional Fee and a
-  // Government Fee quotation — users kept missing the second one since it was a fully separate
-  // "New quotation" action. When both templates exist for the selected service, offer to create
-  // the Government Fee one automatically alongside the Professional Fee one being built here.
-  const govFeeTpl = templates[templateService]?.["Government Fee"];
-  const govFeeActivityIdx = govFeeTpl?.items?.findIndex(it => (it.description || "").trim().toLowerCase() === "activity fees") ?? -1;
-  const [alsoGovFee, setAlsoGovFee] = useState(false);
-  const [govFeeActivities, setGovFeeActivities] = useState(null); // finalized once the prompt (if any) is confirmed
-  const [govFeeActivityPrompt, setGovFeeActivityPrompt] = useState(null); // { activities: string[] }
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
-
-  const toggleAlsoGovFee = (checked) => {
-    setAlsoGovFee(checked);
-    if (checked && govFeeActivityIdx !== -1 && !govFeeActivities) {
-      setGovFeeActivityPrompt({ activities: [""] });
-    }
-    if (!checked) { setGovFeeActivities(null); setGovFeeActivityPrompt(null); }
-  };
-
-  const confirmGovFeeActivities = () => {
-    setGovFeeActivities(govFeeActivityPrompt.activities.map(a => a.trim()).filter(Boolean));
-    setGovFeeActivityPrompt(null);
-  };
-
-  const buildGovFeeItems = () => {
-    if (govFeeActivityIdx === -1 || !govFeeActivities?.length) return govFeeTpl.items;
-    const tplItem = govFeeTpl.items[govFeeActivityIdx];
-    const activityItem = { ...tplItem, qty: govFeeActivities.length, note: govFeeActivities.map((t, i) => `${i + 1} - ${t}`).join("\n") };
-    return [...govFeeTpl.items.slice(0, govFeeActivityIdx), activityItem, ...govFeeTpl.items.slice(govFeeActivityIdx + 1)];
-  };
 
   const handleSubmit = async () => {
     setSaving(true);
     setSaveError("");
     try {
-      // Single-quotation model: Government Fee content is appended as its own tagged line items
-      // on this same document (only Government-Fee-tagged items are excluded from business volume
-      // and pipeline value — see professionalFeeTotal on the backend) rather than becoming a
-      // second, separate quotation record.
-      const combinedItems = (!editQuotation && alsoGovFee && govFeeTpl)
-        ? [...items, ...buildGovFeeItems().map(it => ({ ...it, feeType: "Government Fee" }))]
-        : items;
-      const payload = { dealId: editQuotation ? editQuotation.dealId : dealId, customer, items: combinedItems, terms, notes, subject, feeType, orderDiscount, bank, footerNote };
+      const payload = { dealId: editQuotation ? editQuotation.dealId : dealId, customer, items, terms, notes, subject, feeType, orderDiscount, bank, footerNote };
       if (editQuotation) {
         await dispatch({ type:"UPDATE_QUOTATION", id: editQuotation.id, payload });
       } else {
@@ -2083,17 +2061,6 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
           <AlertTriangle size={13} style={{verticalAlign:-2, marginRight:4}}/>Government Fee quotations are pass-through — they're excluded from business volume and incentive calculations.
         </div>
       )}
-      {!editQuotation && govFeeTpl && (
-        <label style={{ display:"flex", alignItems:"center", gap:8, fontSize:13, marginTop:-4, marginBottom:14, background:"var(--gold-tint)", border:"1px solid #F2C089", borderRadius:8, padding:"9px 12px", cursor:"pointer" }}>
-          <input type="checkbox" checked={alsoGovFee} onChange={e=>toggleAlsoGovFee(e.target.checked)} />
-          Also include the Government Fee items for {templateService} in this quotation (most clients need both)
-        </label>
-      )}
-      {!editQuotation && alsoGovFee && (
-        <div className="side-note" style={{ marginTop:-4, marginBottom:12 }}>
-          <AlertTriangle size={13} style={{verticalAlign:-2, marginRight:4}}/>The Government Fee items included below are pass-through — only the Professional Fee portion counts toward business volume and incentive calculations.
-        </div>
-      )}
       {(editableCustomer || editQuotation) && (
         <div className="row2">
           <div className="field">
@@ -2117,10 +2084,15 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
       )}
       {showNewCustomer && <NewCustomerModal dispatch={dispatch} onClose={()=>setShowNewCustomer(false)} onCreated={(name)=>setCustomer(name)} />}
       {showNewService && <AddServiceOptionModal dispatch={dispatch} onClose={()=>setShowNewService(false)} onCreated={(name)=>setTemplateService(name)} />}
-      {tpl && (
+      {editQuotation && tpl && (
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 14, background:"var(--gold-tint)", border:"1px solid #F2C089", borderRadius:8, padding:"9px 12px" }}>
-          <span style={{ fontSize:12.5, color:"var(--gold)" }}><Files size={13} style={{verticalAlign:-2,marginRight:5}}/>A saved {baseFeeType} template exists for {templateService}.</span>
+          <span style={{ fontSize:12.5, color:"var(--gold)" }}><Files size={13} style={{verticalAlign:-2,marginRight:5}}/>A saved template exists for {templateService}.</span>
           <button className="btn btn-sm" onClick={loadTemplate}>Load template</button>
+        </div>
+      )}
+      {!editQuotation && tpl && (
+        <div style={{ fontSize:12, color:"var(--ink-soft)", marginBottom:14 }}>
+          <Files size={13} style={{verticalAlign:-2,marginRight:5}}/>Loaded the saved {templateService} template — edit any line below if this job needs something different.
         </div>
       )}
       {activityPrompt && (
@@ -2148,32 +2120,6 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
           </div>
         </Modal>
       )}
-      {govFeeActivityPrompt && (
-        <Modal title="Business activities (for the Government Fee quotation)" sub="One Activity Fees line will be added per activity, numbered in order." onClose={()=>{ setGovFeeActivityPrompt(null); setAlsoGovFee(false); }} width={480}>
-          {govFeeActivityPrompt.activities.map((a, i) => (
-            <div key={i} className="field" style={{ display:"flex", gap:6, alignItems:"flex-end" }}>
-              <div style={{ flex:1 }}>
-                <label>{`Activity ${i + 1}`}</label>
-                <input value={a} autoFocus={i===0}
-                  onChange={e=>setGovFeeActivityPrompt(p=>({ ...p, activities: p.activities.map((x,idx)=>idx===i?e.target.value:x) }))}
-                  placeholder="e.g. Retail Sale of Fire Protection and Safety Equipment, Tools, and Materials" />
-              </div>
-              {govFeeActivityPrompt.activities.length > 1 && (
-                <button type="button" className="btn btn-sm btn-ghost" style={{ color:"var(--danger)" }}
-                  onClick={()=>setGovFeeActivityPrompt(p=>({ ...p, activities: p.activities.filter((_,idx)=>idx!==i) }))}><Trash2 size={13}/></button>
-              )}
-            </div>
-          ))}
-          <button type="button" className="btn btn-sm" style={{ marginBottom: 16 }}
-            onClick={()=>setGovFeeActivityPrompt(p=>({ ...p, activities: [...p.activities, ""] }))}><Plus size={13}/> Add another activity</button>
-          <div className="side-note" style={{ marginTop:0 }}>Leave blank and continue to keep the template's generic single Activity Fees line instead.</div>
-          <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop: 16 }}>
-            <button className="btn" onClick={()=>{ setGovFeeActivityPrompt(null); setAlsoGovFee(false); }}>Cancel</button>
-            <button className="btn btn-primary" onClick={confirmGovFeeActivities}>Continue</button>
-          </div>
-        </Modal>
-      )}
-
       <div className="field"><label>Subject</label><input value={subject} onChange={e=>setSubject(e.target.value)} placeholder="e.g. 100% FOREIGN OWNERSHIP COMPANY FORMATION - Government Fees" /></div>
 
       {items.map((it, i) => (
@@ -2377,7 +2323,6 @@ function CloneQuoteModal({ quotation: q, customerOptions, dispatch, onClose, onC
 function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, customerOptions=[], templates={}, onClose }) {
   const [view, setView] = useState("details");
   const [cloning, setCloning] = useState(false);
-  const [editing, setEditing] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [emailing, setEmailing] = useState(false);
   const [revising, setRevising] = useState(false);
@@ -2423,11 +2368,31 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
   const assignedApproverDesignations = (state?.approvalTypes||[]).find(t=>t.key==="quotation_approval")?.approverDesignations || [];
   const canApprove = role === "sales_manager" || ADMIN_LIKE.includes(role) || (myDesignation && assignedApproverDesignations.includes(myDesignation));
 
-  const startVisualEdit = () => { setDraft({ ...content, items: content.items.map(it=>({...it})) }); setVisualEdit(true); };
-  const saveVisualEdit = () => { setContent(draft); dispatch({ type:"UPDATE_QUOTATION", id:q.id, payload:draft }); setDraft(null); setVisualEdit(false); };
-  const cancelVisualEdit = () => { setDraft(null); setVisualEdit(false); };
+  const [savingVisual, setSavingVisual] = useState(false);
+  const [visualSaveError, setVisualSaveError] = useState("");
+  const startVisualEdit = () => { setDraft({ ...content, items: content.items.map(it=>({...it})) }); setVisualEdit(true); setVisualSaveError(""); };
+  const saveVisualEdit = async () => {
+    setSavingVisual(true);
+    setVisualSaveError("");
+    try {
+      await dispatch({ type:"UPDATE_QUOTATION", id:q.id, payload:{ ...draft, customer:q.customer, feeType:q.feeType } });
+      setContent(draft);
+      setDraft(null);
+      setVisualEdit(false);
+    } catch (err) {
+      setVisualSaveError(err instanceof ApiError ? err.message : "Couldn't save — please try again.");
+    } finally {
+      setSavingVisual(false);
+    }
+  };
+  const cancelVisualEdit = () => { setDraft(null); setVisualEdit(false); setVisualSaveError(""); };
   const updDraft = (field, val) => setDraft(d => ({ ...d, [field]: val }));
   const updDraftItem = (i, field, val) => setDraft(d => ({ ...d, items: d.items.map((it,idx) => idx===i ? { ...it, [field]: val } : it) }));
+  const addDraftItem = () => setDraft(d => {
+    const last = d.items[d.items.length-1];
+    return { ...d, items: [...d.items, { category: last?.category || "", service: last?.service || q.items[0]?.service || "", description: "", note: "", qty: 1, price: 0, discountPct: 0 }] };
+  });
+  const removeDraftItem = (i) => setDraft(d => ({ ...d, items: d.items.filter((_,idx) => idx!==i) }));
 
   return (
     <Modal title={q.id} sub={q.customer} onClose={onClose} width={720}>
@@ -2441,7 +2406,7 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
             onClick={()=>dispatch({type:"TOGGLE_QUOTATION_FAVORITE", id:q.id})}>
             <Star size={14} style={{ color: q.favorite ? "var(--gold)" : "var(--ink-soft)" }} fill={q.favorite ? "var(--gold)" : "none"} />
           </button>
-          <RowActions onEdit={editable ? ()=>setEditing(true) : null} onRemove={q.status==="Draft" && isAdmin ? ()=>setRemoving(true) : null} />
+          <RowActions onRemove={q.status==="Draft" && isAdmin ? ()=>setRemoving(true) : null} />
         </div>
       </div>
       <div style={{ borderBottom:"1px solid var(--hair)", marginBottom:18 }} />
@@ -2488,7 +2453,6 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
             </button>
           </div>
           {cloning && <CloneQuoteModal quotation={q} customerOptions={customerOptions} dispatch={dispatch} onClose={()=>setCloning(false)} onCloned={onClose} />}
-          {editing && <QuoteBuilderModal editQuotation={cq} customerOptions={customerOptions} services={state?.services} dispatch={dispatch} templates={templates} onClose={()=>{ setEditing(false); onClose(); }} />}
           {removing && <ConfirmModal title={`Remove ${q.id}?`} body={`${q.customer} — this draft quotation can't be recovered once removed.`} onConfirm={()=>{ dispatch({type:"DELETE_QUOTATION", id:q.id}); onClose(); }} onClose={()=>setRemoving(false)} />}
           {emailing && (
             <EmailCustomerModal
@@ -2570,13 +2534,14 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
             <span style={{ fontSize:12, color:"var(--ink-soft)" }}>{editingNow ? "Editing — changes are staged until you save." : "This is exactly what the client receives."}</span>
             {editable && (editingNow ? (
               <span style={{ display:"flex", gap:8 }}>
-                <button className="btn btn-sm" onClick={cancelVisualEdit}>Cancel</button>
-                <button className="btn btn-sm btn-primary" onClick={saveVisualEdit}><Check size={13}/> Save changes</button>
+                <button className="btn btn-sm" disabled={savingVisual} onClick={cancelVisualEdit}>Cancel</button>
+                <button className="btn btn-sm btn-primary" disabled={savingVisual} onClick={saveVisualEdit}><Check size={13}/> {savingVisual ? "Saving…" : "Save changes"}</button>
               </span>
             ) : (
               <button className="btn btn-sm" onClick={startVisualEdit}><Pencil size={13}/> Visual edit</button>
             ))}
           </div>
+          {visualSaveError && <div className="side-note" style={{ color:"var(--danger)", marginBottom:12 }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{visualSaveError}</div>}
 
           <div style={{ border:"1px solid var(--hair)", borderRadius:8, padding:"32px 36px", background:"#fff" }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:24 }}>
@@ -2619,12 +2584,14 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
                   <th style={{ color:"#fff", textAlign:"left", padding:"9px 10px", fontWeight:500, width:30 }}>#</th>
                   <th style={{ color:"#fff", textAlign:"left", padding:"9px 10px", fontWeight:500 }}>Item & Description</th>
                   <th style={{ color:"#fff", textAlign:"right", padding:"9px 10px", fontWeight:500, width:90 }}>Rate</th>
+                  {editingNow && <th style={{ color:"#fff", textAlign:"right", padding:"9px 10px", fontWeight:500, width:60 }}>Disc.%</th>}
                   <th style={{ color:"#fff", textAlign:"right", padding:"9px 10px", fontWeight:500, width:90 }}>Amount</th>
+                  {editingNow && <th style={{ width:28 }}></th>}
                 </tr>
               </thead>
               <tbody>
                 {rows.map(r => r.kind === "category" ? (
-                  <tr key={r.key}><td colSpan={4} style={{ padding:"9px 10px", fontWeight:600, fontSize:12, borderBottom:"1px solid var(--hair)" }}>{r.label}</td></tr>
+                  <tr key={r.key}><td colSpan={editingNow ? 6 : 4} style={{ padding:"9px 10px", fontWeight:600, fontSize:12, borderBottom:"1px solid var(--hair)" }}>{r.label}</td></tr>
                 ) : (
                   <tr key={r.key} style={{ borderBottom:"1px solid var(--hair)" }}>
                     <td style={{ padding:"9px 10px", verticalAlign:"top" }}>{r.number}</td>
@@ -2649,11 +2616,26 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
                         </>
                       ) : Number(r.it.price).toFixed(2)}
                     </td>
+                    {editingNow && (
+                      <td className="mono" style={{ padding:"9px 10px", textAlign:"right", verticalAlign:"top" }}>
+                        <input type="number" min={0} max={100} style={{ ...inputStyle, textAlign:"right" }} value={r.it.discountPct||0} onChange={e=>updDraftItem(r.idx,"discountPct",Number(e.target.value))} />
+                      </td>
+                    )}
                     <td className="mono" style={{ padding:"9px 10px", textAlign:"right", verticalAlign:"top" }}>{(r.it.qty*r.it.price*(1-(r.it.discountPct||0)/100)).toFixed(2)}</td>
+                    {editingNow && (
+                      <td style={{ padding:"9px 10px", verticalAlign:"top" }}>
+                        {src.items.length > 1 && (
+                          <button type="button" className="btn btn-sm btn-ghost" style={{ color:"var(--danger)", padding:2 }} onClick={()=>removeDraftItem(r.idx)}><X size={13}/></button>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
             </table>
+            {editingNow && (
+              <button type="button" className="btn btn-sm" style={{ marginBottom:16 }} onClick={addDraftItem}><Plus size={13}/> Add item</button>
+            )}
 
             <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:24 }}>
               <table style={{ fontSize:13 }}>
@@ -2753,8 +2735,7 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
 
 function QuotationTemplatesPage({ state, dispatch }) {
   const [service, setService] = useState(SERVICES[0]);
-  const [feeType, setFeeType] = useState("Professional Fee");
-  const seed = state.quotationTemplates[SERVICES[0]]?.["Professional Fee"] || { items: [], terms: "", notes: "", subject: "", orderDiscount: 0, bank: "", footerNote: "" };
+  const seed = state.quotationTemplates[SERVICES[0]] || { items: [], terms: "", notes: "", subject: "", orderDiscount: 0, bank: "", footerNote: "" };
   const [subject, setSubject] = useState(seed.subject || "");
   const [items, setItems] = useState(seed.items);
   const [notes, setNotes] = useState(seed.notes || "");
@@ -2765,8 +2746,9 @@ function QuotationTemplatesPage({ state, dispatch }) {
   const [showNewService, setShowNewService] = useState(false);
   const [newServiceName, setNewServiceName] = useState("");
 
-  const loadInto = (svc, ft) => {
-    const t = state.quotationTemplates[svc]?.[ft] || { items: [], terms: "", notes: "", subject: "", orderDiscount: 0, bank: "", footerNote: "" };
+  const switchService = (s) => {
+    setService(s);
+    const t = state.quotationTemplates[s] || { items: [], terms: "", notes: "", subject: "", orderDiscount: 0, bank: "", footerNote: "" };
     setItems(t.items);
     setTerms(t.terms || "");
     setNotes(t.notes || "");
@@ -2775,17 +2757,15 @@ function QuotationTemplatesPage({ state, dispatch }) {
     setBank(t.bank || "");
     setFooterNote(t.footerNote || "");
   };
-  const switchService = (s) => { setService(s); loadInto(s, feeType); };
-  const switchFeeType = (f) => { setFeeType(f); loadInto(service, f); };
 
   const update = (i, field, val) => setItems(items.map((it,idx) => idx===i ? { ...it, [field]: val } : it));
   const categories = [...new Set(items.map(it => it.category).filter(Boolean))];
   const addItem = () => {
     const lastCategory = items.length ? items[items.length-1].category || "" : "";
-    setItems([...items, { category: lastCategory, service, description: "", note: "", qty: 1, price: 0, discountPct: 0 }]);
+    setItems([...items, { category: lastCategory, service, description: "", note: "", qty: 1, price: 0, discountPct: 0, feeType: "Professional Fee" }]);
   };
   const addCategory = () => {
-    setItems([...items, { category: "", service, description: "", note: "", qty: 1, price: 0, discountPct: 0 }]);
+    setItems([...items, { category: "", service, description: "", note: "", qty: 1, price: 0, discountPct: 0, feeType: "Professional Fee" }]);
   };
 
   return (
@@ -2808,20 +2788,9 @@ function QuotationTemplatesPage({ state, dispatch }) {
       </div>
       <div className="agw-card">
         <strong style={{ fontSize: 14 }}>{service}</strong>
-        <p className="modal-sub">This becomes the starting point whenever someone builds a quotation for this service — matches the standard Address Gateway quotation format.</p>
+        <p className="modal-sub">This becomes the starting point whenever someone builds a quotation for this service — one template with both Professional Fee and Government Fee lines, tagged per item.</p>
 
-        <div className="tabbar">
-          {FEE_TYPES.map(f => (
-            <button key={f} className={`tab ${feeType===f?"active":""}`} onClick={()=>switchFeeType(f)}>{f}</button>
-          ))}
-        </div>
-        {feeType === "Government Fee" && (
-          <div className="side-note" style={{ marginTop:0, marginBottom:14 }}>
-            <AlertTriangle size={13} style={{verticalAlign:-2, marginRight:4}}/>Government Fee quotations are pass-through — excluded from business volume and incentive calculations.
-          </div>
-        )}
-
-        <div className="field"><label>Subject</label><input value={subject} onChange={e=>setSubject(e.target.value)} placeholder="e.g. 100% FOREIGN OWNERSHIP COMPANY FORMATION - Government Fees" /></div>
+        <div className="field"><label>Subject</label><input value={subject} onChange={e=>setSubject(e.target.value)} placeholder="e.g. 100% FOREIGN OWNERSHIP COMPANY FORMATION - Professional fees" /></div>
 
         {items.map((it,i) => (
           <div key={i} className="agw-card" style={{ marginBottom: 10, padding: 12 }}>
@@ -2830,9 +2799,9 @@ function QuotationTemplatesPage({ state, dispatch }) {
                 <input list="tpl-category-options" value={it.category || ""} onChange={e=>update(i,"category",e.target.value)} placeholder="e.g. STAGE - 1 : GOVERNMENT FEES" />
                 <datalist id="tpl-category-options">{categories.map(c=><option key={c} value={c} />)}</datalist>
               </div>
-              <div className="field"><label>Service type (internal tag)</label>
-                <select value={it.service} onChange={e=>update(i,"service",e.target.value)}>
-                  {state.services.map(s=><option key={s}>{s}</option>)}
+              <div className="field"><label>Fee type</label>
+                <select value={it.feeType || "Professional Fee"} onChange={e=>update(i,"feeType",e.target.value)}>
+                  {FEE_TYPES.map(f=><option key={f}>{f}</option>)}
                 </select>
               </div>
             </div>
@@ -2866,7 +2835,7 @@ function QuotationTemplatesPage({ state, dispatch }) {
         </div>
         <div className="field"><label>Footer note (optional — shown at the bottom of every page)</label><textarea rows={2} value={footerNote} onChange={e=>setFooterNote(e.target.value)} placeholder={DEFAULT_FOOTER_NOTE} /></div>
 
-        <button className="btn btn-primary" style={{ marginTop: 8 }} onClick={()=>dispatch({type:"UPDATE_QUOTATION_TEMPLATE", service, feeType, items, terms, notes, subject, orderDiscount, bank, footerNote})}>Save template</button>
+        <button className="btn btn-primary" style={{ marginTop: 8 }} onClick={()=>dispatch({type:"UPDATE_QUOTATION_TEMPLATE", service, items, terms, notes, subject, orderDiscount, bank, footerNote})}>Save template</button>
       </div>
     </div>
   );
@@ -3965,6 +3934,7 @@ function OrdersPage({ state, dispatch, role }) {
   const isOnboarded = (soId) => state.invoices.some(inv => inv.salesOrderId === soId);
   const isAdmin = ADMIN_LIKE.includes(role);
   const [removeSo, setRemoveSo] = useState(null);
+  const [pdfSo, setPdfSo] = useState(null);
   const [query, setQuery] = useState("");
   const rows = state.salesOrders.filter(so => [so.customer, so.id, so.service].filter(Boolean).join(" ").toLowerCase().includes(query.trim().toLowerCase()));
   return (
@@ -3999,6 +3969,7 @@ function OrdersPage({ state, dispatch, role }) {
               <td style={{ display:"flex", gap:6, alignItems:"center" }}>
                 {!onboarded && <button className="btn btn-sm btn-primary" onClick={()=>dispatch({type:"ONBOARD_CLIENT", salesOrderId:so.id})}>Onboard client → create invoice & job</button>}
                 {onboarded && <span className="pill"><BadgeCheck size={12} style={{verticalAlign:-2}}/> Invoice & job card created</span>}
+                <button className="btn btn-sm btn-ghost" onClick={()=>setPdfSo(so)}><FileText size={13}/> PDF</button>
                 {isAdmin && <RowActions onRemove={()=>setRemoveSo(so)} />}
               </td>
             </tr>
@@ -4007,8 +3978,93 @@ function OrdersPage({ state, dispatch, role }) {
       </table>)}
       {removeSo && <ConfirmModal title={`Remove sales order ${removeSo.id}?`} body={`${removeSo.customer} — ${money(removeSo.amount)}. Any invoice or job card already created from it is kept, just unlinked. This can't be undone.`}
         onConfirm={()=>{ dispatch({type:"DELETE_SALES_ORDER", id:removeSo.id}); setRemoveSo(null); }} onClose={()=>setRemoveSo(null)} />}
+      {pdfSo && <SalesOrderPdfModal salesOrder={pdfSo} onboarded={isOnboarded(pdfSo.id)} items={state.quotations.find(q=>q.id===pdfSo.quotationId)?.items || []} onClose={()=>setPdfSo(null)} />}
       </div>
     </div>
+  );
+}
+
+function SalesOrderPdfModal({ salesOrder: so, onboarded, items=[], onClose }) {
+  const [downloading, setDownloading] = useState(false);
+  const profFee = Number(so.professionalFeeAmount ?? so.amount);
+  const govFee = Math.max(0, so.amount - profFee);
+  const isMixed = govFee > 0.005 && profFee > 0.005;
+  const feeTypeLabel = isMixed ? "Professional + Government Fee" : (so.feeType || "Professional Fee");
+
+  return (
+    <Modal title={`Sales Order — ${so.id}`} sub={so.customer} onClose={onClose} width={720}>
+      <div style={{ border:"1px solid var(--hair)", borderRadius:8, padding:"32px 36px", background:"#fff" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:24 }}>
+          <div>
+            <div className="disp" style={{ fontSize:28, fontWeight:500, letterSpacing:"-.01em" }}>SALES ORDER</div>
+            <div className="mono" style={{ fontSize:12, color:"var(--ink-soft)", marginTop:4 }}>Order# {so.id}</div>
+          </div>
+          <div style={{ textAlign:"right" }}>
+            <div style={{ display:"inline-block", textAlign:"right" }}><BrandLogo scale={1} /></div>
+            <div style={{ fontSize:11.5, color:"var(--ink-soft)", marginTop:8, lineHeight:1.6 }}>
+              Address Gateway Building<br/>D Ring Road, Doha, Qatar<br/>Call: 44434912, Email : startup@addressgateway.com<br/>www.addressgateway.com
+            </div>
+          </div>
+        </div>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:20 }}>
+          <div>
+            <div style={{ fontSize:12, color:"var(--ink-soft)" }}>Order Date :</div>
+            <div style={{ fontSize:13, marginTop:2 }}>{fmtDate(so.createdAt)}</div>
+          </div>
+          <div style={{ textAlign:"right" }}>
+            <div style={{ fontSize:12, color:"var(--ink-soft)" }}>Bill To</div>
+            <div style={{ fontSize:13.5, fontWeight:500, marginTop:2 }}>{so.customer}</div>
+          </div>
+        </div>
+        {so.quotationId && <div style={{ fontSize:12.5, marginBottom:8 }}><span style={{color:"var(--ink-soft)"}}>Quotation Ref :</span> {so.quotationId}</div>}
+        <div style={{ fontSize:12.5, marginBottom:8 }}><span style={{color:"var(--ink-soft)"}}>Service :</span> {so.service || "-"}</div>
+        <div style={{ fontSize:12.5, marginBottom:20 }}><span style={{color:"var(--ink-soft)"}}>Fee Type :</span> {feeTypeLabel}</div>
+
+        {items.length > 0 && (
+          <table className="agw-table" style={{ marginBottom: 12 }}>
+            <thead><tr><th>Category</th><th>Item & description</th><th>Qty</th><th>Rate</th><th>Disc.</th><th>Amount</th></tr></thead>
+            <tbody>
+              {items.map((it,i)=>(
+                <tr key={i}>
+                  <td style={{fontSize:11.5, color:"var(--ink-soft)"}}>{it.category || "—"}</td>
+                  <td>{it.description || it.service}{it.note && <div style={{fontSize:11, color:"var(--ink-soft)"}}>{it.note}</div>}</td>
+                  <td>{it.qty}</td><td className="mono">{money(it.price)}</td>
+                  <td>{it.discountPct||0}%</td><td className="mono">{money(it.qty*it.price*(1-(it.discountPct||0)/100))}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+
+        <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:12 }}>
+          <table style={{ fontSize:13 }}>
+            <tbody>
+              {isMixed && <>
+                <tr><td style={{ padding:"4px 16px 4px 0", color:"var(--ink-soft)" }}>Professional Fee Amount</td><td className="mono" style={{ padding:"4px 0", textAlign:"right" }}>{money(profFee)}</td></tr>
+                <tr><td style={{ padding:"4px 16px 4px 0", color:"var(--ink-soft)" }}>Government Fee Amount</td><td className="mono" style={{ padding:"4px 0", textAlign:"right" }}>{money(govFee)}</td></tr>
+              </>}
+              {(so.orderDiscount||0) > 0 && <tr><td style={{ padding:"4px 16px 4px 0", color:"var(--ink-soft)" }}>Order Discount</td><td className="mono" style={{ padding:"4px 0", textAlign:"right" }}>(-) {money(so.orderDiscount)}</td></tr>}
+              <tr style={{ background:"var(--page)" }}><td style={{ padding:"7px 16px 7px 0", fontWeight:600 }}>Total Amount</td><td className="mono" style={{ padding:"7px 0", textAlign:"right", fontWeight:600 }}>{money(so.amount)}</td></tr>
+            </tbody>
+          </table>
+        </div>
+        {isMixed && <div style={{ fontSize:10.5, color:"var(--ink-soft)", marginBottom:16 }}>The Government Fee portion is a pass-through charge — excluded from Address Gateway's business volume and incentive calculations.</div>}
+        <div style={{ borderTop:"1px solid var(--hair)", paddingTop:10, fontSize:12.5 }}>
+          <span style={{color:"var(--ink-soft)"}}>Status :</span> {onboarded ? "Onboarded" : "Pending onboarding"}
+        </div>
+      </div>
+      <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop: 14 }}>
+        <button className="btn btn-sm" disabled={downloading} onClick={async ()=>{
+          setDownloading(true);
+          try {
+            const blob = await api.salesOrders.downloadPdf(so.id);
+            downloadBlob(`SalesOrder-${so.id}.pdf`, blob);
+          } finally {
+            setDownloading(false);
+          }
+        }}><Download size={13}/> {downloading ? "Generating…" : "Download PDF"}</button>
+      </div>
+    </Modal>
   );
 }
 
@@ -4023,6 +4079,7 @@ function InvoicesPage({ state, dispatch, role }) {
   const [history, setHistory] = useState(null);
   const [emailFor, setEmailFor] = useState(null);
   const [removeInvoice, setRemoveInvoice] = useState(null);
+  const [pdfInvoice, setPdfInvoice] = useState(null);
   const isAdmin = ADMIN_LIKE.includes(role);
   const [query, setQuery] = useState("");
   const rows = state.invoices.filter(inv => [inv.customer, inv.id].filter(Boolean).join(" ").toLowerCase().includes(query.trim().toLowerCase()));
@@ -4065,6 +4122,7 @@ function InvoicesPage({ state, dispatch, role }) {
                     <button className="btn btn-sm btn-ghost" onClick={()=>setEmailFor(inv)}>
                       {inv.emailedToClient ? <><BadgeCheck size={13}/> Emailed</> : <><Mail size={13}/> Email</>}
                     </button>
+                    <button className="btn btn-sm btn-ghost" onClick={()=>setPdfInvoice(inv)}><FileText size={13}/> PDF</button>
                     {isAdmin && <RowActions onRemove={()=>setRemoveInvoice(inv)} />}
                   </td>
                 </tr>
@@ -4104,7 +4162,115 @@ function InvoicesPage({ state, dispatch, role }) {
           </div>
         </Modal>
       )}
+      {pdfInvoice && (() => {
+        const linkedSo = pdfInvoice.salesOrderId ? state.salesOrders.find(s=>s.id===pdfInvoice.salesOrderId) : null;
+        const linkedQuotation = linkedSo?.quotationId ? state.quotations.find(q=>q.id===linkedSo.quotationId) : null;
+        return <InvoicePdfModal invoice={pdfInvoice} items={linkedQuotation?.items || []} onClose={()=>setPdfInvoice(null)} />;
+      })()}
     </div>
+  );
+}
+
+function InvoicePdfModal({ invoice: inv, items=[], onClose }) {
+  const [downloading, setDownloading] = useState(false);
+  const profFee = Number(inv.professionalFeeAmount ?? inv.amount);
+  const govFee = Math.max(0, inv.amount - profFee);
+  const isMixed = govFee > 0.005 && profFee > 0.005;
+  const feeTypeLabel = isMixed ? "Professional + Government Fee" : (inv.feeType || "Professional Fee");
+  const paid = inv.payments.reduce((a,p)=>a+p.amount,0);
+  const balance = Math.max(0, inv.amount - paid);
+
+  return (
+    <Modal title={`Invoice — ${inv.id}`} sub={inv.customer} onClose={onClose} width={720}>
+      <div style={{ border:"1px solid var(--hair)", borderRadius:8, padding:"32px 36px", background:"#fff" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:24 }}>
+          <div>
+            <div className="disp" style={{ fontSize:28, fontWeight:500, letterSpacing:"-.01em" }}>INVOICE</div>
+            <div className="mono" style={{ fontSize:12, color:"var(--ink-soft)", marginTop:4 }}>Invoice# {inv.id}</div>
+          </div>
+          <div style={{ textAlign:"right" }}>
+            <div style={{ display:"inline-block", textAlign:"right" }}><BrandLogo scale={1} /></div>
+            <div style={{ fontSize:11.5, color:"var(--ink-soft)", marginTop:8, lineHeight:1.6 }}>
+              Address Gateway Building<br/>D Ring Road, Doha, Qatar<br/>Call: 44434912, Email : startup@addressgateway.com<br/>www.addressgateway.com
+            </div>
+          </div>
+        </div>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:20 }}>
+          <div>
+            <div style={{ fontSize:12, color:"var(--ink-soft)" }}>Invoice Date :</div>
+            <div style={{ fontSize:13, marginTop:2 }}>{fmtDate(inv.createdAt)}</div>
+            <div style={{ fontSize:12, color:"var(--ink-soft)", marginTop:8 }}>Due Date :</div>
+            <div style={{ fontSize:13, marginTop:2 }}>{fmtDate(inv.dueDate)}</div>
+          </div>
+          <div style={{ textAlign:"right" }}>
+            <div style={{ fontSize:12, color:"var(--ink-soft)" }}>Bill To</div>
+            <div style={{ fontSize:13.5, fontWeight:500, marginTop:2 }}>{inv.customer}</div>
+          </div>
+        </div>
+        {inv.salesOrderId && <div style={{ fontSize:12.5, marginBottom:8 }}><span style={{color:"var(--ink-soft)"}}>Sales Order Ref :</span> {inv.salesOrderId}</div>}
+        {inv.subscriptionId && <div style={{ fontSize:12.5, marginBottom:8 }}><span style={{color:"var(--ink-soft)"}}>Subscription Ref :</span> {inv.subscriptionId}</div>}
+        <div style={{ fontSize:12.5, marginBottom:20 }}><span style={{color:"var(--ink-soft)"}}>Fee Type :</span> {feeTypeLabel}</div>
+
+        {items.length > 0 && (
+          <table className="agw-table" style={{ marginBottom: 12 }}>
+            <thead><tr><th>Category</th><th>Item & description</th><th>Qty</th><th>Rate</th><th>Disc.</th><th>Amount</th></tr></thead>
+            <tbody>
+              {items.map((it,i)=>(
+                <tr key={i}>
+                  <td style={{fontSize:11.5, color:"var(--ink-soft)"}}>{it.category || "—"}</td>
+                  <td>{it.description || it.service}{it.note && <div style={{fontSize:11, color:"var(--ink-soft)"}}>{it.note}</div>}</td>
+                  <td>{it.qty}</td><td className="mono">{money(it.price)}</td>
+                  <td>{it.discountPct||0}%</td><td className="mono">{money(it.qty*it.price*(1-(it.discountPct||0)/100))}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+
+        <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:12 }}>
+          <table style={{ fontSize:13 }}>
+            <tbody>
+              {isMixed && <>
+                <tr><td style={{ padding:"4px 16px 4px 0", color:"var(--ink-soft)" }}>Professional Fee Amount</td><td className="mono" style={{ padding:"4px 0", textAlign:"right" }}>{money(profFee)}</td></tr>
+                <tr><td style={{ padding:"4px 16px 4px 0", color:"var(--ink-soft)" }}>Government Fee Amount</td><td className="mono" style={{ padding:"4px 0", textAlign:"right" }}>{money(govFee)}</td></tr>
+              </>}
+              <tr><td style={{ padding:"4px 16px 4px 0", color:"var(--ink-soft)" }}>Amount</td><td className="mono" style={{ padding:"4px 0", textAlign:"right" }}>{money(inv.amount)}</td></tr>
+              <tr><td style={{ padding:"4px 16px 4px 0", color:"var(--ink-soft)" }}>Paid</td><td className="mono" style={{ padding:"4px 0", textAlign:"right" }}>{money(paid)}</td></tr>
+              <tr style={{ background:"var(--page)" }}><td style={{ padding:"7px 16px 7px 0", fontWeight:600 }}>Balance Due</td><td className="mono" style={{ padding:"7px 0", textAlign:"right", fontWeight:600 }}>{money(balance)}</td></tr>
+            </tbody>
+          </table>
+        </div>
+        {isMixed && <div style={{ fontSize:10.5, color:"var(--ink-soft)", marginBottom:16 }}>The Government Fee portion is a pass-through charge — excluded from Address Gateway's business volume and incentive calculations.</div>}
+        <div style={{ borderTop:"1px solid var(--hair)", paddingTop:10, fontSize:12.5, marginBottom: inv.payments.length ? 20 : 0 }}>
+          <span style={{color:"var(--ink-soft)"}}>Status :</span> {inv.status}
+        </div>
+
+        {inv.payments.length > 0 && (
+          <div>
+            <div className="disp" style={{ fontSize:13, fontWeight:500, marginBottom:8 }}>Payment History</div>
+            <table className="agw-table">
+              <thead><tr><th>Date</th><th>Amount</th><th>Mode</th></tr></thead>
+              <tbody>
+                {inv.payments.map(p=>(
+                  <tr key={p.id}><td style={{fontSize:12}}>{fmtDate(p.date)}</td><td className="mono">{money(p.amount)}</td><td>{p.mode}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+      <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop: 14 }}>
+        <button className="btn btn-sm" disabled={downloading} onClick={async ()=>{
+          setDownloading(true);
+          try {
+            const blob = await api.invoices.downloadPdf(inv.id);
+            downloadBlob(`Invoice-${inv.id}.pdf`, blob);
+          } finally {
+            setDownloading(false);
+          }
+        }}><Download size={13}/> {downloading ? "Generating…" : "Download PDF"}</button>
+      </div>
+    </Modal>
   );
 }
 

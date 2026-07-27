@@ -149,6 +149,15 @@ export const api = {
     list: () => get("/sales-orders"),
     onboard: (id) => post(`/sales-orders/${id}/onboard`),
     remove: (id) => del(`/sales-orders/${id}`),
+    // Same reasoning as quotations.downloadPdf: needs the Bearer auth header a plain <a href>
+    // can't send, so fetch as a blob and let the caller turn it into a download.
+    downloadPdf: async (id) => {
+      const headers = {};
+      if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
+      const res = await fetch(`/api/sales-orders/${id}/pdf`, { headers, cache: "no-store" });
+      if (!res.ok) throw new ApiError("Failed to generate PDF", res.status);
+      return res.blob();
+    },
   },
   invoices: {
     list: () => get("/invoices"),
@@ -156,6 +165,13 @@ export const api = {
     removePayment: (id, paymentId) => del(`/invoices/${id}/payments/${paymentId}`),
     markEmailed: (id, cc) => post(`/invoices/${id}/emailed`, { cc }),
     remove: (id) => del(`/invoices/${id}`),
+    downloadPdf: async (id) => {
+      const headers = {};
+      if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
+      const res = await fetch(`/api/invoices/${id}/pdf`, { headers, cache: "no-store" });
+      if (!res.ok) throw new ApiError("Failed to generate PDF", res.status);
+      return res.blob();
+    },
   },
   customers: {
     list: () => get("/customers"),
@@ -260,7 +276,7 @@ export const api = {
   },
   quotationTemplates: {
     list: () => get("/quotation-templates"),
-    update: (service, feeType, payload) => request("PUT", `/quotation-templates/${encodeURIComponent(service)}/${encodeURIComponent(feeType)}`, payload),
+    update: (service, payload) => request("PUT", `/quotation-templates/${encodeURIComponent(service)}`, payload),
   },
   checklistTemplates: {
     list: () => get("/checklist-templates"),

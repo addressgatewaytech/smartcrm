@@ -130,18 +130,16 @@ export const mapSubscription = (s) => ({
   legalAdvisingUsed: s.legal_advising_used, translationPagesUsed: s.translation_pages_used,
 });
 
-// Backend returns { [service]: { [feeType]: {..., order_discount, footer_note} } }; flatten field names.
+// Backend returns { [service]: {..., order_discount, footer_note} } — one template per service
+// (Government Fee lines are tagged per-item within the same items array); flatten field names.
 export const mapQuotationTemplates = (raw) => {
   const out = {};
   for (const service of Object.keys(raw)) {
-    out[service] = {};
-    for (const feeType of Object.keys(raw[service])) {
-      const t = raw[service][feeType];
-      out[service][feeType] = {
-        subject: t.subject, items: t.items || [], notes: t.notes || "", terms: t.terms || "",
-        orderDiscount: Number(t.order_discount || 0), bank: t.bank || "", footerNote: t.footer_note || "",
-      };
-    }
+    const t = raw[service];
+    out[service] = {
+      subject: t.subject, items: t.items || [], notes: t.notes || "", terms: t.terms || "",
+      orderDiscount: Number(t.order_discount || 0), bank: t.bank || "", footerNote: t.footer_note || "",
+    };
   }
   return out;
 };

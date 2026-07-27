@@ -78,17 +78,22 @@ router.post("/", async (req, res) => {
 });
 
 router.patch("/:id", async (req, res) => {
-  const [row] = await query("SELECT status FROM quotations WHERE id = ?", [req.params.id]);
+  const [row] = await query("SELECT customer, fee_type, status FROM quotations WHERE id = ?", [req.params.id]);
   if (!row) return res.status(404).json({ error: "Not found" });
   if (!["Draft", "Pending Manager Approval"].includes(row.status)) {
     return res.status(400).json({ error: "Only Draft or Pending Manager Approval quotations can be edited" });
   }
   const b = req.body;
+  // Visual edit (the only edit path in the UI) only ever sends subject/items/notes/terms/discount/
+  // bank/footerNote — customer and feeType aren't part of that form, so fall back to the existing
+  // row rather than writing a SQL NULL bind error every single save.
+  const customer = b.customer ?? row.customer;
+  const feeType = b.feeType ?? row.fee_type;
   const hasDiscount = (b.items || []).some((it) => it.discountPct > 0) || (b.orderDiscount || 0) > 0;
   await query(
     `UPDATE quotations SET customer=?, fee_type=?, subject=?, items=?, order_discount=?, bank=?, footer_note=?, notes=?, terms=?, status=?
      WHERE id = ?`,
-    [b.customer, b.feeType, b.subject || null, JSON.stringify(b.items || []), b.orderDiscount || 0, b.bank || null, b.footerNote || null,
+    [customer, feeType, b.subject || null, JSON.stringify(b.items || []), b.orderDiscount || 0, b.bank || null, b.footerNote || null,
       b.notes || null, b.terms || null, hasDiscount ? "Pending Manager Approval" : "Draft", req.params.id]
   );
   res.json({ ok: true });

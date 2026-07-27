@@ -3,6 +3,7 @@ const { query, withTransaction } = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
 const { requireRole, isAdminLike } = require("../middleware/roles");
 const { nextId, daysFromNow } = require("../utils/helpers");
+const { generateSalesOrderPdf } = require("../utils/salesOrderPdf");
 
 const router = express.Router();
 router.use(requireAuth);
@@ -21,6 +22,17 @@ router.get("/", async (req, res) => {
       )
     : await query("SELECT * FROM sales_orders ORDER BY created_at DESC");
   res.json(rows);
+});
+
+// Real server-side A4 PDF (PDFKit), same pattern as quotations' /:id/pdf. The sales order itself
+// only stores a rolled-up amount, so the actual line items are pulled from the quotation it was
+// converted from — the client expects to see the same item breakdown they already saw on the quote.
+router.get("/:id/pdf", async (req, res) => {
+  const [row] = await query("SELECT * FROM sales_orders WHERE id = ?", [req.params.id]);
+  if (!row) return res.status(404).json({ error: "Not found" });
+  const [invoice] = await query("SELECT id FROM invoices WHERE sales_order_id = ?", [row.id]);
+  const [quotation] = row.quotation_id ? await query("SELECT items FROM quotations WHERE id = ?", [row.quotation_id]) : [];
+  generateSalesOrderPdf({ ...row, items: quotation?.items || [], onboarded: !!invoice }, res);
 });
 
 // Onboard client: generates the Invoice and the first Job Card (normal path — starts at "Created",
