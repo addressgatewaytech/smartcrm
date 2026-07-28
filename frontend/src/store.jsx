@@ -106,6 +106,11 @@ export function useApiStore(enabled) {
     switch (action.type) {
       // --- Data Manager --------------------------------------------------------------------
       case "ADD_DATA_RECORD": await api.dataManager.create(action.payload); return refresh(["dataRecords"]);
+      case "IMPORT_DATA_RECORDS": {
+        const result = await api.dataManager.import(action.file, action.dataCategory);
+        await refresh(["dataRecords"]);
+        return result;
+      }
       case "UPDATE_DATA_RECORD": /* no generic PATCH — use the specific action endpoints (assign/archive/etc.) */ return;
       case "DELETE_DATA_RECORD": return; // archiving (MARK_DATA_INVALID) is the supported "remove" path, matching the spec
       case "ASSIGN_DATA_RECORD": await api.dataManager.assign(action.id, action.userId); return refresh(["dataRecords"]);

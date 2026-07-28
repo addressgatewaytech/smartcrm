@@ -6587,40 +6587,28 @@ function AddDataTab({ state, dispatch, role, userId }) {
     setForm(blank); setDupError(null);
   };
 
-  const handleFile = (e) => {
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState("");
+
+  // Parsing and dedup happen server-side (the same logic the manual "Add data" form's duplicate
+  // check runs against) so this only ever dedupes against records this browser has actually
+  // loaded — a sales_exec's local state.dataRecords is scoped to their own data, so a client-side
+  // check here would miss company-wide duplicates and silently let them through.
+  const handleFile = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      const data = new Uint8Array(evt.target.result);
-      const wb = XLSX.read(data, { type: "array" });
-      const sheet = wb.Sheets[wb.SheetNames[0]];
-      const json = XLSX.utils.sheet_to_json(sheet, { defval: "" });
-      const pick = (row, keys) => { for (const k of keys) { if (row[k] !== undefined && String(row[k]).trim() !== "") return String(row[k]).trim(); } return ""; };
-      const mapped = json.map(row => ({
-        companyName: pick(row, ["Company Name","company","Company"]),
-        contactName: pick(row, ["Contact Person Name","Contact Name","contact","Name"]),
-        mobile: pick(row, ["Mobile Number","Mobile","Phone","mobile"]),
-        email: pick(row, ["Email Address","Email","email"]),
-        reference: pick(row, ["Reference","reference"]),
-        source: pick(row, ["Source","source"]) || "Excel Import",
-        businessCategory: pick(row, ["Business Category","Category","businessCategory"]),
-        location: pick(row, ["Location","location"]),
-      })).filter(r => r.companyName || r.mobile || r.email);
-
-      const seenBatch = [];
-      let dupCount = 0;
-      const clean = [];
-      mapped.forEach(r => {
-        if (findDuplicateDataRecord(state.dataRecords, r) || findDuplicateDataRecord(seenBatch, r)) { dupCount++; return; }
-        seenBatch.push(r);
-        clean.push({ ...r, dataCategory: form.dataCategory, dataOwner: form.dataCategory==="Own" ? userId : null, createdBy: userId });
-      });
-      if (clean.length > 0) dispatch({ type:"IMPORT_DATA_RECORDS", records: clean, importedBy: userId });
-      setImportResult({ total: mapped.length, imported: clean.length, duplicates: dupCount });
-    };
-    reader.readAsArrayBuffer(file);
     e.target.value = "";
+    setImporting(true);
+    setImportError("");
+    setImportResult(null);
+    try {
+      const result = await dispatch({ type:"IMPORT_DATA_RECORDS", file, dataCategory: form.dataCategory });
+      setImportResult(result);
+    } catch (err) {
+      setImportError(err instanceof ApiError ? err.message : "Import failed — please try again.");
+    } finally {
+      setImporting(false);
+    }
   };
 
   const downloadSampleTemplate = () => {
@@ -6678,7 +6666,9 @@ function AddDataTab({ state, dispatch, role, userId }) {
             </select>
           </div>
         )}
-        <input type="file" accept=".xlsx,.xls,.csv" onChange={handleFile} />
+        <input type="file" accept=".xlsx,.xls,.csv" onChange={handleFile} disabled={importing} />
+        {importing && <div className="side-note" style={{ marginTop:12 }}>Importing…</div>}
+        {importError && <div className="side-note" style={{ marginTop:12, color:"var(--danger)" }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{importError}</div>}
         {importResult && (
           <div className="side-note" style={{ marginTop:12 }}>
             {importResult.total} row{importResult.total!==1?"s":""} read — {importResult.imported} imported, {importResult.duplicates} duplicate{importResult.duplicates!==1?"s":""} skipped.
