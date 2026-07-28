@@ -11,6 +11,10 @@ router.use(requireAuth);
 
 // Lead Assignment Manager (and Sales Manager/Admin-tier) see every lead; everyone else only their own.
 const canManageAllLeads = (roles) => isAdminLike(roles) || roles.includes("sales_manager") || roles.includes("lead_manager");
+// Only the Lead Manager role (or Admin-tier, as everywhere else in this app) brings in leads for
+// central distribution — a Sales Manager can see everything but no longer creates unassigned/
+// distributable leads or assigns them; their own new-lead-button use is just their own pipeline.
+const canDistributeLeads = (roles) => isAdminLike(roles) || roles.includes("lead_manager");
 
 router.get("/", async (req, res) => {
   const isAdmin = canManageAllLeads(req.user.roles);
@@ -41,16 +45,23 @@ async function findOrCreateCustomerForLead(b) {
 router.post("/", async (req, res) => {
   const b = req.body;
   const id = await withTransaction((conn) => nextSequentialId(conn, "AGBSLS", "lead"));
-  const owner = b.owner || req.user.id;
-  // A lead is "assigned" the moment it has an owner — which every newly created lead does — so
-  // the same 5-minute-response SLA clock (Lead Assignment Manager) starts right away, not just
-  // when a Lead Manager later reassigns it via /:id/assign.
-  const assignedAt = new Date();
-  const slaDueAt = nextSlaDeadline(assignedAt);
+  // A rep adding their own lead always owns it immediately (their pipeline, no SLA — the SLA
+  // exists to hold sales reps to a fast first response on leads someone else handed them). A
+  // Lead Manager/admin bringing in a company lead leaves it unassigned by default — it lands in
+  // the Lead Assignment Manager queue and only starts its SLA clock once it actually gets an
+  // owner (here, if one was given up front, or later via /:id/assign).
+  const distributing = canDistributeLeads(req.user.roles);
+  const owner = distributing ? (b.owner || null) : (b.owner || req.user.id);
+  // SLA only kicks in on an actual hand-off — a distributor creating a lead and immediately
+  // assigning it to someone else. A Lead Manager/admin adding a lead for their own pipeline via
+  // the regular Leads page (owner defaults to themselves) is no different from any other user
+  // doing the same — self-owned, no SLA.
+  const assignedAt = distributing && owner && owner !== req.user.id ? new Date() : null;
+  const slaDueAt = assignedAt ? nextSlaDeadline(assignedAt) : null;
   await query(
-    `INSERT INTO leads (id, name, company, phone, email, reference, source, service, owner, status, next_follow_up, assigned_at, sla_due_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-    [id, b.name, b.company, b.phone || null, b.email || null, b.reference || null, b.source || null, b.service || null, owner, "New", b.nextFollowUp || null, assignedAt, slaDueAt]
+    `INSERT INTO leads (id, name, company, phone, email, reference, source, service, owner, status, next_follow_up, created_by, assigned_at, sla_due_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    [id, b.name, b.company, b.phone || null, b.email || null, b.reference || null, b.source || null, b.service || null, owner, "New", b.nextFollowUp || null, req.user.id, assignedAt, slaDueAt]
   );
   await query("INSERT INTO activity_log (text) VALUES (?)", [`New lead ${id} — ${b.company}`]);
 
@@ -93,7 +104,7 @@ router.patch("/:id", async (req, res) => {
 
 // Assign or reassign a lead — restarts the SLA clock from this moment (a lead reassigned to a
 // new owner gets a fresh 5-minute window, not the original owner's now-irrelevant deadline).
-router.post("/:id/assign", requireRole(["lead_manager", "sales_manager", "admin_like"]), async (req, res) => {
+router.post("/:id/assign", requireRole(["lead_manager", "admin_like"]), async (req, res) => {
   const { userId } = req.body;
   if (!userId) return res.status(400).json({ error: "userId is required" });
   const assignedAt = new Date();

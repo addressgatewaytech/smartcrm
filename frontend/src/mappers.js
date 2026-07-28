@@ -26,7 +26,7 @@ export const mapStaffDoc = (d) => ({
 export const mapLead = (l) => ({
   id: l.id, name: l.name, company: l.company, phone: l.phone, email: l.email,
   reference: l.reference, source: l.source, service: l.service, owner: l.owner, status: l.status,
-  createdAt: l.created_at, nextFollowUp: l.next_follow_up,
+  createdAt: l.created_at, nextFollowUp: l.next_follow_up, createdBy: l.created_by,
   followUps: (l.followUps || []).map((f) => ({ id: f.id, note: f.note, outcome: f.outcome, at: f.at })),
   assignedAt: l.assigned_at, slaDueAt: l.sla_due_at, slaViolated: !!l.sla_violated,
 });

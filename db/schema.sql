@@ -153,16 +153,22 @@ CREATE TABLE IF NOT EXISTS leads (
   owner          VARCHAR(20),
   status         ENUM('New','Contacted','Follow-up Scheduled','Interested','Not Interested','Qualified','Unqualified','Converted') DEFAULT 'New',
   next_follow_up DATE,
-  -- Lead Assignment Manager SLA: assigned_at is stamped whenever `owner` changes; sla_due_at is
-  -- assigned_at + 5 min if that falls in office hours (9am-5pm), else 9am the next working day
-  -- (see src/utils/officeHours.js). sla_violated is set once, the first time a cron sweep finds
-  -- the deadline passed with no lead_followups row at/after assigned_at — a permanent performance
-  -- record, not recomputed retroactively if a follow-up is logged late afterward.
+  -- Who created the lead — distinguishes a sales rep's own self-sourced lead (owner = creator,
+  -- never gets an SLA) from a lead the Lead Manager brought in for central distribution (starts
+  -- unassigned, only appears in the Lead Assignment Manager page, gets the SLA once assigned).
+  created_by     VARCHAR(20),
+  -- Lead Assignment Manager SLA: assigned_at is stamped only when a Lead Manager/admin-created
+  -- lead gets an owner (at creation or via /:id/assign) — never for a rep's own self-sourced
+  -- lead. sla_due_at is assigned_at + 5 min if that falls in office hours (9am-5pm), else 9am the
+  -- next working day (see src/utils/officeHours.js). sla_violated is set once, the first time a
+  -- cron sweep finds the deadline passed with no lead_followups row at/after assigned_at — a
+  -- permanent performance record, not recomputed retroactively if a follow-up is logged late.
   assigned_at    TIMESTAMP NULL,
   sla_due_at     DATETIME NULL,
   sla_violated   TINYINT(1) DEFAULT 0,
   created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (owner) REFERENCES users(id) ON DELETE SET NULL
+  FOREIGN KEY (owner) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS lead_followups (
