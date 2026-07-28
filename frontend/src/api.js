@@ -277,6 +277,7 @@ export const api = {
   quotationTemplates: {
     list: () => get("/quotation-templates"),
     update: (service, payload) => request("PUT", `/quotation-templates/${encodeURIComponent(service)}`, payload),
+    remove: (service) => del(`/quotation-templates/${encodeURIComponent(service)}`),
   },
   checklistTemplates: {
     list: () => get("/checklist-templates"),

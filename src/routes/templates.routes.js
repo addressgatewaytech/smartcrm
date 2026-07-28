@@ -47,6 +47,13 @@ router.put("/quotation-templates/:service", requireRole(["admin_like", "sales_ma
   res.json({ ok: true });
 });
 
+// Clears the saved template for a service (the service itself stays — only its template content
+// is removed) so the next "New quotation" for it just starts blank instead of loading stale content.
+router.delete("/quotation-templates/:service", requireRole(["admin_like", "sales_manager"]), async (req, res) => {
+  await query("DELETE FROM quotation_templates WHERE service = ?", [req.params.service]);
+  res.json({ ok: true });
+});
+
 // --- Checklist templates (per service, used to seed Job Card checklists) -----------------
 router.get("/checklist-templates", async (req, res) => {
   const rows = await query("SELECT * FROM checklist_templates");

@@ -2751,6 +2751,12 @@ function QuotationTemplatesPage({ state, dispatch }) {
   const [footerNote, setFooterNote] = useState(seed.footerNote || "");
   const [showNewService, setShowNewService] = useState(false);
   const [newServiceName, setNewServiceName] = useState("");
+  const [removingTemplate, setRemovingTemplate] = useState(false);
+  const hasTemplate = !!state.quotationTemplates[service];
+
+  const clearForm = () => {
+    setItems([]); setTerms(""); setNotes(""); setSubject(""); setOrderDiscount(0); setBank(""); setFooterNote("");
+  };
 
   const switchService = (s) => {
     setService(s);
@@ -2841,7 +2847,19 @@ function QuotationTemplatesPage({ state, dispatch }) {
         </div>
         <div className="field"><label>Footer note (optional — shown at the bottom of every page)</label><textarea rows={2} value={footerNote} onChange={e=>setFooterNote(e.target.value)} placeholder={DEFAULT_FOOTER_NOTE} /></div>
 
-        <button className="btn btn-primary" style={{ marginTop: 8 }} onClick={()=>dispatch({type:"UPDATE_QUOTATION_TEMPLATE", service, items, terms, notes, subject, orderDiscount, bank, footerNote})}>Save template</button>
+        <div style={{ display:"flex", gap:8, marginTop: 8 }}>
+          <button className="btn btn-primary" onClick={()=>dispatch({type:"UPDATE_QUOTATION_TEMPLATE", service, items, terms, notes, subject, orderDiscount, bank, footerNote})}>Save template</button>
+          {hasTemplate && <button className="btn btn-ghost" style={{color:"var(--danger)"}} onClick={()=>setRemovingTemplate(true)}><Trash2 size={13}/> Delete template</button>}
+        </div>
+        {removingTemplate && (
+          <ConfirmModal
+            title={`Delete the template for ${service}?`}
+            body="This clears the saved items, terms and notes for this service — the service itself stays, and a new quotation for it will start blank. This can't be undone."
+            confirmLabel="Delete template"
+            onConfirm={()=>{ dispatch({type:"DELETE_QUOTATION_TEMPLATE", service}); clearForm(); setRemovingTemplate(false); }}
+            onClose={()=>setRemovingTemplate(false)}
+          />
+        )}
       </div>
     </div>
   );
