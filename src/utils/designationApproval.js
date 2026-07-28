@@ -42,4 +42,21 @@ function requireRoleOrApprovalTypeDesignation(baseRoles, approvalTypeKey) {
   };
 }
 
-module.exports = { APPROVAL_TYPES, isAssignedApprover, requireRoleOrApprovalTypeDesignation };
+// Resolves the actual notification audience for an approval type: the built-in role keys
+// (always allowed to approve — e.g. "sales_manager") plus the specific user IDs of anyone whose
+// designation has been assigned as an approver for this type via Approval Process Workflow. Mixing
+// role keys and user IDs in one array matches how GET /notifications already matches audience
+// (see notifications.routes.js) — no schema change needed.
+async function approverAudience(approvalTypeKey, builtInRoleKeys) {
+  const [row] = await query("SELECT approver_designations FROM approval_type_assignments WHERE approval_type = ?", [approvalTypeKey]);
+  const designations = row?.approver_designations || [];
+  let assignedUserIds = [];
+  if (designations.length) {
+    const placeholders = designations.map(() => "?").join(",");
+    const users = await query(`SELECT id FROM users WHERE designation IN (${placeholders})`, designations);
+    assignedUserIds = users.map((u) => u.id);
+  }
+  return [...builtInRoleKeys, ...assignedUserIds];
+}
+
+module.exports = { APPROVAL_TYPES, isAssignedApprover, requireRoleOrApprovalTypeDesignation, approverAudience };

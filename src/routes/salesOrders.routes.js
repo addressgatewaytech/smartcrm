@@ -2,7 +2,7 @@ const express = require("express");
 const { query, withTransaction } = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
 const { requireRole, isAdminLike } = require("../middleware/roles");
-const { nextId, daysFromNow } = require("../utils/helpers");
+const { nextId, nextSequentialId, daysFromNow } = require("../utils/helpers");
 const { generateSalesOrderPdf } = require("../utils/salesOrderPdf");
 
 const router = express.Router();
@@ -42,7 +42,7 @@ router.post("/:id/onboard", async (req, res) => {
     const [[so]] = await conn.execute("SELECT * FROM sales_orders WHERE id = ?", [req.params.id]);
     if (!so) throw new Error("Sales order not found");
 
-    const invoiceId = nextId("INV");
+    const invoiceId = await nextSequentialId(conn, "AGBSIN", "invoice");
     await conn.execute(
       `INSERT INTO invoices (id, sales_order_id, customer, fee_type, amount, professional_fee_amount, status, due_date) VALUES (?,?,?,?,?,?, 'Sent', ?)`,
       [invoiceId, so.id, so.customer, so.fee_type, so.amount, so.professional_fee_amount, daysFromNow(14)]

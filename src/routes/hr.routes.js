@@ -3,7 +3,7 @@ const { query } = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
 const { requireRole, isAdminLike } = require("../middleware/roles");
 const { nextId, today } = require("../utils/helpers");
-const { requireRoleOrApprovalTypeDesignation } = require("../utils/designationApproval");
+const { requireRoleOrApprovalTypeDesignation, approverAudience } = require("../utils/designationApproval");
 
 const router = express.Router();
 router.use(requireAuth);
@@ -40,8 +40,9 @@ router.post("/leave-requests", async (req, res) => {
   const id = nextId("LV");
   await query("INSERT INTO leave_requests (id, user_id, type, start_date, end_date, reason) VALUES (?,?,?,?,?,?)",
     [id, req.user.id, b.type, b.startDate, b.endDate, b.reason || null]);
+  const audience = await approverAudience("leave_request", ["super_admin", "admin", "admin_exec", "hr"]);
   await query("INSERT INTO notifications (id, type, title, body, audience) VALUES (?, 'approval', ?, ?, ?)",
-    [nextId("NT"), "Leave request submitted", `${req.user.id} requested ${b.type} leave (${b.startDate} to ${b.endDate}).`, JSON.stringify(["super_admin", "admin", "admin_exec", "hr"])]);
+    [nextId("NT"), "Leave request submitted", `${req.user.id} requested ${b.type} leave (${b.startDate} to ${b.endDate}).`, JSON.stringify(audience)]);
   res.status(201).json({ id });
 });
 
@@ -82,6 +83,9 @@ router.post("/punch-requests", async (req, res) => {
 
   const id = nextId("PR");
   await query("INSERT INTO punch_requests (id, user_id, date, in_time, out_time, reason) VALUES (?,?,?,?,?,?)", [id, req.user.id, date, inTime || null, outTime || null, reason]);
+  const audience = await approverAudience("punch_request", ["super_admin", "admin", "admin_exec", "hr"]);
+  await query("INSERT INTO notifications (id, type, title, body, audience) VALUES (?, 'approval', ?, ?, ?)",
+    [nextId("NT"), "Punch correction request submitted", `${req.user.id} requested a punch correction for ${date}.`, JSON.stringify(audience)]);
   res.status(201).json({ id });
 });
 

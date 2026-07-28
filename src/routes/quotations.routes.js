@@ -5,7 +5,7 @@ const { requireRole, isAdminLike } = require("../middleware/roles");
 const { nextId, nextSequentialId, daysFromNow, quoteTotal, professionalFeeTotal } = require("../utils/helpers");
 const { generateQuotationPdf, THEMES } = require("../utils/quotationPdf");
 const validTheme = (t) => (t && THEMES[t] ? t : "charcoal");
-const { requireRoleOrApprovalTypeDesignation, isAssignedApprover } = require("../utils/designationApproval");
+const { requireRoleOrApprovalTypeDesignation, isAssignedApprover, approverAudience } = require("../utils/designationApproval");
 
 // Sales Manager / Admin-tier can always send a quotation straight to the client; anyone else
 // needs to submit it for approval first (see /:id/submit-for-approval and /:id/approve-discount)
@@ -14,6 +14,16 @@ const { requireRoleOrApprovalTypeDesignation, isAssignedApprover } = require("..
 async function canSendDirectly(user) {
   if (user.roles.includes("sales_manager") || isAdminLike(user.roles)) return true;
   return isAssignedApprover(user.id, "quotation_approval");
+}
+
+// Notifies whoever can actually approve this quotation — Sales Manager/Admin-tier plus anyone
+// whose designation is assigned as a "Quotation Approval" approver — the moment it lands in
+// Pending Manager Approval, from any of the three paths that can put it there (create with a
+// discount, edit into a discount, or the explicit submit-for-approval action).
+async function notifyQuotationApprovers(id, customer) {
+  const audience = await approverAudience("quotation_approval", ["sales_manager", "super_admin", "admin", "admin_exec"]);
+  await query("INSERT INTO notifications (id, type, title, body, audience) VALUES (?, 'approval', ?, ?, ?)",
+    [nextId("NT"), "Quotation awaiting approval", `${id} for ${customer} has a discount and needs approval before it can be sent.`, JSON.stringify(audience)]);
 }
 
 const router = express.Router();
@@ -75,6 +85,7 @@ router.post("/", async (req, res) => {
       b.bank || null, b.footerNote || null, b.notes || null, b.terms || null, status, daysFromNow(14), owner]
   );
   if (b.dealId) await query("UPDATE deals SET stage = 'Quotation Sent' WHERE id = ?", [b.dealId]);
+  if (status === "Pending Manager Approval") await notifyQuotationApprovers(id, b.customer);
   res.status(201).json({ id, status });
 });
 
@@ -92,12 +103,18 @@ router.patch("/:id", async (req, res) => {
   const feeType = b.feeType ?? row.fee_type;
   const theme = b.theme !== undefined ? validTheme(b.theme) : row.theme;
   const hasDiscount = (b.items || []).some((it) => it.discountPct > 0) || (b.orderDiscount || 0) > 0;
+  const newStatus = hasDiscount ? "Pending Manager Approval" : "Draft";
   await query(
     `UPDATE quotations SET customer=?, fee_type=?, theme=?, subject=?, items=?, order_discount=?, bank=?, footer_note=?, notes=?, terms=?, status=?
      WHERE id = ?`,
     [customer, feeType, theme, b.subject || null, JSON.stringify(b.items || []), b.orderDiscount || 0, b.bank || null, b.footerNote || null,
-      b.notes || null, b.terms || null, hasDiscount ? "Pending Manager Approval" : "Draft", req.params.id]
+      b.notes || null, b.terms || null, newStatus, req.params.id]
   );
+  // Only notify on the transition INTO Pending Manager Approval — not on every re-save of a
+  // quotation that was already sitting there, which would spam the approver on each edit.
+  if (newStatus === "Pending Manager Approval" && row.status !== "Pending Manager Approval") {
+    await notifyQuotationApprovers(req.params.id, customer);
+  }
   res.json({ ok: true });
 });
 
@@ -127,7 +144,11 @@ router.post("/:id/revise", async (req, res) => {
 // plain sales_exec (no direct-send privilege) gets a quotation in front of an approver before
 // it can go to the client.
 router.post("/:id/submit-for-approval", async (req, res) => {
-  await query("UPDATE quotations SET status = 'Pending Manager Approval' WHERE id = ? AND status = 'Draft'", [req.params.id]);
+  const result = await query("UPDATE quotations SET status = 'Pending Manager Approval' WHERE id = ? AND status = 'Draft'", [req.params.id]);
+  if (result.affectedRows > 0) {
+    const [q] = await query("SELECT customer FROM quotations WHERE id = ?", [req.params.id]);
+    await notifyQuotationApprovers(req.params.id, q.customer);
+  }
   res.json({ ok: true });
 });
 
@@ -212,7 +233,7 @@ router.post("/:id/convert-to-sales-order", async (req, res) => {
     const items = q.items;
     const { total } = quoteTotal(items, q.order_discount);
     const professionalFeeAmount = professionalFeeTotal(items, q.order_discount, q.fee_type);
-    const soId = nextId("SO");
+    const soId = await nextSequentialId(conn, "AGBSSO", "sales_order");
     await conn.execute(
       `INSERT INTO sales_orders (id, quotation_id, customer, service, fee_type, amount, professional_fee_amount, order_discount) VALUES (?,?,?,?,?,?,?,?)`,
       [soId, q.id, q.customer, items[0]?.service || null, q.fee_type, total, professionalFeeAmount, q.order_discount]

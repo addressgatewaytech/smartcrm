@@ -3,7 +3,7 @@ const { query } = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
 const { requireRole, isAdminLike } = require("../middleware/roles");
 const { nextId, daysFromNow } = require("../utils/helpers");
-const { requireRoleOrApprovalTypeDesignation, isAssignedApprover } = require("../utils/designationApproval");
+const { requireRoleOrApprovalTypeDesignation, isAssignedApprover, approverAudience } = require("../utils/designationApproval");
 
 const router = express.Router();
 router.use(requireAuth);
@@ -59,8 +59,9 @@ router.post("/direct", requireRole(["sales_manager", "sales_exec", "ops_manager"
     [id, customer, service, description || null, daysFromNow(7), JSON.stringify(checklist), req.user.id]
   );
   await query("INSERT INTO job_card_status_log (job_card_id, status, by_user) VALUES (?, 'Pending Approval', ?)", [id, req.user.id]);
+  const audience = await approverAudience("job_card_signoff", ["super_admin", "admin", "admin_exec", "accounts"]);
   await query("INSERT INTO notifications (id, type, title, body, audience) VALUES (?, 'approval', ?, ?, ?)",
-    [nextId("NT"), "Job card awaiting approval", `${id} for ${customer} (${service}) needs Accounts approval before Operations can assign it.`, JSON.stringify(["super_admin", "admin", "admin_exec", "accounts"])]);
+    [nextId("NT"), "Job card awaiting approval", `${id} for ${customer} (${service}) needs Accounts approval before Operations can assign it.`, JSON.stringify(audience)]);
 
   res.status(201).json({ id });
 });
