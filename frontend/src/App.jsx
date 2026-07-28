@@ -1759,7 +1759,7 @@ function LeadsPage({ state, dispatch, userId, role }) {
       {convert && (
         <Modal title={`Convert ${convert.id} to a deal`} sub={`${convert.company} — ${convert.service}`} onClose={()=>setConvert(null)}>
           <div className="field"><label>Estimated deal value (QAR)</label>
-            <input type="number" inputMode="numeric" className="no-spinner" value={dealValue} onChange={e=>setDealValue(Number(e.target.value))} />
+            <input type="number" inputMode="numeric" className="no-spinner" value={dealValue} onChange={e=>setDealValue((e.target.value === "" ? "" : Number(e.target.value)))} />
           </div>
           <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop: 16 }}>
             <button className="btn" onClick={()=>setConvert(null)}>Cancel</button>
@@ -1921,7 +1921,7 @@ function NewDealModal({ state, dispatch, userId, initialCustomer=null, onClose }
             {state.services.map(s=><option key={s}>{s}</option>)}
           </select>
         </div>
-        <div className="field"><label>Estimated value (QAR)</label><input type="number" inputMode="numeric" className="no-spinner" value={form.value} onChange={e=>setForm({...form,value:Number(e.target.value)})} /></div>
+        <div className="field"><label>Estimated value (QAR)</label><input type="number" inputMode="numeric" className="no-spinner" value={form.value} onChange={e=>setForm({...form,value:(e.target.value === "" ? "" : Number(e.target.value))})} /></div>
       </div>
       <div className="field"><label>Expected close date</label><input type="date" value={form.expectedClose} onChange={e=>setForm({...form,expectedClose:e.target.value})} /></div>
       {saveError && <div className="side-note" style={{ color:"var(--danger)" }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{saveError}</div>}
@@ -1944,7 +1944,7 @@ function EditDealModal({ deal: d, state, dispatch, onClose }) {
             {state.services.map(s=><option key={s}>{s}</option>)}
           </select>
         </div>
-        <div className="field"><label>Estimated value (QAR)</label><input type="number" value={form.value} onChange={e=>setForm({...form,value:Number(e.target.value)})} /></div>
+        <div className="field"><label>Estimated value (QAR)</label><input type="number" value={form.value} onChange={e=>setForm({...form,value:(e.target.value === "" ? "" : Number(e.target.value))})} /></div>
       </div>
       <div className="row2">
         <div className="field"><label>Stage</label>
@@ -2149,9 +2149,9 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
             <input value={it.note || ""} onChange={e=>update(i,"note",e.target.value)} placeholder="e.g. 50 QAR per partner" />
           </div>
           <div className="row3">
-            <div className="field"><label>Qty</label><input type="number" min={1} value={it.qty} onChange={e=>update(i,"qty",Number(e.target.value))} /></div>
-            <div className="field"><label>Rate (QAR)</label><input type="number" value={it.price} onChange={e=>update(i,"price",Number(e.target.value))} /></div>
-            <div className="field"><label>Discount %</label><input type="number" min={0} max={100} value={it.discountPct} onChange={e=>update(i,"discountPct",Number(e.target.value))} /></div>
+            <div className="field"><label>Qty</label><input type="number" min={1} value={it.qty} onChange={e=>update(i,"qty",(e.target.value === "" ? "" : Number(e.target.value)))} /></div>
+            <div className="field"><label>Rate (QAR)</label><input type="number" value={it.price} onChange={e=>update(i,"price",(e.target.value === "" ? "" : Number(e.target.value)))} /></div>
+            <div className="field"><label>Discount %</label><input type="number" min={0} max={100} value={it.discountPct} onChange={e=>update(i,"discountPct",(e.target.value === "" ? "" : Number(e.target.value)))} /></div>
           </div>
           {items.length > 1 && <button className="btn btn-ghost btn-sm" onClick={()=>setItems(items.filter((_,idx)=>idx!==i))}><X size={13}/> Remove line</button>}
         </div>
@@ -2167,7 +2167,7 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
       </div>
 
       <div className="row2">
-        <div className="field"><label>Overall discount (QAR, optional — shown as its own line)</label><input type="number" min={0} value={orderDiscount} onChange={e=>setOrderDiscount(Number(e.target.value))} /></div>
+        <div className="field"><label>Overall discount (QAR, optional — shown as its own line)</label><input type="number" min={0} value={orderDiscount} onChange={e=>setOrderDiscount((e.target.value === "" ? "" : Number(e.target.value)))} /></div>
         <div className="field"><label>Bank details override (optional — defaults to the standard account)</label><textarea rows={2} value={bank} onChange={e=>setBank(e.target.value)} placeholder="Leave blank to use the standard Address Gateway bank details" /></div>
       </div>
       <div className="field"><label>Footer note (optional — shown at the bottom of every page)</label><textarea rows={2} value={footerNote} onChange={e=>setFooterNote(e.target.value)} placeholder={DEFAULT_FOOTER_NOTE} /></div>
@@ -2617,14 +2617,14 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
                     <td className="mono" style={{ padding:"9px 10px", textAlign:"right", verticalAlign:"top" }}>
                       {editingNow ? (
                         <>
-                          <input type="number" style={{ ...inputStyle, textAlign:"right", marginBottom:4 }} value={r.it.qty} onChange={e=>updDraftItem(r.idx,"qty",Number(e.target.value))} />
-                          <input type="number" style={{ ...inputStyle, textAlign:"right" }} value={r.it.price} onChange={e=>updDraftItem(r.idx,"price",Number(e.target.value))} />
+                          <input type="number" style={{ ...inputStyle, textAlign:"right", marginBottom:4 }} value={r.it.qty} onChange={e=>updDraftItem(r.idx,"qty",(e.target.value === "" ? "" : Number(e.target.value)))} />
+                          <input type="number" style={{ ...inputStyle, textAlign:"right" }} value={r.it.price} onChange={e=>updDraftItem(r.idx,"price",(e.target.value === "" ? "" : Number(e.target.value)))} />
                         </>
                       ) : Number(r.it.price).toFixed(2)}
                     </td>
                     {editingNow && (
                       <td className="mono" style={{ padding:"9px 10px", textAlign:"right", verticalAlign:"top" }}>
-                        <input type="number" min={0} max={100} style={{ ...inputStyle, textAlign:"right" }} value={r.it.discountPct||0} onChange={e=>updDraftItem(r.idx,"discountPct",Number(e.target.value))} />
+                        <input type="number" min={0} max={100} style={{ ...inputStyle, textAlign:"right" }} value={r.it.discountPct||0} onChange={e=>updDraftItem(r.idx,"discountPct",(e.target.value === "" ? "" : Number(e.target.value)))} />
                       </td>
                     )}
                     <td className="mono" style={{ padding:"9px 10px", textAlign:"right", verticalAlign:"top" }}>{(r.it.qty*r.it.price*(1-(r.it.discountPct||0)/100)).toFixed(2)}</td>
@@ -2650,7 +2650,7 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
                   {(editingNow || (src.orderDiscount||0) > 0) && (
                     <tr><td style={{ padding:"4px 16px 4px 0", color:"var(--ink-soft)" }}>Discount</td>
                       <td className="mono" style={{ padding:"4px 0", textAlign:"right" }}>
-                        {editingNow ? <span>(-) <input type="number" style={{ ...inputStyle, width:70, textAlign:"right", display:"inline-block" }} value={src.orderDiscount||0} onChange={e=>updDraft("orderDiscount", Number(e.target.value))} /></span>
+                        {editingNow ? <span>(-) <input type="number" style={{ ...inputStyle, width:70, textAlign:"right", display:"inline-block" }} value={src.orderDiscount||0} onChange={e=>updDraft("orderDiscount", (e.target.value === "" ? "" : Number(e.target.value)))} /></span>
                           : <>(-) {Number(src.orderDiscount).toFixed(2)}</>}
                       </td>
                     </tr>
@@ -2824,9 +2824,9 @@ function QuotationTemplatesPage({ state, dispatch }) {
               <input value={it.note || ""} onChange={e=>update(i,"note",e.target.value)} placeholder="e.g. 50 QAR per partner" />
             </div>
             <div className="row3">
-              <div className="field"><label>Qty</label><input type="number" value={it.qty} onChange={e=>update(i,"qty",Number(e.target.value))}/></div>
-              <div className="field"><label>Default rate (QAR)</label><input type="number" value={it.price} onChange={e=>update(i,"price",Number(e.target.value))}/></div>
-              <div className="field"><label>Default discount %</label><input type="number" value={it.discountPct} onChange={e=>update(i,"discountPct",Number(e.target.value))}/></div>
+              <div className="field"><label>Qty</label><input type="number" value={it.qty} onChange={e=>update(i,"qty",(e.target.value === "" ? "" : Number(e.target.value)))}/></div>
+              <div className="field"><label>Default rate (QAR)</label><input type="number" value={it.price} onChange={e=>update(i,"price",(e.target.value === "" ? "" : Number(e.target.value)))}/></div>
+              <div className="field"><label>Default discount %</label><input type="number" value={it.discountPct} onChange={e=>update(i,"discountPct",(e.target.value === "" ? "" : Number(e.target.value)))}/></div>
             </div>
             <button className="btn btn-ghost btn-sm" onClick={()=>setItems(items.filter((_,idx)=>idx!==i))}><X size={13}/> Remove line</button>
           </div>
@@ -2842,7 +2842,7 @@ function QuotationTemplatesPage({ state, dispatch }) {
         </div>
 
         <div className="row2">
-          <div className="field"><label>Default overall discount (QAR, optional)</label><input type="number" min={0} value={orderDiscount} onChange={e=>setOrderDiscount(Number(e.target.value))} /></div>
+          <div className="field"><label>Default overall discount (QAR, optional)</label><input type="number" min={0} value={orderDiscount} onChange={e=>setOrderDiscount((e.target.value === "" ? "" : Number(e.target.value)))} /></div>
           <div className="field"><label>Bank details override (optional — defaults to the standard account)</label><textarea rows={2} value={bank} onChange={e=>setBank(e.target.value)} placeholder="Leave blank to use the standard Address Gateway bank details" /></div>
         </div>
         <div className="field"><label>Footer note (optional — shown at the bottom of every page)</label><textarea rows={2} value={footerNote} onChange={e=>setFooterNote(e.target.value)} placeholder={DEFAULT_FOOTER_NOTE} /></div>
@@ -3641,21 +3641,21 @@ function PlanCatalog({ state, dispatch, isAdmin }) {
       {editTier && form && (
         <Modal title={`Edit ${editTier} tier`} onClose={()=>{setEditTier(null); setForm(null);}} width={560}>
           <div className="row2">
-            <div className="field"><label>Annual fee (QAR)</label><input type="number" value={form.annualFee} onChange={e=>setForm({...form,annualFee:Number(e.target.value)})} /></div>
+            <div className="field"><label>Annual fee (QAR)</label><input type="number" value={form.annualFee} onChange={e=>setForm({...form,annualFee:(e.target.value === "" ? "" : Number(e.target.value))})} /></div>
             <div className="field"><label>Company size (optional)</label><input value={form.companySize||""} onChange={e=>setForm({...form,companySize:e.target.value})} /></div>
           </div>
           <div className="row2">
-            <div className="field"><label>Transactions included (optional)</label><input type="number" value={form.transactionsIncluded||""} onChange={e=>setForm({...form,transactionsIncluded:Number(e.target.value)})} /></div>
+            <div className="field"><label>Transactions included (optional)</label><input type="number" value={form.transactionsIncluded||""} onChange={e=>setForm({...form,transactionsIncluded:(e.target.value === "" ? "" : Number(e.target.value))})} /></div>
             <div className="field"><label>Hukoomi services (optional)</label><input value={form.hukoomiServices||""} onChange={e=>setForm({...form,hukoomiServices:e.target.value})} /></div>
           </div>
           <div className="row3">
-            <div className="field"><label>Training sessions</label><input type="number" value={form.trainingSessions||""} onChange={e=>setForm({...form,trainingSessions:Number(e.target.value)})} /></div>
-            <div className="field"><label>Rate per session</label><input type="number" value={form.trainingRate||""} onChange={e=>setForm({...form,trainingRate:Number(e.target.value)})} /></div>
-            <div className="field"><label>Team members</label><input type="number" value={form.trainingTeamMembers||""} onChange={e=>setForm({...form,trainingTeamMembers:Number(e.target.value)})} /></div>
+            <div className="field"><label>Training sessions</label><input type="number" value={form.trainingSessions||""} onChange={e=>setForm({...form,trainingSessions:(e.target.value === "" ? "" : Number(e.target.value))})} /></div>
+            <div className="field"><label>Rate per session</label><input type="number" value={form.trainingRate||""} onChange={e=>setForm({...form,trainingRate:(e.target.value === "" ? "" : Number(e.target.value))})} /></div>
+            <div className="field"><label>Team members</label><input type="number" value={form.trainingTeamMembers||""} onChange={e=>setForm({...form,trainingTeamMembers:(e.target.value === "" ? "" : Number(e.target.value))})} /></div>
           </div>
           <div className="row3">
-            <div className="field"><label>Legal advising sessions</label><input type="number" value={form.legalAdvising||""} onChange={e=>setForm({...form,legalAdvising:Number(e.target.value)})} /></div>
-            <div className="field"><label>Translation pages</label><input type="number" value={form.translationPages||""} onChange={e=>setForm({...form,translationPages:Number(e.target.value)})} /></div>
+            <div className="field"><label>Legal advising sessions</label><input type="number" value={form.legalAdvising||""} onChange={e=>setForm({...form,legalAdvising:(e.target.value === "" ? "" : Number(e.target.value))})} /></div>
+            <div className="field"><label>Translation pages</label><input type="number" value={form.translationPages||""} onChange={e=>setForm({...form,translationPages:(e.target.value === "" ? "" : Number(e.target.value))})} /></div>
             <div className="field"><label>Dedicated PRO officer</label>
               <select value={form.dedicatedPro ? "yes":"no"} onChange={e=>setForm({...form,dedicatedPro:e.target.value==="yes"})}>
                 <option value="no">No</option><option value="yes">Yes</option>
@@ -4173,7 +4173,7 @@ function InvoicesPage({ state, dispatch, role }) {
       {pay && (
         <Modal title={`Record payment — ${pay.id}`} sub={pay.customer} onClose={()=>setPay(null)}>
           <div className="row2">
-            <div className="field"><label>Amount (QAR)</label><input type="number" value={amount} onChange={e=>setAmount(Number(e.target.value))} /></div>
+            <div className="field"><label>Amount (QAR)</label><input type="number" value={amount} onChange={e=>setAmount((e.target.value === "" ? "" : Number(e.target.value)))} /></div>
             <div className="field"><label>Mode</label>
               <select value={mode} onChange={e=>setMode(e.target.value)}>
                 {["Bank Transfer","Cash","Cheque","Card"].map(m=><option key={m}>{m}</option>)}
@@ -4899,7 +4899,7 @@ function IncentiveRulesAdmin({ state, dispatch }) {
               {["Daily","Weekly","Monthly"].map(p=><option key={p}>{p}</option>)}
             </select>
           </div>
-          <div className="field"><label>Rate (QAR or %)</label><input type="number" value={form.amount} onChange={e=>setForm({...form,amount:Number(e.target.value)})} /></div>
+          <div className="field"><label>Rate (QAR or %)</label><input type="number" value={form.amount} onChange={e=>setForm({...form,amount:(e.target.value === "" ? "" : Number(e.target.value))})} /></div>
         </div>
         <div className="field"><label>Metric description</label><input value={form.metric} onChange={e=>setForm({...form,metric:e.target.value})} placeholder="e.g. Per job card completed" /></div>
         <div style={{ display:"flex", gap:8 }}>
@@ -6732,12 +6732,12 @@ function DataSettingsTab({ state, dispatch }) {
     <div className="agw-card" style={{ maxWidth: 560 }}>
       <strong style={{ fontSize:14 }}>Daily outreach targets</strong>
       <div className="row2" style={{ marginTop:10 }}>
-        <div className="field"><label>Daily email target</label><input type="number" value={form.dailyEmailTarget} onChange={e=>setForm({...form,dailyEmailTarget:Number(e.target.value)})} /></div>
-        <div className="field"><label>Daily WhatsApp target</label><input type="number" value={form.dailyWhatsappTarget} onChange={e=>setForm({...form,dailyWhatsappTarget:Number(e.target.value)})} /></div>
+        <div className="field"><label>Daily email target</label><input type="number" value={form.dailyEmailTarget} onChange={e=>setForm({...form,dailyEmailTarget:(e.target.value === "" ? "" : Number(e.target.value))})} /></div>
+        <div className="field"><label>Daily WhatsApp target</label><input type="number" value={form.dailyWhatsappTarget} onChange={e=>setForm({...form,dailyWhatsappTarget:(e.target.value === "" ? "" : Number(e.target.value))})} /></div>
       </div>
       <div className="row2">
-        <div className="field"><label>Email interval (minutes)</label><input type="number" value={form.emailIntervalMinutes} onChange={e=>setForm({...form,emailIntervalMinutes:Number(e.target.value)})} /></div>
-        <div className="field"><label>WhatsApp interval (minutes)</label><input type="number" value={form.whatsappIntervalMinutes} onChange={e=>setForm({...form,whatsappIntervalMinutes:Number(e.target.value)})} /></div>
+        <div className="field"><label>Email interval (minutes)</label><input type="number" value={form.emailIntervalMinutes} onChange={e=>setForm({...form,emailIntervalMinutes:(e.target.value === "" ? "" : Number(e.target.value))})} /></div>
+        <div className="field"><label>WhatsApp interval (minutes)</label><input type="number" value={form.whatsappIntervalMinutes} onChange={e=>setForm({...form,whatsappIntervalMinutes:(e.target.value === "" ? "" : Number(e.target.value))})} /></div>
       </div>
       <div style={{ borderTop:"1px solid var(--hair)", marginTop:14, paddingTop:14 }}>
         <strong style={{ fontSize:14 }}>Data recycling</strong>
@@ -6745,7 +6745,7 @@ function DataSettingsTab({ state, dispatch }) {
           <input type="checkbox" checked={form.recyclingEnabled} onChange={e=>setForm({...form,recyclingEnabled:e.target.checked})} />
           Enable recycling
         </label>
-        <div className="field" style={{ marginTop:8 }}><label>Recycling period (days)</label><input type="number" value={form.recyclingDays} onChange={e=>setForm({...form,recyclingDays:Number(e.target.value)})} disabled={!form.recyclingEnabled} /></div>
+        <div className="field" style={{ marginTop:8 }}><label>Recycling period (days)</label><input type="number" value={form.recyclingDays} onChange={e=>setForm({...form,recyclingDays:(e.target.value === "" ? "" : Number(e.target.value))})} disabled={!form.recyclingEnabled} /></div>
       </div>
       <button className="btn btn-primary" style={{ marginTop:14 }} onClick={()=>dispatch({type:"UPDATE_DATA_SETTINGS", payload:form})}>Save settings</button>
     </div>
