@@ -13,6 +13,7 @@ const ROLE_LABEL = {
   hr: "HR",
   executive: "Executive",       // read-only: Dashboard + Reports only — see routes/reports.routes.js gating
   data_manager: "Data Manager",
+  lead_manager: "Lead Manager", // Lead Assignment Manager module — assigns/reassigns leads, monitors SLA
 };
 
 const isAdminLike = (roles) => (roles || []).some((r) => ADMIN_LIKE.includes(r));

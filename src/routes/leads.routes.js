@@ -1,15 +1,19 @@
 const express = require("express");
 const { query, withTransaction } = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
-const { isAdminLike } = require("../middleware/roles");
+const { requireRole, isAdminLike } = require("../middleware/roles");
 const { nextId, nextSequentialId, today, findDuplicateCustomer } = require("../utils/helpers");
 const { checkExistingData } = require("./dataManager.routes").internal;
+const { nextSlaDeadline } = require("../utils/officeHours");
 
 const router = express.Router();
 router.use(requireAuth);
 
+// Lead Assignment Manager (and Sales Manager/Admin-tier) see every lead; everyone else only their own.
+const canManageAllLeads = (roles) => isAdminLike(roles) || roles.includes("sales_manager") || roles.includes("lead_manager");
+
 router.get("/", async (req, res) => {
-  const isAdmin = isAdminLike(req.user.roles) || req.user.roles.includes("sales_manager");
+  const isAdmin = canManageAllLeads(req.user.roles);
   const rows = isAdmin
     ? await query("SELECT * FROM leads ORDER BY created_at DESC")
     : await query("SELECT * FROM leads WHERE owner = ? ORDER BY created_at DESC", [req.user.id]);
@@ -37,10 +41,16 @@ async function findOrCreateCustomerForLead(b) {
 router.post("/", async (req, res) => {
   const b = req.body;
   const id = await withTransaction((conn) => nextSequentialId(conn, "AGBSLS", "lead"));
+  const owner = b.owner || req.user.id;
+  // A lead is "assigned" the moment it has an owner — which every newly created lead does — so
+  // the same 5-minute-response SLA clock (Lead Assignment Manager) starts right away, not just
+  // when a Lead Manager later reassigns it via /:id/assign.
+  const assignedAt = new Date();
+  const slaDueAt = nextSlaDeadline(assignedAt);
   await query(
-    `INSERT INTO leads (id, name, company, phone, email, reference, source, service, owner, status, next_follow_up)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-    [id, b.name, b.company, b.phone || null, b.email || null, b.reference || null, b.source || null, b.service || null, b.owner || req.user.id, "New", b.nextFollowUp || null]
+    `INSERT INTO leads (id, name, company, phone, email, reference, source, service, owner, status, next_follow_up, assigned_at, sla_due_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    [id, b.name, b.company, b.phone || null, b.email || null, b.reference || null, b.source || null, b.service || null, owner, "New", b.nextFollowUp || null, assignedAt, slaDueAt]
   );
   await query("INSERT INTO activity_log (text) VALUES (?)", [`New lead ${id} — ${b.company}`]);
 
@@ -79,6 +89,23 @@ router.patch("/:id", async (req, res) => {
   params.push(req.params.id);
   await query(`UPDATE leads SET ${fields.join(", ")} WHERE id = ?`, params);
   res.json({ ok: true });
+});
+
+// Assign or reassign a lead — restarts the SLA clock from this moment (a lead reassigned to a
+// new owner gets a fresh 5-minute window, not the original owner's now-irrelevant deadline).
+router.post("/:id/assign", requireRole(["lead_manager", "sales_manager", "admin_like"]), async (req, res) => {
+  const { userId } = req.body;
+  if (!userId) return res.status(400).json({ error: "userId is required" });
+  const assignedAt = new Date();
+  const slaDueAt = nextSlaDeadline(assignedAt);
+  const result = await query(
+    "UPDATE leads SET owner = ?, assigned_at = ?, sla_due_at = ?, sla_violated = 0 WHERE id = ?",
+    [userId, assignedAt, slaDueAt, req.params.id]
+  );
+  if (!result.affectedRows) return res.status(404).json({ error: "Not found" });
+  await query("INSERT INTO notifications (id, type, title, body, audience) VALUES (?, 'lead_assigned', ?, ?, ?)",
+    [nextId("NT"), "Lead assigned to you", `${req.params.id} has been assigned to you — first follow-up is due by ${slaDueAt.toISOString()}.`, JSON.stringify([userId])]);
+  res.json({ ok: true, assignedAt, slaDueAt });
 });
 
 router.post("/:id/follow-up", async (req, res) => {

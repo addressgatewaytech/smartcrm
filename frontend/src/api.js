@@ -111,6 +111,7 @@ export const api = {
     update: (id, payload) => patch(`/leads/${id}`, payload),
     followUp: (id, payload) => post(`/leads/${id}/follow-up`, payload),
     convertToDeal: (id, value) => post(`/leads/${id}/convert-to-deal`, { value }),
+    assign: (id, userId) => post(`/leads/${id}/assign`, { userId }),
     remove: (id) => del(`/leads/${id}`),
   },
   deals: {
@@ -202,6 +203,17 @@ export const api = {
     addChecklistItem: (id, label) => post(`/job-cards/${id}/checklist`, { label }),
     remove: (id) => del(`/job-cards/${id}`),
   },
+  tasks: {
+    list: () => get("/tasks"),
+    create: (payload) => post("/tasks", payload),
+    update: (id, payload) => patch(`/tasks/${id}`, payload),
+    accept: (id) => post(`/tasks/${id}/accept`),
+    progress: (id, progressPct, note) => post(`/tasks/${id}/progress`, { progressPct, note }),
+    submitForApproval: (id) => post(`/tasks/${id}/submit-for-approval`),
+    approve: (id) => post(`/tasks/${id}/approve`),
+    reject: (id, reason) => post(`/tasks/${id}/reject`, { reason }),
+    remove: (id) => del(`/tasks/${id}`),
+  },
   subscriptions: {
     plans: () => get("/subscriptions/plans"),
     addPlan: (name, description) => post("/subscriptions/plans", { name, description }),
@@ -221,6 +233,10 @@ export const api = {
   hr: {
     markAttendance: (userId, date, status) => post("/hr/attendance/mark", { userId, date, status }),
     attendanceFor: (userId, from, to) => get(`/hr/attendance/${userId}?from=${from || ""}&to=${to || ""}`),
+    signIn: () => post("/hr/attendance/sign-in"),
+    signOut: () => post("/hr/attendance/sign-out"),
+    attendanceToday: () => get("/hr/attendance/me/today"),
+    attendanceSummary: (from, to, userId) => get(`/hr/attendance/summary?from=${from || ""}&to=${to || ""}${userId ? `&userId=${userId}` : ""}`),
     leaveRequests: () => get("/hr/leave-requests"),
     requestLeave: (payload) => post("/hr/leave-requests", payload),
     decideLeave: (id, status) => post(`/hr/leave-requests/${id}/decide`, { status }),
@@ -251,6 +267,15 @@ export const api = {
     userBase: () => get("/reports/user-base"),
     attendanceHr: (from, to) => get(`/reports/attendance-hr?from=${from || ""}&to=${to || ""}`),
     operations: (from, to) => get(`/reports/operations?from=${from || ""}&to=${to || ""}`),
+    // Generic "render this already-computed report table as a PDF" call — same auth-header-via-
+    // fetch-blob pattern as quotations.downloadPdf, since a plain <a href> can't send Bearer auth.
+    downloadPdf: async (title, subtitle, columns, rows) => {
+      const headers = { "Content-Type": "application/json" };
+      if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
+      const res = await fetch(`/api/reports/pdf`, { method: "POST", headers, cache: "no-store", body: JSON.stringify({ title, subtitle, columns, rows }) });
+      if (!res.ok) throw new ApiError("Failed to generate PDF", res.status);
+      return res.blob();
+    },
   },
   dataManager: {
     list: () => get("/data-manager"),

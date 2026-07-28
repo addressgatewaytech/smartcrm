@@ -153,6 +153,14 @@ CREATE TABLE IF NOT EXISTS leads (
   owner          VARCHAR(20),
   status         ENUM('New','Contacted','Follow-up Scheduled','Interested','Not Interested','Qualified','Unqualified','Converted') DEFAULT 'New',
   next_follow_up DATE,
+  -- Lead Assignment Manager SLA: assigned_at is stamped whenever `owner` changes; sla_due_at is
+  -- assigned_at + 5 min if that falls in office hours (9am-5pm), else 9am the next working day
+  -- (see src/utils/officeHours.js). sla_violated is set once, the first time a cron sweep finds
+  -- the deadline passed with no lead_followups row at/after assigned_at — a permanent performance
+  -- record, not recomputed retroactively if a follow-up is logged late afterward.
+  assigned_at    TIMESTAMP NULL,
+  sla_due_at     DATETIME NULL,
+  sla_violated   TINYINT(1) DEFAULT 0,
   created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (owner) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
@@ -339,6 +347,42 @@ CREATE TABLE IF NOT EXISTS job_card_status_log (
   by_user     VARCHAR(20),
   note        VARCHAR(255),
   FOREIGN KEY (job_card_id) REFERENCES job_cards(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- ---------------------------------------------------------------------------
+-- EMPLOYEE TASK MANAGEMENT (internal only — no customer/invoice/quotation link)
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS tasks (
+  id              VARCHAR(20) PRIMARY KEY,     -- AGBSTK10100...
+  title           VARCHAR(300) NOT NULL,
+  description     TEXT,
+  priority        ENUM('Low','Normal','High','Urgent') DEFAULT 'Normal',
+  status          ENUM('Assigned','Accepted','In Progress','Pending Approval','Completed','Rejected','Cancelled') DEFAULT 'Assigned',
+  due_date        DATE,
+  assigned_to     VARCHAR(20),
+  department      VARCHAR(100),
+  created_by      VARCHAR(20),
+  progress_pct    TINYINT UNSIGNED DEFAULT 0,
+  submitted_at    TIMESTAMP NULL,
+  decided_by      VARCHAR(20),
+  decided_at      TIMESTAMP NULL,
+  rejection_reason TEXT,
+  created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (assigned_to) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (decided_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+-- Doubles as both the pure status-transition audit trail and the work-notes history
+-- (a note-only entry just repeats the task's current status) — same pattern as job_card_status_log.
+CREATE TABLE IF NOT EXISTS task_status_log (
+  id       INT AUTO_INCREMENT PRIMARY KEY,
+  task_id  VARCHAR(20) NOT NULL,
+  status   VARCHAR(30) NOT NULL,
+  by_user  VARCHAR(20),
+  note     TEXT,
+  at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------------

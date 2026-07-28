@@ -29,6 +29,7 @@ app.use("/api/sales-orders", require("./src/routes/salesOrders.routes"));
 app.use("/api/invoices", require("./src/routes/invoices.routes"));
 app.use("/api/customers", require("./src/routes/customers.routes"));
 app.use("/api/job-cards", require("./src/routes/jobCards.routes"));
+app.use("/api/tasks", require("./src/routes/tasks.routes"));
 app.use("/api/subscriptions", require("./src/routes/subscriptions.routes"));
 app.use("/api/hr", require("./src/routes/hr.routes"));
 app.use("/api/incentives", require("./src/routes/incentives.routes"));
@@ -81,6 +82,10 @@ if (process.env.NODE_ENV === "production") {
   cron.schedule("0 23 * * *", () => runEndOfDayReturn().catch((e) => console.error("Cron end-of-day-return failed", e)));
   cron.schedule("0 1 * * *", () => runRecycling().catch((e) => console.error("Cron recycling failed", e)));
   console.log("Scheduled jobs registered (auto-assign 07:00, end-of-day return 23:00, recycling 01:00).");
+
+  const { checkOverdueLeads } = require("./src/services/leadSlaJobs");
+  cron.schedule("* * * * *", () => checkOverdueLeads().catch((e) => console.error("Cron lead-SLA sweep failed", e)));
+  console.log("Lead Assignment Manager SLA sweep scheduled (every minute).");
 }
 
 const PORT = process.env.PORT || 3000;

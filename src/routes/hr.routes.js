@@ -4,10 +4,22 @@ const { requireAuth } = require("../middleware/auth");
 const { requireRole, isAdminLike } = require("../middleware/roles");
 const { nextId, today } = require("../utils/helpers");
 const { requireRoleOrApprovalTypeDesignation, approverAudience } = require("../utils/designationApproval");
+const { toQatarTime, OFFICE_START_HOUR, OFFICE_END_HOUR } = require("../utils/officeHours");
 
 const router = express.Router();
 router.use(requireAuth);
 const isHrAdmin = (roles) => isAdminLike(roles) || roles.includes("hr");
+
+// Qatar-local (not server-local) date/time strings — attendance is inherently about which Qatar
+// calendar day someone showed up on, and the server process's own timezone shouldn't matter.
+function qatarDateTimeParts(d = new Date()) {
+  const q = toQatarTime(d);
+  const pad = (n) => String(n).padStart(2, "0");
+  return {
+    date: `${q.getUTCFullYear()}-${pad(q.getUTCMonth() + 1)}-${pad(q.getUTCDate())}`,
+    time: `${pad(q.getUTCHours())}:${pad(q.getUTCMinutes())}:${pad(q.getUTCSeconds())}`,
+  };
+}
 
 // --- Attendance --------------------------------------------------------------------------
 router.post("/attendance/mark", requireRole(["admin_like", "hr"]), async (req, res) => {
@@ -18,6 +30,72 @@ router.post("/attendance/mark", requireRole(["admin_like", "hr"]), async (req, r
     [nextId("ATT"), userId, date || today(), status, req.user.id]
   );
   res.json({ ok: true });
+});
+
+// --- Employee self-service sign in / sign out --------------------------------------------
+router.post("/attendance/sign-in", async (req, res) => {
+  const { date, time } = qatarDateTimeParts();
+  const [existing] = await query("SELECT in_time FROM attendance WHERE user_id = ? AND date = ?", [req.user.id, date]);
+  if (existing?.in_time) return res.status(400).json({ error: `Already signed in today at ${existing.in_time}` });
+  await query(
+    `INSERT INTO attendance (id, user_id, date, status, in_time, marked_by) VALUES (?,?,?, 'Present', ?, ?)
+     ON DUPLICATE KEY UPDATE status='Present', in_time=VALUES(in_time), marked_by=VALUES(marked_by)`,
+    [nextId("ATT"), req.user.id, date, time, req.user.id]
+  );
+  res.json({ ok: true, date, time });
+});
+
+router.post("/attendance/sign-out", async (req, res) => {
+  const { date, time } = qatarDateTimeParts();
+  const [existing] = await query("SELECT in_time, out_time FROM attendance WHERE user_id = ? AND date = ?", [req.user.id, date]);
+  if (!existing?.in_time) return res.status(400).json({ error: "You haven't signed in today yet" });
+  if (existing.out_time) return res.status(400).json({ error: `Already signed out today at ${existing.out_time}` });
+  await query("UPDATE attendance SET out_time = ? WHERE user_id = ? AND date = ?", [time, req.user.id, date]);
+  res.json({ ok: true, date, time });
+});
+
+router.get("/attendance/me/today", async (req, res) => {
+  const { date } = qatarDateTimeParts();
+  const [row] = await query("SELECT * FROM attendance WHERE user_id = ? AND date = ?", [req.user.id, date]);
+  res.json(row || null);
+});
+
+// Monthly/date-ranged hours summary — computed here (not loaded fully into client state, unlike
+// most other reports in this app) since attendance rows can span a long history. Self-service for
+// a plain employee (always their own data); admin/hr can pass ?userId= for one person, or omit it
+// for every active user's summary (used by the Attendance / Employee Productivity reports).
+router.get("/attendance/summary", async (req, res) => {
+  const { from, to, userId } = req.query;
+  const isAdmin = isHrAdmin(req.user.roles);
+  const fromDate = from || "1970-01-01";
+  const toDate = to || "2999-12-31";
+  const toMinutes = (t) => {
+    if (!t) return null;
+    const [h, m] = t.split(":").map(Number);
+    return h * 60 + m;
+  };
+  const summarize = async (uid) => {
+    const rows = await query("SELECT * FROM attendance WHERE user_id = ? AND date BETWEEN ? AND ? ORDER BY date", [uid, fromDate, toDate]);
+    let totalMinutes = 0, lateCount = 0, earlyCount = 0, presentDays = 0;
+    const days = rows.map((r) => {
+      const inMin = toMinutes(r.in_time);
+      const outMin = toMinutes(r.out_time);
+      const workedMinutes = inMin != null && outMin != null && outMin > inMin ? outMin - inMin : 0;
+      const late = inMin != null && inMin > OFFICE_START_HOUR * 60;
+      const early = outMin != null && outMin < OFFICE_END_HOUR * 60;
+      if (r.status === "Present") presentDays++;
+      if (late) lateCount++;
+      if (early) earlyCount++;
+      totalMinutes += workedMinutes;
+      return { ...r, workedMinutes, late, early };
+    });
+    return { userId: uid, days, totalMinutes, totalHours: +(totalMinutes / 60).toFixed(1), presentDays, lateCount, earlyCount };
+  };
+  if (userId || !isAdmin) {
+    return res.json(await summarize(isAdmin && userId ? userId : req.user.id));
+  }
+  const users = await query("SELECT id FROM users WHERE active = 1");
+  res.json(await Promise.all(users.map((u) => summarize(u.id))));
 });
 
 router.get("/attendance/:userId", async (req, res) => {

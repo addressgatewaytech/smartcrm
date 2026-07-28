@@ -11,6 +11,10 @@ import {
   Database, Upload, MessageCircle, Recycle, ArchiveX, ShieldAlert, Settings as SettingsIcon,
   Sun, Moon, BookOpen
 } from "lucide-react";
+import { money, fmtDate, Stamp, statusTone, Rail, DonutChart, LineChart, BarChart, SalesPersonBars, Modal, Empty, ConfirmModal, RowActions, exportCSV } from "./ui.jsx";
+import { TasksPage } from "./pages/tasks.jsx";
+import { AttendanceWidget, AttendancePage } from "./pages/attendance.jsx";
+import { LeadAssignmentManagerPage } from "./pages/leadAssignment.jsx";
 
 /* ---------------------------------------------------------------------- */
 /* DESIGN TOKENS                                                          */
@@ -314,6 +318,7 @@ const ROLE_LABEL = {
   sales_manager: "Sales Manager", sales_exec: "Sales Executive",
   ops_manager: "Operations Manager", ops_member: "Operations Team Member",
   accounts: "Accounts", hr: "HR", executive: "Executive", data_manager: "Data Manager",
+  lead_manager: "Lead Manager",
 };
 
 // Super Admin / Admin / Admin Executive all get elevated (admin-tier) access.
@@ -322,7 +327,6 @@ const ROLE_LABEL = {
 // (Dashboard + Reports only, no create/edit/approve/delete anywhere in the app).
 const ADMIN_LIKE = ["super_admin", "admin", "admin_exec"];
 
-const money = (n) => "QAR " + Number(n || 0).toLocaleString("en-US", { maximumFractionDigits: 0 });
 // Mirrors src/utils/helpers.js's professionalFeeTotal exactly — only Professional Fee line items
 // count toward business volume, pipeline value, and incentive calculations. A line's effective fee
 // type is its own `feeType` if tagged, else the quotation's whole-document `feeType` (so a
@@ -354,10 +358,6 @@ const quotationFeeTypeTone = (q) => {
   return label === "Government Fee" ? "neutral" : label === "Professional + Government Fee" ? "info" : "success";
 };
 const daysFromNow = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0,10); };
-// new Date(null) resolves to the 1970 epoch instead of "Invalid Date" — every call site across
-// the app assumed a date field would always be set, so this silently printed "01 Jan 1970" the
-// first time a genuinely-null one showed up (imported historical job cards with no target date).
-const fmtDate = (s) => s ? new Date(s).toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"numeric" }) : "—";
 // Whole days elapsed since a date (0 = today) — used as a simple aging indicator, e.g. how long
 // a job card has been open.
 const daysSince = (s) => Math.max(0, Math.floor((Date.now() - new Date(s).setHours(0,0,0,0)) / 86400000));
@@ -387,10 +387,6 @@ function BrandLogo({ scale = 1, onDark = false }) {
   );
 }
 
-function Stamp({ children, tone = "neutral" }) {
-  return <span className={`stamp stamp-${tone}`}><span className="ring" />{children}</span>;
-}
-
 function ThemePicker({ value, onChange }) {
   return (
     <div style={{ display:"flex", gap:10 }}>
@@ -410,226 +406,6 @@ function ThemePicker({ value, onChange }) {
         );
       })}
     </div>
-  );
-}
-
-function statusTone(status) {
-  const map = {
-    New: "info", Contacted: "info", "Follow-up Scheduled": "warning", Interested: "gold", "Not Interested": "danger", Qualified: "success", Unqualified: "neutral", Converted: "success",
-    Open: "info", "Quotation Sent": "gold", Won: "success", Lost: "danger",
-    Draft: "neutral", "Pending Manager Approval": "warning", Sent: "info",
-    "Under Negotiation": "warning", Approved: "success", Expired: "danger", Rejected: "danger",
-    Confirmed: "info", Invoiced: "gold", "Client Onboarded": "success",
-    "Partially Paid": "warning", Paid: "success", Overdue: "danger",
-    Created: "neutral", "Pending Approval": "warning", Assigned: "info", "In Progress": "gold", "On Hold": "warning",
-    Completed: "success", Cancelled: "danger",
-    "Converted to Lead": "success", Archived: "neutral",
-  };
-  return map[status] || "neutral";
-}
-
-function Rail({ steps, current }) {
-  const idx = steps.indexOf(current);
-  return (
-    <div className="rail">
-      {steps.map((step, i) => (
-        <div className="rail-step" key={step}>
-          <span className={`rail-dot ${i < idx ? "done" : i === idx ? "now" : ""}`} />
-          <span className={`rail-label ${i < idx ? "done" : i === idx ? "now" : ""}`}>{step}</span>
-          {i < steps.length - 1 && <span className={`rail-line ${i < idx ? "done" : ""}`} />}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-/* ---------------------------------------------------------------------- */
-/* LIGHTWEIGHT SVG CHARTS (no charting library — keeps the bundle small)   */
-/* ---------------------------------------------------------------------- */
-
-// data: [{ label, value, color }]. Renders a ring chart with a center total and a legend list.
-function DonutChart({ data, size = 160, centerLabel }) {
-  const total = data.reduce((a, d) => a + d.value, 0);
-  const r = size / 2;
-  const stroke = size * 0.22;
-  const radius = r - stroke / 2;
-  const circumference = 2 * Math.PI * radius;
-  let offset = 0;
-
-  return (
-    <div style={{ display:"flex", alignItems:"center", gap:20, flexWrap:"wrap" }}>
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ flexShrink:0 }}>
-        <circle cx={r} cy={r} r={radius} fill="none" stroke="var(--hair)" strokeWidth={stroke} />
-        {total > 0 && data.filter(d => d.value > 0).map((d, i) => {
-          const frac = d.value / total;
-          const dash = frac * circumference;
-          const el = (
-            <circle key={i} cx={r} cy={r} r={radius} fill="none" stroke={d.color} strokeWidth={stroke}
-              strokeDasharray={`${dash} ${circumference - dash}`} strokeDashoffset={-offset}
-              transform={`rotate(-90 ${r} ${r})`} strokeLinecap="butt" />
-          );
-          offset += dash;
-          return el;
-        })}
-        <text x={r} y={r - 4} textAnchor="middle" className="disp" style={{ fontSize: size*0.17, fill:"var(--ink)" }}>{total}</text>
-        {centerLabel && <text x={r} y={r + 16} textAnchor="middle" style={{ fontSize: size*0.075, fill:"var(--ink-soft)" }}>{centerLabel}</text>}
-      </svg>
-      <div style={{ display:"flex", flexDirection:"column", gap:7, minWidth:130 }}>
-        {data.map((d, i) => (
-          <div key={i} style={{ display:"flex", alignItems:"center", gap:8, fontSize:12.5 }}>
-            <span style={{ width:9, height:9, borderRadius:"50%", background:d.color, flexShrink:0 }} />
-            <span style={{ flex:1, color:"var(--ink-soft)" }}>{d.label}</span>
-            <span style={{ fontWeight:600 }}>{d.value}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// series: [{ label, points: number[], color }], labels: string[] (x-axis, same length as points).
-function LineChart({ series, labels, height = 200, formatY = (n) => n }) {
-  const width = 560;
-  const padL = 42, padB = 26, padT = 14, padR = 10;
-  const innerW = width - padL - padR, innerH = height - padT - padB;
-  const allValues = series.flatMap(s => s.points);
-  const maxV = Math.max(1, ...allValues);
-  const stepX = labels.length > 1 ? innerW / (labels.length - 1) : 0;
-  const x = (i) => padL + i * stepX;
-  const y = (v) => padT + innerH - (v / maxV) * innerH;
-  const gridLines = 4;
-
-  return (
-    <svg viewBox={`0 0 ${width} ${height}`} style={{ width:"100%", height:"auto" }}>
-      {Array.from({ length: gridLines + 1 }).map((_, i) => {
-        const gy = padT + (innerH / gridLines) * i;
-        const val = Math.round(maxV - (maxV / gridLines) * i);
-        return (
-          <g key={i}>
-            <line x1={padL} y1={gy} x2={width - padR} y2={gy} stroke="var(--hair)" strokeWidth={1} />
-            <text x={padL - 8} y={gy + 3} textAnchor="end" style={{ fontSize:9.5, fill:"var(--ink-soft)" }}>{formatY(val)}</text>
-          </g>
-        );
-      })}
-      {labels.map((l, i) => (
-        (labels.length <= 8 || i % Math.ceil(labels.length / 8) === 0) &&
-        <text key={i} x={x(i)} y={height - 6} textAnchor="middle" style={{ fontSize:9.5, fill:"var(--ink-soft)" }}>{l}</text>
-      ))}
-      {series.map((s, si) => {
-        const path = s.points.map((v, i) => `${i === 0 ? "M" : "L"} ${x(i)} ${y(v)}`).join(" ");
-        return (
-          <g key={si}>
-            <path d={path} fill="none" stroke={s.color} strokeWidth={2.25} strokeLinejoin="round" strokeLinecap="round" />
-            {s.points.map((v, i) => <circle key={i} cx={x(i)} cy={y(v)} r={3} fill={s.color} />)}
-          </g>
-        );
-      })}
-    </svg>
-  );
-}
-
-// data: [{ label, value, color }]. Horizontal bars, sorted as given.
-function BarChart({ data, height = 22 }) {
-  const max = Math.max(1, ...data.map(d => d.value));
-  return (
-    <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-      {data.map((d, i) => (
-        <div key={i}>
-          <div style={{ display:"flex", justifyContent:"space-between", fontSize:12, marginBottom:3 }}>
-            <span style={{ color:"var(--ink-soft)" }}>{d.label}</span>
-            <span style={{ fontWeight:600 }}>{d.value}</span>
-          </div>
-          <div style={{ background:"var(--page)", borderRadius:4, height, overflow:"hidden" }}>
-            <div style={{ width:`${(d.value/max)*100}%`, height:"100%", background:d.color, borderRadius:4, transition:"width .3s" }} />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// Per-salesperson breakdown for the Dashboard Charts tab — three proportional bars (leads/deals/
-// quotations, all on the same 0..max scale so they're comparable at a glance) plus collected vs.
-// pending payment figures underneath. Used both for the admin/sales-manager team view (one row per
-// salesperson) and for an individual sales_exec's own dashboard (a single row, same layout).
-function SalesPersonBars({ rows }) {
-  const max = Math.max(1, ...rows.flatMap(r => [r.leadsCount, r.dealsCount, r.quotesCount]));
-  const metrics = [
-    { key: "leadsCount", label: "Leads", color: "var(--info)" },
-    { key: "dealsCount", label: "Deals", color: "var(--gold)" },
-    { key: "quotesCount", label: "Quotations", color: "var(--success)" },
-  ];
-  return (
-    <div>
-      <div style={{ display:"flex", gap:14, fontSize:11, color:"var(--ink-soft)", marginBottom:14 }}>
-        {metrics.map(m => (
-          <span key={m.key}><span style={{ display:"inline-block", width:8, height:8, borderRadius:2, background:m.color, marginRight:4 }}/>{m.label}</span>
-        ))}
-      </div>
-      {rows.map(r => (
-        <div key={r.owner.id} style={{ marginBottom: 16 }}>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:6 }}>
-            <span style={{ fontSize:13, fontWeight:500, display:"flex", alignItems:"center", gap:6 }}>
-              <span className="avatar">{r.owner.initials}</span>{r.owner.name}
-            </span>
-            <span style={{ fontSize:11.5, color:"var(--ink-soft)" }}>
-              <span style={{ color:"var(--success)" }}>{money(r.collected)} collected</span>
-              {r.pendingCollection > 0 && <span style={{ color:"var(--danger)", marginLeft:8 }}>{money(r.pendingCollection)} pending</span>}
-            </span>
-          </div>
-          {metrics.map(m => (
-            <div key={m.key} style={{ display:"flex", alignItems:"center", gap:7, marginBottom:3 }}>
-              <div style={{ flex:1, height:6, background:"var(--page)", borderRadius:3, overflow:"hidden" }}>
-                <div style={{ width:`${(r[m.key]/max)*100}%`, height:"100%", background:m.color, borderRadius:3, transition:"width .3s" }} />
-              </div>
-              <span style={{ fontSize:11, color:"var(--ink-soft)", width:16, textAlign:"right" }}>{r[m.key]}</span>
-            </div>
-          ))}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function Modal({ title, sub, onClose, children, width }) {
-  return (
-    <div className="modal-backdrop">
-      <div className="modal" style={width ? { maxWidth: width } : undefined}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-          <div>
-            <h3>{title}</h3>
-            {sub && <p className="modal-sub">{sub}</p>}
-          </div>
-          <button className="btn btn-ghost btn-sm" onClick={onClose}><X size={16} /></button>
-        </div>
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function Empty({ icon: Icon, text }) {
-  return <div className="empty"><Icon size={30} /><div>{text}</div></div>;
-}
-
-function ConfirmModal({ title, body, confirmLabel = "Remove", onConfirm, onClose }) {
-  return (
-    <Modal title={title} sub={body} onClose={onClose}>
-      <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop: 4 }}>
-        <button className="btn" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" style={{ background:"var(--danger)", borderColor:"var(--danger)" }}
-          onClick={()=>{ onConfirm(); onClose(); }}>{confirmLabel}</button>
-      </div>
-    </Modal>
-  );
-}
-
-function RowActions({ onEdit, onRemove }) {
-  return (
-    <span style={{ display:"inline-flex", gap:2 }} onClick={e=>e.stopPropagation()}>
-      {onEdit && <button className="btn btn-sm btn-ghost" title="Edit" onClick={onEdit}><Pencil size={13}/></button>}
-      {onRemove && <button className="btn btn-sm btn-ghost" title="Remove" style={{ color:"var(--danger)" }} onClick={onRemove}><Trash2 size={13}/></button>}
-    </span>
   );
 }
 
@@ -750,6 +526,7 @@ const NAV = [
   ]},
   { group: "Operations", items: [
     { key: "jobs", label: "Job Cards", icon: ClipboardList, roles: [...ADMIN_LIKE,"ops_manager","ops_member","accounts","sales_manager","sales_exec"] },
+    { key: "tasks", label: "Tasks", icon: ListChecks, roles: "all" },
   ]},
   { group: "Subscriptions", items: [
     { key: "subscriptions", label: "Subscriptions", icon: Repeat, roles: [...ADMIN_LIKE,"sales_manager","sales_exec","accounts"] },
@@ -757,12 +534,16 @@ const NAV = [
   { group: "People", items: [
     { key: "incentives", label: "Incentives", icon: Coins, roles: "all" },
     { key: "hr", label: "HR", icon: Briefcase, roles: "all" },
+    { key: "attendance", label: "Attendance", icon: Clock, roles: "all" },
     { key: "knowledgeBase", label: "Knowledge Base", icon: BookOpen, roles: "all" },
     { key: "users", label: "Users & Roles", icon: UserCog, roles: ["super_admin","admin"] },
     { key: "templates", label: "Checklist Templates", icon: ListChecks, roles: [...ADMIN_LIKE,"ops_manager"] },
   ]},
   { group: "Data Manager", items: [
     { key: "dataManager", label: "Data Manager", icon: Database, roles: [...ADMIN_LIKE,"data_manager","sales_manager","sales_exec"] },
+  ]},
+  { group: "Lead Assignment Manager", items: [
+    { key: "leadAssignment", label: "Lead Assignment Manager", icon: UserPlus, roles: [...ADMIN_LIKE,"lead_manager","sales_manager"] },
   ]},
   { group: "Insights", items: [
     { key: "reports", label: "Reports", icon: BarChart3, roles: [...ADMIN_LIKE,"sales_manager","accounts","executive"] },
@@ -1029,8 +810,11 @@ export default function App() {
     orders: ["Sales Orders", "Confirmed orders converted from approved quotations"],
     invoices: ["Invoices", "Billing, payments and outstanding balances"],
     jobs: ["Job Cards", "Operations board — assignment through completion"],
+    tasks: ["Tasks", "Assign, track and approve employee tasks through to completion"],
     incentives: ["Incentives", "Daily, weekly and monthly incentive tracking"],
     hr: ["HR", "Employee records and document expiry"],
+    attendance: ["Attendance", "Sign in/out, monthly hours, late arrivals and early departures"],
+    leadAssignment: ["Lead Assignment Manager", "Assign leads and monitor the first-follow-up SLA"],
     knowledgeBase: ["Knowledge Base", "How to use SMART CRM — guides and workflow reference"],
     users: ["Users & Roles", "Manage platform access"],
     templates: ["Checklist Templates", "Configure the job checklist for each service"],
@@ -1153,8 +937,11 @@ export default function App() {
             {page === "orders" && <OrdersPage {...ctx} />}
             {page === "invoices" && <InvoicesPage {...ctx} />}
             {page === "jobs" && <JobsPage {...ctx} />}
+            {page === "tasks" && <TasksPage {...ctx} />}
             {page === "incentives" && <IncentivesPage {...ctx} />}
             {page === "hr" && <HrPage {...ctx} />}
+            {page === "attendance" && <AttendancePage {...ctx} />}
+            {page === "leadAssignment" && <LeadAssignmentManagerPage {...ctx} />}
             {page === "knowledgeBase" && <KnowledgeBasePage />}
             {page === "users" && <UsersPage {...ctx} />}
             {page === "templates" && <TemplatesPage {...ctx} />}
@@ -1350,6 +1137,10 @@ function Dashboard({ state, role, userId, setPage }) {
   ] : role === "hr" ? [
     { label: "Employees", value: state.employees.length, page: "hr" },
     { label: "Documents expiring", value: state.employees.flatMap(e=>e.docs).filter(d=>docState(d.expiry).label!=="Valid").length, page: "hr" },
+  ] : role === "lead_manager" ? [
+    { label: "Leads assigned", value: state.leads.filter(l=>l.assignedAt).length, page: "leadAssignment" },
+    { label: "SLA overdue", value: state.leads.filter(l=>l.slaViolated || (l.slaDueAt && new Date(l.slaDueAt) < new Date() && !(l.followUps||[]).some(f=>f.at && new Date(f.at)>=new Date(l.assignedAt)))).length, page: "leadAssignment" },
+    { label: "Unassigned leads", value: state.leads.filter(l=>!l.owner).length, page: "leadAssignment" },
   ] : [
     { label: "New leads this period", value: periodLeads, page: "leads" },
     { label: "Pipeline value", value: money(pipelineValue), page: "deals" },
@@ -1380,6 +1171,29 @@ function Dashboard({ state, role, userId, setPage }) {
             <div className="kpi-value disp">{k.value}</div>
           </div>
         ))}
+      </div>
+
+      <div className="agw-grid" style={{ gridTemplateColumns: "1fr 1fr", marginBottom: 20 }}>
+        <AttendanceWidget />
+        <div className="agw-card">
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 10 }}>
+            <strong style={{ fontSize: 14 }}>My tasks</strong>
+            <button className="btn btn-sm btn-ghost" onClick={()=>setPage("tasks")}>View all <ChevronRight size={14}/></button>
+          </div>
+          {(() => {
+            const myTasks = state.tasks.filter(t => t.assignedTo === userId && !["Completed","Rejected","Cancelled"].includes(t.status));
+            return myTasks.length === 0 ? <Empty icon={ListChecks} text="No open tasks assigned to you." /> : (
+              <div>
+                {myTasks.slice(0,5).map(t => (
+                  <div key={t.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom:"1px solid var(--hair)" }}>
+                    <div style={{ fontSize:13, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", maxWidth:220 }}>{t.title}</div>
+                    <Stamp tone={statusTone(t.status)}>{t.status}</Stamp>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+        </div>
       </div>
 
       <div className="agw-grid" style={{ gridTemplateColumns: "1.4fr 1fr" }}>
@@ -4743,17 +4557,6 @@ function usePeriod(defaultPeriod = "month") {
   return { period, setPeriod, customFrom, setCustomFrom, customTo, setCustomTo, range };
 }
 
-function exportCSV(filename, headers, rows) {
-  const esc = (v) => `"${String(v ?? "").replace(/"/g,'""')}"`;
-  const csv = [headers.map(esc).join(","), ...rows.map(r => r.map(esc).join(","))].join("\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url; a.download = filename;
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
-
 function downloadBlob(filename, blob) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -5769,6 +5572,10 @@ function NotificationsPage({ state, dispatch, myNotifs }) {
     : type==="job" ? { icon: ClipboardList, tone:"info" }
     : type==="accounts" ? { icon: CircleDollarSign, tone:"gold" }
     : type==="approval" ? { icon: ShieldCheck, tone:"info" }
+    : type==="task_assigned" ? { icon: ListChecks, tone:"info" }
+    : type==="task_approval" ? { icon: ShieldCheck, tone:"info" }
+    : type==="lead_assigned" ? { icon: UserPlus, tone:"info" }
+    : type==="lead_sla" ? { icon: AlertTriangle, tone:"danger" }
     : { icon: Ban, tone:"danger" };
 
   const audienceLabel = (aud) => aud.map(a => ROLE_LABEL[a] || state.employees.find(e=>e.id===a)?.name || a).join(", ");
@@ -5888,6 +5695,9 @@ const REPORT_TABS = [
   { key:"hr", label:"Attendance & HR" },
   { key:"incentives", label:"Incentives" },
   { key:"operations", label:"Operations" },
+  { key:"tasks", label:"Employee Tasks" },
+  { key:"leadPerformance", label:"Lead Performance" },
+  { key:"attendanceHours", label:"Attendance" },
 ];
 
 function ReportsPage({ state, role }) {
@@ -5915,6 +5725,9 @@ function ReportsPage({ state, role }) {
       {tab === "hr" && <AttendanceHRReport state={state} range={range} />}
       {tab === "incentives" && <IncentivesReport state={state} range={range} />}
       {tab === "operations" && <OperationsReport state={state} range={range} />}
+      {tab === "tasks" && <EmployeeTasksReport state={state} range={range} />}
+      {tab === "leadPerformance" && <LeadPerformanceReport state={state} range={range} />}
+      {tab === "attendanceHours" && <AttendanceHoursReport state={state} range={range} />}
     </div>
   );
 }
@@ -5929,18 +5742,38 @@ function ReportKpis({ items }) {
   );
 }
 
-function ReportTableCard({ title, onExport, children, empty, emptyIcon }) {
+function ReportTableCard({ title, onExport, onExportExcel, onExportPdf, children, empty, emptyIcon }) {
   return (
     <div style={{ marginBottom: 18 }}>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 8 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 8, flexWrap:"wrap", gap:6 }}>
         <strong style={{ fontSize:13 }}>{title}</strong>
-        {onExport && <button className="btn btn-sm btn-ghost" onClick={onExport}><Download size={13}/> Export CSV</button>}
+        <div style={{ display:"flex", gap:6 }}>
+          {onExport && <button className="btn btn-sm btn-ghost" onClick={onExport}><Download size={13}/> CSV</button>}
+          {onExportExcel && <button className="btn btn-sm btn-ghost" onClick={onExportExcel}><Download size={13}/> Excel</button>}
+          {onExportPdf && <button className="btn btn-sm btn-ghost" onClick={onExportPdf}><Download size={13}/> PDF</button>}
+        </div>
       </div>
       <div className="agw-card" style={{ padding: 0 }}>
         {empty ? <Empty icon={emptyIcon || FileText} text={empty} /> : children}
       </div>
     </div>
   );
+}
+
+// Excel/PDF export helpers shared by every report tab (CSV already had exportCSV in ui.jsx).
+function exportExcel(filename, headers, rows) {
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Report");
+  XLSX.writeFile(wb, filename);
+}
+async function exportPdf(title, subtitle, columns, rows) {
+  try {
+    const blob = await api.reports.downloadPdf(title, subtitle, columns, rows);
+    downloadBlob(`${title.replace(/[^a-z0-9]+/gi, "-")}.pdf`, blob);
+  } catch (err) {
+    alert(err instanceof ApiError ? err.message : "Couldn't generate the PDF — please try again.");
+  }
 }
 
 // Only the Professional Fee portion of a quotation counts as business volume — see
@@ -6299,6 +6132,151 @@ function OperationsReport({ state, range }) {
                 <td style={{maxWidth:180}}>{j.service}</td><td>{j.priority}</td>
                 <td><Stamp tone={statusTone(j.status)}>{j.status}</Stamp></td>
                 <td className="mono" style={{fontSize:12}}>{fmtDate(j.statusLog[0].at)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </ReportTableCard>
+    </div>
+  );
+}
+
+function EmployeeTasksReport({ state, range }) {
+  const tasks = state.tasks.filter(t => inRange(t.createdAt, range));
+  const completed = tasks.filter(t => t.status === "Completed").length;
+  const pending = tasks.filter(t => !["Completed","Rejected","Cancelled"].includes(t.status)).length;
+  const completionRate = tasks.length > 0 ? Math.round((completed/tasks.length)*100) : 0;
+  const nameOf = (uid) => state.employees.find(e=>e.id===uid)?.name || uid;
+
+  const columns = [
+    { key:"id", label:"Task" }, { key:"title", label:"Title" }, { key:"assignee", label:"Assigned To" },
+    { key:"priority", label:"Priority" }, { key:"status", label:"Status" }, { key:"progress", label:"Progress %" }, { key:"dueDate", label:"Due Date" },
+  ];
+  const pdfRows = tasks.map(t => ({ id:t.id, title:t.title, assignee: nameOf(t.assignedTo), priority:t.priority, status:t.status, progress:t.progressPct, dueDate: fmtDate(t.dueDate) }));
+
+  return (
+    <div>
+      <ReportKpis items={[
+        { label:"Tasks created", value: tasks.length },
+        { label:"Completed", value: completed },
+        { label:"Open", value: pending },
+        { label:"Completion rate", value: `${completionRate}%` },
+      ]} />
+      <ReportTableCard title="Employee tasks" empty={tasks.length===0 ? "No tasks created in this period." : null} emptyIcon={ListChecks}
+        onExport={tasks.length ? ()=>exportCSV("employee-tasks.csv", ["Task","Title","Assigned To","Priority","Status","Progress %","Due Date"],
+          tasks.map(t=>[t.id, t.title, nameOf(t.assignedTo), t.priority, t.status, t.progressPct, t.dueDate||""])) : null}
+        onExportExcel={tasks.length ? ()=>exportExcel("employee-tasks.xlsx", columns.map(c=>c.label), pdfRows.map(r=>columns.map(c=>r[c.key]))) : null}
+        onExportPdf={tasks.length ? ()=>exportPdf("Employee Tasks", `${fmtDate(range[0])} – ${fmtDate(range[1])}`, columns, pdfRows) : null}>
+        <table className="agw-table">
+          <thead><tr><th>Task</th><th>Title</th><th>Assigned to</th><th>Priority</th><th>Status</th><th>Progress</th><th>Due date</th></tr></thead>
+          <tbody>
+            {tasks.map(t => (
+              <tr key={t.id}>
+                <td className="mono">{t.id}</td><td style={{maxWidth:200}}>{t.title}</td><td>{nameOf(t.assignedTo)}</td>
+                <td>{t.priority}</td><td><Stamp tone={statusTone(t.status)}>{t.status}</Stamp></td>
+                <td className="mono">{t.progressPct}%</td>
+                <td className="mono" style={{fontSize:12}}>{fmtDate(t.dueDate)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </ReportTableCard>
+    </div>
+  );
+}
+
+function LeadPerformanceReport({ state, range }) {
+  const leads = state.leads.filter(l => l.assignedAt && inRange(l.assignedAt, range));
+  const slaOf = (l) => {
+    const met = (l.followUps||[]).some(f => f.at && new Date(f.at) >= new Date(l.assignedAt));
+    if (met) return "Met";
+    if (l.slaViolated || (l.slaDueAt && new Date(l.slaDueAt) < new Date())) return "Violated";
+    return "Pending";
+  };
+  const met = leads.filter(l => slaOf(l)==="Met").length;
+  const violated = leads.filter(l => slaOf(l)==="Violated").length;
+  const slaRate = leads.length > 0 ? Math.round((met/leads.length)*100) : 0;
+  const nameOf = (uid) => state.employees.find(e=>e.id===uid)?.name || uid;
+
+  const columns = [
+    { key:"id", label:"Lead" }, { key:"company", label:"Company" }, { key:"owner", label:"Owner" },
+    { key:"assignedAt", label:"Assigned At" }, { key:"slaDueAt", label:"SLA Due" }, { key:"sla", label:"SLA" },
+  ];
+  const pdfRows = leads.map(l => ({ id:l.id, company:l.company, owner: nameOf(l.owner), assignedAt: fmtDate(l.assignedAt), slaDueAt: fmtDate(l.slaDueAt), sla: slaOf(l) }));
+
+  return (
+    <div>
+      <ReportKpis items={[
+        { label:"Leads assigned", value: leads.length },
+        { label:"SLA met", value: met },
+        { label:"SLA violated", value: violated },
+        { label:"SLA rate", value: `${slaRate}%` },
+      ]} />
+      <ReportTableCard title="Lead assignment SLA performance" empty={leads.length===0 ? "No leads assigned in this period." : null} emptyIcon={UserPlus}
+        onExport={leads.length ? ()=>exportCSV("lead-performance.csv", ["Lead","Company","Owner","Assigned At","SLA Due","SLA"],
+          leads.map(l=>[l.id, l.company, nameOf(l.owner), l.assignedAt||"", l.slaDueAt||"", slaOf(l)])) : null}
+        onExportExcel={leads.length ? ()=>exportExcel("lead-performance.xlsx", columns.map(c=>c.label), pdfRows.map(r=>columns.map(c=>r[c.key]))) : null}
+        onExportPdf={leads.length ? ()=>exportPdf("Lead Performance", `${fmtDate(range[0])} – ${fmtDate(range[1])}`, columns, pdfRows) : null}>
+        <table className="agw-table">
+          <thead><tr><th>Lead</th><th>Company</th><th>Owner</th><th>Assigned at</th><th>SLA due</th><th>SLA</th></tr></thead>
+          <tbody>
+            {leads.map(l => (
+              <tr key={l.id}>
+                <td className="mono">{l.id}</td><td>{l.company}</td><td>{nameOf(l.owner)}</td>
+                <td className="mono" style={{fontSize:12}}>{fmtDate(l.assignedAt)}</td>
+                <td className="mono" style={{fontSize:12}}>{fmtDate(l.slaDueAt)}</td>
+                <td><Stamp tone={slaOf(l)==="Met" ? "success" : slaOf(l)==="Violated" ? "danger" : "warning"}>{slaOf(l)}</Stamp></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </ReportTableCard>
+    </div>
+  );
+}
+
+function AttendanceHoursReport({ state, range }) {
+  const [rows, setRows] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    api.hr.attendanceSummary(range[0], range[1]).then(data => { if (!cancelled) setRows(Array.isArray(data) ? data : [data]); }).catch(() => { if (!cancelled) setRows([]); });
+    return () => { cancelled = true; };
+  }, [range[0], range[1]]);
+
+  const nameOf = (uid) => state.employees.find(e=>e.id===uid)?.name || uid;
+  const deptOf = (uid) => state.employees.find(e=>e.id===uid)?.dept || "";
+  const loaded = rows !== null;
+  const list = rows || [];
+  const totalHours = list.reduce((a,r)=>a+r.totalHours,0);
+  const totalLate = list.reduce((a,r)=>a+r.lateCount,0);
+
+  const columns = [
+    { key:"employee", label:"Employee" }, { key:"department", label:"Department" }, { key:"presentDays", label:"Present Days" },
+    { key:"totalHours", label:"Total Hours" }, { key:"lateCount", label:"Late Arrivals" }, { key:"earlyCount", label:"Early Departures" },
+  ];
+  const pdfRows = list.map(r => ({ employee: nameOf(r.userId), department: deptOf(r.userId), presentDays: r.presentDays, totalHours: r.totalHours, lateCount: r.lateCount, earlyCount: r.earlyCount }));
+
+  return (
+    <div>
+      <ReportKpis items={[
+        { label:"Employees", value: list.length },
+        { label:"Total hours logged", value: totalHours.toFixed(1) },
+        { label:"Late arrivals", value: totalLate },
+      ]} />
+      <ReportTableCard title="Attendance — hours & lateness" empty={!loaded ? "Loading…" : list.length===0 ? "No attendance records in this period." : null} emptyIcon={Clock}
+        onExport={list.length ? ()=>exportCSV("attendance-hours.csv", ["Employee","Department","Present Days","Total Hours","Late Arrivals","Early Departures"],
+          list.map(r=>[nameOf(r.userId), deptOf(r.userId), r.presentDays, r.totalHours, r.lateCount, r.earlyCount])) : null}
+        onExportExcel={list.length ? ()=>exportExcel("attendance-hours.xlsx", columns.map(c=>c.label), pdfRows.map(r=>columns.map(c=>r[c.key]))) : null}
+        onExportPdf={list.length ? ()=>exportPdf("Attendance", `${fmtDate(range[0])} – ${fmtDate(range[1])}`, columns, pdfRows) : null}>
+        <table className="agw-table">
+          <thead><tr><th>Employee</th><th>Department</th><th>Present days</th><th>Total hours</th><th>Late arrivals</th><th>Early departures</th></tr></thead>
+          <tbody>
+            {list.map(r => (
+              <tr key={r.userId}>
+                <td>{nameOf(r.userId)}</td><td>{deptOf(r.userId)}</td>
+                <td>{r.presentDays}</td><td className="mono">{r.totalHours}h</td>
+                <td>{r.lateCount > 0 ? <Stamp tone="warning">{r.lateCount}</Stamp> : "—"}</td>
+                <td>{r.earlyCount > 0 ? <Stamp tone="warning">{r.earlyCount}</Stamp> : "—"}</td>
               </tr>
             ))}
           </tbody>

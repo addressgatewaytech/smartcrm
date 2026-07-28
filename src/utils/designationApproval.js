@@ -10,6 +10,7 @@ const APPROVAL_TYPES = [
   { key: "job_card_completion", label: "Job Card Completion Approval", builtInRoles: ["Operations Manager", "Admin-tier"] },
   { key: "leave_request", label: "Leave Request Approval", builtInRoles: ["HR", "Admin-tier"] },
   { key: "punch_request", label: "Punch Request Approval", builtInRoles: ["HR", "Admin-tier"] },
+  { key: "task_approval", label: "Employee Task Approval", builtInRoles: ["Sales Manager", "Operations Manager", "HR", "Admin-tier"] },
 ];
 
 // True if `userId`'s own designation is on the assigned approver list for `approvalTypeKey"

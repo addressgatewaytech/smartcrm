@@ -4,12 +4,12 @@ import {
   mapUser, mapLead, mapDeal, mapQuotation, mapCustomer, mapSalesOrder, mapInvoice, mapJobCard,
   mapNotification, mapDataRecord, mapDataSettings, mapExportHistoryEntry, mapSubscriptionPlans,
   mapSubscription, mapQuotationTemplates, mapIncentiveRule, mapLeaveRequest, mapPunchRequest, mapAttendance,
-  mapAppSettings,
+  mapAppSettings, mapTask,
 } from "./mappers";
 
 const emptyState = () => ({
   services: [], employees: [], leads: [], deals: [], quotations: [], customers: [],
-  salesOrders: [], invoices: [], jobCards: [], notifications: [], quotationTemplates: {},
+  salesOrders: [], invoices: [], jobCards: [], tasks: [], notifications: [], quotationTemplates: {},
   checklistTemplates: {}, incentiveRules: [], leaveRequests: [], punchRequests: [],
   subscriptionPlans: {}, subscriptions: [], dataRecords: [], dataExportHistory: [],
   dataSettings: { dailyEmailTarget: 25, dailyWhatsappTarget: 25, emailIntervalMinutes: 5, whatsappIntervalMinutes: 10, recyclingEnabled: true, recyclingDays: 30, emailTemplate: { subject: "", body: "" }, whatsappTemplate: { body: "" } },
@@ -42,6 +42,7 @@ export function useApiStore(enabled) {
       salesOrders: async () => ({ salesOrders: (await api.salesOrders.list()).map(mapSalesOrder) }),
       invoices: async () => ({ invoices: (await api.invoices.list()).map(mapInvoice) }),
       jobCards: async () => ({ jobCards: (await api.jobCards.list()).map(mapJobCard) }),
+      tasks: async () => ({ tasks: (await api.tasks.list()).map(mapTask) }),
       notifications: async () => ({ notifications: (await api.notifications.list()).map(mapNotification) }),
       quotationTemplates: async () => ({ quotationTemplates: mapQuotationTemplates(await api.quotationTemplates.list()) }),
       checklistTemplates: async () => ({ checklistTemplates: await api.checklistTemplates.list() }),
@@ -132,6 +133,7 @@ export function useApiStore(enabled) {
       case "UPDATE_LEAD": await api.leads.update(action.id, action.payload); return refresh(["leads"]);
       case "DELETE_LEAD": await api.leads.remove(action.id); return refresh(["leads"]);
       case "CONVERT_LEAD_TO_DEAL": await api.leads.convertToDeal(action.id, action.value); return refresh(["leads", "deals"]);
+      case "ASSIGN_LEAD": await api.leads.assign(action.id, action.userId); return refresh(["leads", "notifications"]);
 
       // --- Deals ----------------------------------------------------------------------------
       case "ADD_DEAL": await api.deals.create(action.payload); return refresh(["deals"]);
@@ -210,6 +212,16 @@ export function useApiStore(enabled) {
       case "UPDATE_JOB_CARD": await api.jobCards.update(action.id, action.payload); return refresh(["jobCards"]);
       case "SET_JOB_STATUS": await api.jobCards.setStatus(action.id, action.status, action.reason); return refresh(["jobCards", "notifications"]);
       case "DELETE_JOB_CARD": await api.jobCards.remove(action.id); return refresh(["jobCards"]);
+
+      // --- Tasks -----------------------------------------------------------------------
+      case "CREATE_TASK": await api.tasks.create(action.payload); return refresh(["tasks", "notifications"]);
+      case "UPDATE_TASK": await api.tasks.update(action.id, action.payload); return refresh(["tasks"]);
+      case "ACCEPT_TASK": await api.tasks.accept(action.id); return refresh(["tasks"]);
+      case "PROGRESS_TASK": await api.tasks.progress(action.id, action.progressPct, action.note); return refresh(["tasks"]);
+      case "SUBMIT_TASK_FOR_APPROVAL": await api.tasks.submitForApproval(action.id); return refresh(["tasks", "notifications"]);
+      case "APPROVE_TASK": await api.tasks.approve(action.id); return refresh(["tasks"]);
+      case "REJECT_TASK": await api.tasks.reject(action.id, action.reason); return refresh(["tasks"]);
+      case "DELETE_TASK": await api.tasks.remove(action.id); return refresh(["tasks"]);
 
       // --- Notifications -------------------------------------------------------------------
       case "MARK_NOTIF_READ": await api.notifications.markRead(action.id); return refresh(["notifications"]);
