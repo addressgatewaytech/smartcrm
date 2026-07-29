@@ -131,7 +131,23 @@ async function getActivity(userId) {
   return row || { emails_sent: 0, whatsapps_sent: 0, last_email_at: null, last_whatsapp_at: null };
 }
 
+// Re-contacting the same record too soon reads as spam to the recipient, regardless of who on
+// the team is sending it or how many they've sent today — a full month's cooldown per record,
+// separate from (and on top of) the existing per-user daily-cap/interval pacing above.
+const RECONTACT_COOLDOWN_DAYS = 30;
+function recontactBlockedReason(lastSentAt) {
+  if (!lastSentAt) return null;
+  const daysSince = (Date.now() - new Date(lastSentAt).getTime()) / 86400000;
+  if (daysSince >= RECONTACT_COOLDOWN_DAYS) return null;
+  return `Already contacted ${Math.floor(daysSince)} day(s) ago — available again in ${Math.ceil(RECONTACT_COOLDOWN_DAYS - daysSince)} day(s)`;
+}
+
 router.post("/:id/send-email", async (req, res) => {
+  const [record] = await query("SELECT * FROM data_records WHERE id = ?", [req.params.id]);
+  if (!record) return res.status(404).json({ error: "Not found" });
+  const recontactReason = recontactBlockedReason(record.email_sent_at);
+  if (recontactReason) return res.status(400).json({ error: recontactReason });
+
   const [settings] = await query("SELECT * FROM data_settings WHERE id = 1");
   const activity = await getActivity(req.user.id);
   if (activity.emails_sent >= settings.daily_email_target) return res.status(400).json({ error: "Daily email limit reached" });
@@ -140,7 +156,6 @@ router.post("/:id/send-email", async (req, res) => {
     if (minsSince < settings.email_interval_minutes) return res.status(400).json({ error: `Wait ${Math.ceil(settings.email_interval_minutes - minsSince)} more minute(s)` });
   }
 
-  const [record] = await query("SELECT * FROM data_records WHERE id = ?", [req.params.id]);
   const subject = req.body.subject || settings.email_subject;
   const body = req.body.body || settings.email_body;
   await sendMail({ to: record.email, subject, text: body });
@@ -155,6 +170,11 @@ router.post("/:id/send-email", async (req, res) => {
 });
 
 router.post("/:id/send-whatsapp", async (req, res) => {
+  const [record] = await query("SELECT * FROM data_records WHERE id = ?", [req.params.id]);
+  if (!record) return res.status(404).json({ error: "Not found" });
+  const recontactReason = recontactBlockedReason(record.whatsapp_sent_at);
+  if (recontactReason) return res.status(400).json({ error: recontactReason });
+
   const [settings] = await query("SELECT * FROM data_settings WHERE id = 1");
   const activity = await getActivity(req.user.id);
   if (activity.whatsapps_sent >= settings.daily_whatsapp_target) return res.status(400).json({ error: "Daily WhatsApp limit reached" });

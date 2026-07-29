@@ -6403,8 +6403,20 @@ function MyDataTab({ state, dispatch, role, userId }) {
   const [emailFor, setEmailFor] = useState(null);
   const [whatsappFor, setWhatsappFor] = useState(null);
 
+  // A record that was already emailed/WhatsApp'd stays off-limits for a full month regardless of
+  // who's sending or the team's daily pacing — re-contacting too soon reads as spam to the
+  // recipient. Separate from (and checked before) the per-user daily-cap/interval limits below.
+  const RECONTACT_COOLDOWN_DAYS = 30;
+  const recontactBlockedReason = (sentAt) => {
+    if (!sentAt) return null;
+    const days = daysSince(sentAt);
+    if (days >= RECONTACT_COOLDOWN_DAYS) return null;
+    return `Contacted ${days}d ago — again in ${RECONTACT_COOLDOWN_DAYS - days}d`;
+  };
   const emailBlockedReason = (d) => {
     if (!d.email) return "No email";
+    const recontact = recontactBlockedReason(d.emailSentAt);
+    if (recontact) return recontact;
     if (act.emailsSent >= settings.dailyEmailTarget) return "Daily limit reached";
     const mins = minutesSince(act.lastEmailAt);
     if (mins < settings.emailIntervalMinutes) return `Wait ${Math.ceil(settings.emailIntervalMinutes - mins)}m`;
@@ -6412,6 +6424,8 @@ function MyDataTab({ state, dispatch, role, userId }) {
   };
   const whatsappBlockedReason = (d) => {
     if (!d.mobile) return "No mobile";
+    const recontact = recontactBlockedReason(d.whatsappSentAt);
+    if (recontact) return recontact;
     if (act.whatsappsSent >= settings.dailyWhatsappTarget) return "Daily limit reached";
     const mins = minutesSince(act.lastWhatsappAt);
     if (mins < settings.whatsappIntervalMinutes) return `Wait ${Math.ceil(settings.whatsappIntervalMinutes - mins)}m`;
