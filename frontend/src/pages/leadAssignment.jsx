@@ -45,18 +45,20 @@ export function LeadAssignmentManagerPage({ state, dispatch, role }) {
   const nameOf = (uid) => state.employees.find((e) => e.id === uid)?.name || uid || "—";
   const initialsOf = (uid) => state.employees.find((e) => e.id === uid)?.initials || "?";
 
-  // Per-employee SLA performance — one bar chart entry per owner with at least one distributed,
-  // assigned lead.
+  // Per-employee SLA performance — counts only leads actually confirmed "Met" (a follow-up was
+  // logged within the SLA window). A lead that's merely still "Pending" (not yet due, or due but
+  // not yet swept as violated) hasn't succeeded at anything yet, so it must NOT count as met —
+  // that was the bug: a freshly assigned lead showed up as a green "met" bar before any follow-up
+  // had happened at all.
   const perOwner = {};
   for (const l of distributedLeads) {
     if (!l.owner || !l.assignedAt) continue;
-    perOwner[l.owner] = perOwner[l.owner] || { total: 0, violated: 0 };
-    perOwner[l.owner].total++;
-    if (slaState(l).label === "Violated" || slaState(l).label === "Overdue") perOwner[l.owner].violated++;
+    perOwner[l.owner] = perOwner[l.owner] || { met: 0 };
+    if (slaState(l).label === "Met") perOwner[l.owner].met++;
   }
   const perfData = Object.entries(perOwner).map(([uid, v]) => ({
     label: nameOf(uid),
-    value: v.total - v.violated,
+    value: v.met,
     color: "var(--success)",
   }));
 

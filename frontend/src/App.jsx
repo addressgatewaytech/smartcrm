@@ -787,7 +787,14 @@ export default function App() {
     : role === "ops_manager" ? state.jobCards.filter(j => j.status === "Created").length
     : role === "ops_member" ? state.jobCards.filter(j => j.status === "Assigned" && j.assignees.includes(userId)).length
     : 0;
-  const navBadge = (key) => key === "notifications" ? unreadCount : key === "jobs" ? jobsBadgeCount : 0;
+  // Tasks needing this viewer's attention — mirrors the Job Cards badge above. Managers/admin see
+  // tasks awaiting their approval decision; everyone else sees tasks newly assigned to them that
+  // still need accepting. state.tasks is already scoped server-side (own tasks unless admin-tier),
+  // so this never counts someone else's activity.
+  const tasksBadgeCount = ADMIN_LIKE.includes(role) || ["sales_manager","ops_manager","hr"].includes(role)
+    ? state.tasks.filter(t => t.status === "Pending Approval").length
+    : state.tasks.filter(t => t.status === "Assigned" && t.assignedTo === userId).length;
+  const navBadge = (key) => key === "notifications" ? unreadCount : key === "jobs" ? jobsBadgeCount : key === "tasks" ? tasksBadgeCount : 0;
 
   const visibleNav = NAV.map(g => ({ ...g, items: g.items.filter(i => i.roles === "all" || i.roles.includes(role)) }))
     .filter(g => g.items.length);
