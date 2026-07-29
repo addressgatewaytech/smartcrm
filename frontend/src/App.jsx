@@ -4333,7 +4333,7 @@ function NewJobCardModal({ state, dispatch, onClose }) {
 }
 
 function AssignModal({ job, dispatch, employees, onClose }) {
-  const opsTeam = employees.filter(t => t.active !== false && (t.roles.includes("ops_member") || t.roles.includes("ops_manager")));
+  const opsTeam = employees.filter(t => t.active !== false && t.category !== "Management" && (t.roles.includes("ops_member") || t.roles.includes("ops_manager")));
   const [selected, setSelected] = useState(job.assignees);
   const toggle = (id) => setSelected(sel => sel.includes(id) ? sel.filter(x=>x!==id) : [...sel, id]);
   return (
@@ -5321,7 +5321,7 @@ function StaffDocsModal({ employee: e, dispatch, onClose }) {
 
 function UsersPage({ state, dispatch, role }) {
   const [tab, setTab] = useState("users");
-  const blank = { name:"", email:"", password:"", roles:["sales_exec"], dept:"Sales", initials:"", joinedDate: daysFromNow(0), dateOfBirth:"", designation:"" };
+  const blank = { name:"", email:"", password:"", roles:["sales_exec"], dept:"Sales", initials:"", joinedDate: daysFromNow(0), dateOfBirth:"", designation:"", category:"Staff" };
   const [showAdd, setShowAdd] = useState(false);
   const [editUser, setEditUser] = useState(null);
   const [removeUser, setRemoveUser] = useState(null);
@@ -5332,7 +5332,7 @@ function UsersPage({ state, dispatch, role }) {
   const [query, setQuery] = useState("");
   const visibleUsers = state.employees.filter(e => [e.name, e.dept, e.designation, e.email].filter(Boolean).join(" ").toLowerCase().includes(query.trim().toLowerCase()));
 
-  const openEdit = (e) => { setEditUser(e); setForm({ name:e.name, email:e.email||"", password:"", roles:e.roles, dept:e.dept, initials:e.initials, joinedDate: (e.joined||"").slice(0,10), dateOfBirth: (e.dateOfBirth||"").slice(0,10), designation:e.designation||"" }); setSaveError(""); };
+  const openEdit = (e) => { setEditUser(e); setForm({ name:e.name, email:e.email||"", password:"", roles:e.roles, dept:e.dept, initials:e.initials, joinedDate: (e.joined||"").slice(0,10), dateOfBirth: (e.dateOfBirth||"").slice(0,10), designation:e.designation||"", category:e.category||"Staff" }); setSaveError(""); };
   const closeModal = () => { setShowAdd(false); setEditUser(null); setForm(blank); setSaveError(""); };
 
   // Not fire-and-forget: a rejected dispatch (e.g. "email already in use") used to be silently
@@ -5342,7 +5342,7 @@ function UsersPage({ state, dispatch, role }) {
     setSaveError("");
     try {
       if (editUser) {
-        const payload = { name: form.name, email: form.email, roles: form.roles, dept: form.dept, initials: form.initials, joinedDate: form.joinedDate, dateOfBirth: form.dateOfBirth, designation: form.designation };
+        const payload = { name: form.name, email: form.email, roles: form.roles, dept: form.dept, initials: form.initials, joinedDate: form.joinedDate, dateOfBirth: form.dateOfBirth, designation: form.designation, category: form.category };
         await dispatch({type:"UPDATE_USER", id:editUser.id, payload});
         if (form.password) await dispatch({type:"RESET_USER_PASSWORD", id:editUser.id, password: form.password});
       } else {
@@ -5371,8 +5371,8 @@ function UsersPage({ state, dispatch, role }) {
                 style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:8, padding:"7px 12px 7px 34px", fontSize:13, background:"var(--surface)" }} />
             </div>
             <button className="btn btn-sm" onClick={()=>exportCSV("users.csv",
-              ["Name","Email","Designation","Roles","Department","Status"],
-              visibleUsers.map(e=>[e.name, e.email||"", e.designation||"", e.roles.map(r=>ROLE_LABEL[r]).join(", "), e.dept, e.active===false?"Deactivated":"Active"]))}>
+              ["Name","Email","Designation","Roles","Category","Department","Status"],
+              visibleUsers.map(e=>[e.name, e.email||"", e.designation||"", e.roles.map(r=>ROLE_LABEL[r]).join(", "), e.category||"Staff", e.dept, e.active===false?"Deactivated":"Active"]))}>
               <Download size={13}/> Export
             </button>
             <button className="btn btn-primary" onClick={()=>{ setForm(blank); setSaveError(""); setShowAdd(true); }}><UserPlus size={15}/> Add user</button>
@@ -5385,12 +5385,13 @@ function UsersPage({ state, dispatch, role }) {
       {tab === "users" && <>
       <div className="agw-card" style={{ padding: 0 }}>
         <table className="agw-table">
-          <thead><tr><th>User</th><th>Roles</th><th>Department</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>User</th><th>Roles</th><th>Category</th><th>Department</th><th>Status</th><th></th></tr></thead>
           <tbody>
             {visibleUsers.map(e => (
               <tr key={e.id}>
                 <td style={{display:"flex",alignItems:"center",gap:8}}><span className="avatar">{e.initials}</span>{e.name}</td>
                 <td style={{display:"flex",gap:4,flexWrap:"wrap"}}>{e.roles.map(r=><span key={r} className="pill">{ROLE_LABEL[r]}</span>)}</td>
+                <td><Stamp tone={e.category==="Management" ? "gold" : "neutral"}>{e.category||"Staff"}</Stamp></td>
                 <td>{e.dept}</td>
                 <td>{e.active === false ? <Stamp tone="neutral">Deactivated</Stamp> : <Stamp tone="success">Active</Stamp>}</td>
                 <td style={{ display:"flex", gap:6, alignItems:"center" }}>
@@ -5417,6 +5418,14 @@ function UsersPage({ state, dispatch, role }) {
           <div className="row2">
             <div className="field"><label>Department</label><input value={form.dept} onChange={e=>setForm({...form,dept:e.target.value})} /></div>
             <div className="field"><label>Designation (job title)</label><input value={form.designation} onChange={e=>setForm({...form,designation:e.target.value})} placeholder="e.g. Senior Sales Executive" /></div>
+          </div>
+          <div className="field">
+            <label>Category</label>
+            <select value={form.category} onChange={e=>setForm({...form,category:e.target.value})}>
+              <option value="Staff">Staff</option>
+              <option value="Management">Management</option>
+            </select>
+            {form.category === "Management" && <div className="side-note" style={{marginTop:6}}>Management users don't show up as assignees for Job Cards, Tasks, or Lead Assignment.</div>}
           </div>
           <div className="row2">
             <div className="field"><label>Join date</label><input type="date" value={form.joinedDate} onChange={e=>setForm({...form,joinedDate:e.target.value})} /></div>

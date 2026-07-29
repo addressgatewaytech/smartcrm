@@ -146,7 +146,7 @@ function NewTaskModal({ state, dispatch, onClose }) {
   const [priority, setPriority] = useState("Normal");
   const [dueDate, setDueDate] = useState("");
   const [assignedTo, setAssignedTo] = useState("");
-  const activeEmployees = state.employees.filter((e) => e.active !== false);
+  const activeEmployees = state.employees.filter((e) => e.active !== false && e.category !== "Management");
   const department = state.employees.find((e) => e.id === assignedTo)?.dept || "";
 
   const submit = async () => {

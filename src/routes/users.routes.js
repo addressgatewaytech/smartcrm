@@ -25,13 +25,13 @@ router.use(requireAuth);
 // HR ("roles: all" in the nav) needs every authenticated user to see the roster — only
 // create/edit/delete of Users & Roles itself stays restricted to super_admin/admin below.
 router.get("/", async (req, res) => {
-  const rows = await query("SELECT id, name, email, roles, dept, initials, designation, photo_url, leave_balance, active, joined_date, date_of_birth FROM users ORDER BY name");
+  const rows = await query("SELECT id, name, email, roles, dept, initials, designation, category, photo_url, leave_balance, active, joined_date, date_of_birth FROM users ORDER BY name");
   const docs = await query("SELECT * FROM staff_docs");
   res.json(rows.map((r) => ({ ...r, docs: docs.filter((d) => d.user_id === r.id) })));
 });
 
 router.post("/", requireRole(["super_admin", "admin"]), async (req, res) => {
-  const { name, email, password, roles, dept, initials, joinedDate, dateOfBirth, designation } = req.body;
+  const { name, email, password, roles, dept, initials, joinedDate, dateOfBirth, designation, category } = req.body;
   if (!name || !roles?.length) return res.status(400).json({ error: "Name and at least one role are required" });
 
   if (email) {
@@ -45,14 +45,14 @@ router.post("/", requireRole(["super_admin", "admin"]), async (req, res) => {
   // nothing was typed in, since that's the closest sensible guess for a brand-new user.
   const resolvedDesignation = designation?.trim() || roles.map((r) => ROLE_LABEL[r]).join(" + ");
   await query(
-    `INSERT INTO users (id, name, email, password_hash, roles, dept, initials, designation, joined_date, date_of_birth) VALUES (?,?,?,?,?,?,?,?,?,?)`,
-    [id, name, email || null, hash, JSON.stringify(roles), dept || null, initials || name.slice(0, 2).toUpperCase(), resolvedDesignation, joinedDate || today(), dateOfBirth || null]
+    `INSERT INTO users (id, name, email, password_hash, roles, dept, initials, designation, category, joined_date, date_of_birth) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+    [id, name, email || null, hash, JSON.stringify(roles), dept || null, initials || name.slice(0, 2).toUpperCase(), resolvedDesignation, category === "Management" ? "Management" : "Staff", joinedDate || today(), dateOfBirth || null]
   );
   res.status(201).json({ id });
 });
 
 router.patch("/:id", requireRole(["super_admin", "admin"]), async (req, res) => {
-  const { name, email, roles, dept, initials, joinedDate, dateOfBirth, designation } = req.body;
+  const { name, email, roles, dept, initials, joinedDate, dateOfBirth, designation, category } = req.body;
   const fields = [];
   const params = [];
   if (name) { fields.push("name = ?"); params.push(name); }
@@ -65,6 +65,7 @@ router.patch("/:id", requireRole(["super_admin", "admin"]), async (req, res) => 
   // overwrites it. It's only updated when the caller actually sends one.
   if (roles) { fields.push("roles = ?"); params.push(JSON.stringify(roles)); }
   if (designation !== undefined) { fields.push("designation = ?"); params.push(designation?.trim() || null); }
+  if (category !== undefined) { fields.push("category = ?"); params.push(category === "Management" ? "Management" : "Staff"); }
   if (dept) { fields.push("dept = ?"); params.push(dept); }
   if (initials) { fields.push("initials = ?"); params.push(initials); }
   if (joinedDate !== undefined) { fields.push("joined_date = ?"); params.push(joinedDate || null); }

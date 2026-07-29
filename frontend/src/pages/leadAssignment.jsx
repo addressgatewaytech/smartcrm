@@ -165,7 +165,7 @@ function AssignLeadModal({ lead, employees, dispatch, onClose }) {
   const [userId, setUserId] = useState(lead.owner || "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const activeEmployees = employees.filter((e) => e.active !== false);
+  const activeEmployees = employees.filter((e) => e.active !== false && e.category !== "Management");
 
   const submit = async () => {
     setSaving(true); setError("");

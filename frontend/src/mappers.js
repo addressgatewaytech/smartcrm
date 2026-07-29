@@ -9,6 +9,7 @@ export const mapUser = (u) => ({
   dept: u.dept,
   initials: u.initials,
   designation: u.designation,
+  category: u.category || "Staff",
   photoUrl: u.photo_url ?? u.photoUrl ?? null,
   leaveBalance: u.leave_balance ?? u.leaveBalance,
   active: !!(u.active ?? true),

@@ -28,6 +28,10 @@ CREATE TABLE IF NOT EXISTS users (
   dept          VARCHAR(100),
   initials      VARCHAR(5),
   designation   VARCHAR(200),                     -- derived (roles joined) but cached for display/reports
+  -- Simple Admin-set tag, independent of roles/HR fields: Management-tagged users are excluded
+  -- from assignee pickers (Job Cards, Tasks, Lead Assignment) since they oversee/approve work
+  -- rather than being handed it directly. No other access difference between the two.
+  category      ENUM('Management','Staff') NOT NULL DEFAULT 'Staff',
   photo_url     VARCHAR(500),
   leave_balance INT DEFAULT 21,
   active        TINYINT(1) DEFAULT 1,
