@@ -4,6 +4,7 @@ const { requireAuth } = require("../middleware/auth");
 const { requireRole, isAdminLike } = require("../middleware/roles");
 const { nextId, daysFromNow } = require("../utils/helpers");
 const { requireRoleOrApprovalTypeDesignation, isAssignedApprover, approverAudience } = require("../utils/designationApproval");
+const { generateJobCardPdf } = require("../utils/jobCardPdf");
 
 const router = express.Router();
 router.use(requireAuth);
@@ -84,7 +85,9 @@ router.post("/:id/assign", requireRole(["ops_manager", "admin_like"]), async (re
   await query("DELETE FROM job_card_assignees WHERE job_card_id = ?", [req.params.id]);
   for (const uid of assignees || []) await query("INSERT INTO job_card_assignees (job_card_id, user_id) VALUES (?,?)", [req.params.id, uid]);
   await query("UPDATE job_cards SET status = IF(status = 'Created', 'Assigned', status) WHERE id = ?", [req.params.id]);
-  await query("INSERT INTO job_card_status_log (job_card_id, status, by_user) VALUES (?, 'Assigned', ?)", [req.params.id, req.user.id]);
+  const names = assignees?.length ? await query("SELECT name FROM users WHERE id IN (?)", [assignees]) : [];
+  await query("INSERT INTO job_card_status_log (job_card_id, status, by_user, note) VALUES (?, 'Assigned', ?, ?)",
+    [req.params.id, req.user.id, names.length ? `Assigned to ${names.map((n) => n.name).join(", ")}` : "Unassigned"]);
   res.json({ ok: true });
 });
 
@@ -105,26 +108,70 @@ router.post("/:id/status", async (req, res) => {
   res.json({ ok: true });
 });
 
+// Activity log entries below use a non-status "status" label (Checklist/Updated/Comment) so they
+// sit in the same chronological table/timeline as real status transitions without being confused
+// for one — nothing reads job_card_status_log expecting every row to be a real job_cards.status
+// value, so this is a safe reuse of the existing table rather than adding a parallel one.
 router.patch("/:id", async (req, res) => {
   const { priority, targetDate } = req.body;
+  const [job] = await query("SELECT priority, target_date FROM job_cards WHERE id = ?", [req.params.id]);
   await query("UPDATE job_cards SET priority = COALESCE(?, priority), target_date = COALESCE(?, target_date) WHERE id = ?", [priority || null, targetDate || null, req.params.id]);
+  const notes = [];
+  if (priority && priority !== job.priority) notes.push(`Priority changed from ${job.priority} to ${priority}`);
+  if (targetDate && targetDate !== String(job.target_date || "").slice(0, 10)) notes.push(`Target date changed to ${targetDate}`);
+  for (const note of notes) {
+    await query("INSERT INTO job_card_status_log (job_card_id, status, by_user, note) VALUES (?, 'Updated', ?, ?)", [req.params.id, req.user.id, note]);
+  }
   res.json({ ok: true });
 });
 
 router.post("/:id/checklist", async (req, res) => {
   const [job] = await query("SELECT checklist FROM job_cards WHERE id = ?", [req.params.id]);
   const checklist = job.checklist || [];
+  let note = null;
   if (req.body.itemId) {
-    // toggle or remove
-    const updated = req.body.remove
-      ? checklist.filter((c) => c.id !== req.body.itemId)
-      : checklist.map((c) => (c.id === req.body.itemId ? { ...c, done: !c.done } : c));
-    await query("UPDATE job_cards SET checklist = ? WHERE id = ?", [JSON.stringify(updated), req.params.id]);
+    const item = checklist.find((c) => c.id === req.body.itemId);
+    if (req.body.remove) {
+      note = item ? `Checklist item removed: "${item.label}"` : null;
+      const updated = checklist.filter((c) => c.id !== req.body.itemId);
+      await query("UPDATE job_cards SET checklist = ? WHERE id = ?", [JSON.stringify(updated), req.params.id]);
+    } else {
+      note = item ? `Checklist item marked ${item.done ? "not done" : "done"}: "${item.label}"` : null;
+      const updated = checklist.map((c) => (c.id === req.body.itemId ? { ...c, done: !c.done } : c));
+      await query("UPDATE job_cards SET checklist = ? WHERE id = ?", [JSON.stringify(updated), req.params.id]);
+    }
   } else if (req.body.label) {
     checklist.push({ id: `CI-${Date.now()}`, label: req.body.label, done: false });
     await query("UPDATE job_cards SET checklist = ? WHERE id = ?", [JSON.stringify(checklist), req.params.id]);
+    note = `Checklist item added: "${req.body.label}"`;
   }
+  if (note) await query("INSERT INTO job_card_status_log (job_card_id, status, by_user, note) VALUES (?, 'Checklist', ?, ?)", [req.params.id, req.user.id, note]);
   res.json({ ok: true });
+});
+
+// Free-text notes any user with visibility into this job card can add — keeps a running,
+// documented history alongside the automatic status/checklist/assignment entries.
+router.post("/:id/comment", async (req, res) => {
+  const { note } = req.body;
+  if (!note?.trim()) return res.status(400).json({ error: "Comment can't be empty" });
+  await query("INSERT INTO job_card_status_log (job_card_id, status, by_user, note) VALUES (?, 'Comment', ?, ?)", [req.params.id, req.user.id, note.trim()]);
+  res.status(201).json({ ok: true });
+});
+
+router.get("/:id/pdf", async (req, res) => {
+  const [job] = await query("SELECT * FROM job_cards WHERE id = ?", [req.params.id]);
+  if (!job) return res.status(404).json({ error: "Not found" });
+  const assigneeIds = (await query("SELECT user_id FROM job_card_assignees WHERE job_card_id = ?", [req.params.id])).map((a) => a.user_id);
+  const log = await query("SELECT * FROM job_card_status_log WHERE job_card_id = ? ORDER BY at ASC", [req.params.id]);
+  const userIds = [...new Set([...assigneeIds, ...log.map((l) => l.by_user).filter(Boolean)])];
+  const users = userIds.length ? await query("SELECT id, name FROM users WHERE id IN (?)", [userIds]) : [];
+  const nameOf = (id) => users.find((u) => u.id === id)?.name || id;
+  generateJobCardPdf({
+    ...job,
+    checklist: job.checklist || [],
+    assigneeNames: assigneeIds.map(nameOf),
+    statusLog: log.map((l) => ({ status: l.status, note: l.note, at: l.at, byName: nameOf(l.by_user) })),
+  }, res);
 });
 
 // Admin-only hard delete — for cleaning up test/mistaken job cards. Child rows (assignees,

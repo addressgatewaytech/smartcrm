@@ -395,6 +395,23 @@ CREATE TABLE IF NOT EXISTS task_status_log (
   FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
+-- Personal "My To-Do List" — purely private per-user notes/reminders, separate from the
+-- manager-assigned Tasks above (nobody else assigns or approves these; only the owner can
+-- see/edit/delete their own). reminder_date is a plain date (no time-of-day); the cron sweep in
+-- src/services/todoReminderJob.js fires a notification once per item the day it's due, tracked by
+-- reminder_notified so it never re-fires.
+CREATE TABLE IF NOT EXISTS todo_items (
+  id                VARCHAR(20) PRIMARY KEY,
+  user_id           VARCHAR(20) NOT NULL,
+  title             VARCHAR(300) NOT NULL,
+  done              TINYINT(1) DEFAULT 0,
+  reminder_enabled  TINYINT(1) DEFAULT 0,
+  reminder_date     DATE NULL,
+  reminder_notified TINYINT(1) DEFAULT 0,
+  created_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
 -- ---------------------------------------------------------------------------
 -- SUBSCRIPTIONS (Plans & Services catalog + customer subscriptions)
 -- ---------------------------------------------------------------------------

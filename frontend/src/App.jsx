@@ -4362,6 +4362,8 @@ function JobDetailModal({ job, dispatch, role, userId, employees, approvalTypes=
   const [rejectReason, setRejectReason] = useState("");
   const [newItemLabel, setNewItemLabel] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [newComment, setNewComment] = useState("");
+  const [downloading, setDownloading] = useState(false);
   const canManage = role === "ops_manager" || role === "ops_member" || ADMIN_LIKE.includes(role);
   const canApproveJob = role === "accounts" || ADMIN_LIKE.includes(role);
   // Marking a job card Completed needs Operations Manager sign-off — narrower than canManage,
@@ -4386,11 +4388,22 @@ function JobDetailModal({ job, dispatch, role, userId, employees, approvalTypes=
   return (
     <>
     <Modal title={job.id} sub={`${job.customer} — ${job.service}${job.description ? " — "+job.description : ""}`} onClose={onClose} width={640}>
-      {ADMIN_LIKE.includes(role) && (
-        <div style={{ display:"flex", justifyContent:"flex-end", marginTop:-6, marginBottom:6 }}>
+      <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop:-6, marginBottom:6 }}>
+        <button className="btn btn-sm" disabled={downloading} onClick={async ()=>{
+          setDownloading(true);
+          try {
+            const blob = await api.jobCards.downloadPdf(job.id);
+            downloadBlob(`JobCard-${job.id}.pdf`, blob);
+          } catch (err) {
+            alert(err instanceof ApiError ? err.message : "Couldn't generate the PDF — please try again.");
+          } finally {
+            setDownloading(false);
+          }
+        }}><Download size={13}/> {downloading ? "Generating…" : "Download PDF"}</button>
+        {ADMIN_LIKE.includes(role) && (
           <button className="btn btn-sm btn-ghost" style={{color:"var(--danger)"}} onClick={()=>setConfirmDelete(true)}><Trash2 size={13}/> Delete job card</button>
-        </div>
-      )}
+        )}
+      </div>
       <Rail steps={["Created","Assigned","In Progress","Completed"]} current={["Completed","Cancelled"].includes(job.status) ? "Completed" : job.status} />
       <div style={{ fontSize:12, color:"var(--ink-soft)", marginTop:8 }}>
         {job.leadCreatorName && <>Lead by <strong style={{color:"var(--ink)"}}>{job.leadCreatorName}</strong> · </>}
@@ -4490,6 +4503,33 @@ function JobDetailModal({ job, dispatch, role, userId, employees, approvalTypes=
           </div>
         </div>
       )}
+
+      <div style={{ marginTop: 18 }}>
+        <strong style={{ fontSize:13 }}>Activity log</strong>
+        <div style={{ marginTop:8, maxHeight:260, overflowY:"auto" }}>
+          {(!job.statusLog || job.statusLog.length === 0) ? <div className="side-note">No activity recorded yet.</div> : (
+            [...job.statusLog].reverse().map((l, i) => {
+              const Icon = l.status === "Comment" ? MessageCircle : l.status === "Checklist" ? Check : l.status === "Assigned" ? UserPlus : l.status === "Updated" ? Pencil : ClipboardList;
+              const by = employees.find(e=>e.id===l.by)?.name || l.by || "System";
+              return (
+                <div key={i} style={{ display:"flex", gap:10, padding:"8px 0", borderBottom: i===job.statusLog.length-1 ? "none" : "1px solid var(--hair)" }}>
+                  <Icon size={14} style={{ marginTop:2, color:"var(--ink-soft)", flexShrink:0 }} />
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontSize:13 }}>{l.note || l.status}</div>
+                    <div style={{ fontSize:11, color:"var(--ink-soft)" }}>{by} · {fmtDate(l.at)}</div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+        <div style={{ display:"flex", gap:6, marginTop: 10 }}>
+          <input style={{ flex:1, border:"1px solid var(--hair)", borderRadius:8, padding:"7px 10px", fontSize:13 }} placeholder="Add a comment"
+            value={newComment} onChange={e=>setNewComment(e.target.value)}
+            onKeyDown={e=>{ if(e.key==="Enter" && newComment.trim()){ dispatch({type:"ADD_JOB_COMMENT", id:job.id, note:newComment.trim()}); setNewComment(""); } }} />
+          <button className="btn btn-sm" onClick={()=>{ if(newComment.trim()){ dispatch({type:"ADD_JOB_COMMENT", id:job.id, note:newComment.trim()}); setNewComment(""); } }}><MessageCircle size={13}/> Comment</button>
+        </div>
+      </div>
     </Modal>
     {confirmDelete && (
       <ConfirmModal title={`Delete ${job.id}?`} body={`${job.customer} — ${job.service}. This permanently deletes the job card and its history. This can't be undone.`}
@@ -5585,6 +5625,7 @@ function NotificationsPage({ state, dispatch, myNotifs }) {
     : type==="task_approval" ? { icon: ShieldCheck, tone:"info" }
     : type==="lead_assigned" ? { icon: UserPlus, tone:"info" }
     : type==="lead_sla" ? { icon: AlertTriangle, tone:"danger" }
+    : type==="todo_reminder" ? { icon: Clock, tone:"warning" }
     : { icon: Ban, tone:"danger" };
 
   const audienceLabel = (aud) => aud.map(a => ROLE_LABEL[a] || state.employees.find(e=>e.id===a)?.name || a).join(", ");

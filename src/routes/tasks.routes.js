@@ -16,16 +16,14 @@ router.use(requireAuth);
 // "Manager" for this module means any department-lead-tier role, not a single dedicated role —
 // the same set that can create/assign job cards' equivalent leadership actions elsewhere.
 const MANAGER_ROLES = ["admin_like", "sales_manager", "ops_manager", "hr"];
-const canManageTasks = (roles) => isAdminLike(roles) || roles.some((r) => MANAGER_ROLES.slice(1).includes(r));
 
+// Every authenticated user sees every task — "Assigned tasks for all users" is a read-only
+// company-wide view; the action endpoints below (accept/progress/submit/approve/reject/edit/
+// delete) still gate on being the assignee, a manager, or admin-tier, same as before.
 router.get("/", async (req, res) => {
   const rows = await query("SELECT * FROM tasks ORDER BY created_at DESC");
   const logs = await query("SELECT * FROM task_status_log ORDER BY at ASC");
-  let out = rows.map((r) => ({ ...r, statusLog: logs.filter((l) => l.task_id === r.id) }));
-  // Regular employees only see tasks assigned to them or that they created; manager-tier roles see all.
-  if (!canManageTasks(req.user.roles)) {
-    out = out.filter((t) => t.assigned_to === req.user.id || t.created_by === req.user.id);
-  }
+  const out = rows.map((r) => ({ ...r, statusLog: logs.filter((l) => l.task_id === r.id) }));
   res.json(out);
 });
 

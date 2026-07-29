@@ -201,7 +201,15 @@ export const api = {
     toggleChecklistItem: (id, itemId) => post(`/job-cards/${id}/checklist`, { itemId }),
     removeChecklistItem: (id, itemId) => post(`/job-cards/${id}/checklist`, { itemId, remove: true }),
     addChecklistItem: (id, label) => post(`/job-cards/${id}/checklist`, { label }),
+    addComment: (id, note) => post(`/job-cards/${id}/comment`, { note }),
     remove: (id) => del(`/job-cards/${id}`),
+    downloadPdf: async (id) => {
+      const headers = {};
+      if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
+      const res = await fetch(`/api/job-cards/${id}/pdf`, { headers, cache: "no-store" });
+      if (!res.ok) throw new ApiError("Failed to generate PDF", res.status);
+      return res.blob();
+    },
   },
   tasks: {
     list: () => get("/tasks"),
@@ -213,6 +221,12 @@ export const api = {
     approve: (id) => post(`/tasks/${id}/approve`),
     reject: (id, reason) => post(`/tasks/${id}/reject`, { reason }),
     remove: (id) => del(`/tasks/${id}`),
+  },
+  todos: {
+    list: () => get("/todos"),
+    create: (payload) => post("/todos", payload),
+    update: (id, payload) => patch(`/todos/${id}`, payload),
+    remove: (id) => del(`/todos/${id}`),
   },
   subscriptions: {
     plans: () => get("/subscriptions/plans"),

@@ -4,12 +4,12 @@ import {
   mapUser, mapLead, mapDeal, mapQuotation, mapCustomer, mapSalesOrder, mapInvoice, mapJobCard,
   mapNotification, mapDataRecord, mapDataSettings, mapExportHistoryEntry, mapSubscriptionPlans,
   mapSubscription, mapQuotationTemplates, mapIncentiveRule, mapLeaveRequest, mapPunchRequest, mapAttendance,
-  mapAppSettings, mapTask,
+  mapAppSettings, mapTask, mapTodo,
 } from "./mappers";
 
 const emptyState = () => ({
   services: [], employees: [], leads: [], deals: [], quotations: [], customers: [],
-  salesOrders: [], invoices: [], jobCards: [], tasks: [], notifications: [], quotationTemplates: {},
+  salesOrders: [], invoices: [], jobCards: [], tasks: [], todos: [], notifications: [], quotationTemplates: {},
   checklistTemplates: {}, incentiveRules: [], leaveRequests: [], punchRequests: [],
   subscriptionPlans: {}, subscriptions: [], dataRecords: [], dataExportHistory: [],
   dataSettings: { dailyEmailTarget: 25, dailyWhatsappTarget: 25, emailIntervalMinutes: 5, whatsappIntervalMinutes: 10, recyclingEnabled: true, recyclingDays: 30, emailTemplate: { subject: "", body: "" }, whatsappTemplate: { body: "" } },
@@ -43,6 +43,7 @@ export function useApiStore(enabled) {
       invoices: async () => ({ invoices: (await api.invoices.list()).map(mapInvoice) }),
       jobCards: async () => ({ jobCards: (await api.jobCards.list()).map(mapJobCard) }),
       tasks: async () => ({ tasks: (await api.tasks.list()).map(mapTask) }),
+      todos: async () => ({ todos: (await api.todos.list()).map(mapTodo) }),
       notifications: async () => ({ notifications: (await api.notifications.list()).map(mapNotification) }),
       quotationTemplates: async () => ({ quotationTemplates: mapQuotationTemplates(await api.quotationTemplates.list()) }),
       checklistTemplates: async () => ({ checklistTemplates: await api.checklistTemplates.list() }),
@@ -209,6 +210,7 @@ export function useApiStore(enabled) {
       case "TOGGLE_CHECKLIST_ITEM": await api.jobCards.toggleChecklistItem(action.jobId, action.itemId); return refresh(["jobCards"]);
       case "ADD_JOB_CHECKLIST_ITEM": await api.jobCards.addChecklistItem(action.jobId, action.label); return refresh(["jobCards"]);
       case "REMOVE_JOB_CHECKLIST_ITEM": await api.jobCards.removeChecklistItem(action.jobId, action.itemId); return refresh(["jobCards"]);
+      case "ADD_JOB_COMMENT": await api.jobCards.addComment(action.id, action.note); return refresh(["jobCards"]);
       case "UPDATE_JOB_CARD": await api.jobCards.update(action.id, action.payload); return refresh(["jobCards"]);
       case "SET_JOB_STATUS": await api.jobCards.setStatus(action.id, action.status, action.reason); return refresh(["jobCards", "notifications"]);
       case "DELETE_JOB_CARD": await api.jobCards.remove(action.id); return refresh(["jobCards"]);
@@ -222,6 +224,12 @@ export function useApiStore(enabled) {
       case "APPROVE_TASK": await api.tasks.approve(action.id); return refresh(["tasks"]);
       case "REJECT_TASK": await api.tasks.reject(action.id, action.reason); return refresh(["tasks"]);
       case "DELETE_TASK": await api.tasks.remove(action.id); return refresh(["tasks"]);
+
+      // --- My To-Do List -----------------------------------------------------------------
+      case "CREATE_TODO": await api.todos.create(action.payload); return refresh(["todos"]);
+      case "UPDATE_TODO": await api.todos.update(action.id, action.payload); return refresh(["todos"]);
+      case "TOGGLE_TODO": await api.todos.update(action.id, { done: action.done }); return refresh(["todos"]);
+      case "DELETE_TODO": await api.todos.remove(action.id); return refresh(["todos"]);
 
       // --- Notifications -------------------------------------------------------------------
       case "MARK_NOTIF_READ": await api.notifications.markRead(action.id); return refresh(["notifications"]);

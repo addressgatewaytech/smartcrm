@@ -160,6 +160,12 @@ export const mapPunchRequest = (r) => ({
 
 export const mapAttendance = (a) => ({ id: a.id, date: a.date, status: a.status, inTime: a.in_time, outTime: a.out_time, by: a.marked_by });
 
+export const mapTodo = (t) => ({
+  id: t.id, title: t.title, done: !!t.done,
+  reminderEnabled: !!t.reminder_enabled, reminderDate: t.reminder_date, reminderNotified: !!t.reminder_notified,
+  createdAt: t.created_at,
+});
+
 export const mapTask = (t) => ({
   id: t.id, title: t.title, description: t.description || "", priority: t.priority, status: t.status,
   dueDate: t.due_date, assignedTo: t.assigned_to, department: t.department, createdBy: t.created_by,

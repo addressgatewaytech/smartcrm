@@ -4,7 +4,7 @@
 // drag-and-drop here only covers the employee-driven moves; manager decisions (approve/reject) and
 // delete happen from the detail modal.
 import { useState } from "react";
-import { Search, Download, Plus, Trash2, ListChecks, Check } from "lucide-react";
+import { Search, Download, Plus, Trash2, ListChecks, Check, Pencil, Bell, BellOff } from "lucide-react";
 import { ApiError } from "../api";
 import { Modal, ConfirmModal, Stamp, statusTone, Rail, Empty, exportCSV, fmtDate } from "../ui.jsx";
 
@@ -19,6 +19,7 @@ export function TasksPage({ state, dispatch, role, userId }) {
   const [query, setQuery] = useState("");
   const [detailId, setDetailId] = useState(null);
   const [newTask, setNewTask] = useState(false);
+  const [editTask, setEditTask] = useState(null);
   const [draggedId, setDraggedId] = useState(null);
   const [dragOverCol, setDragOverCol] = useState(null);
 
@@ -53,7 +54,9 @@ export function TasksPage({ state, dispatch, role, userId }) {
         <div className="tabbar" style={{ marginBottom: 0, borderBottom: "none" }}>
           <button className={`tab ${view === "kanban" ? "active" : ""}`} onClick={() => setView("kanban")}>Kanban</button>
           <button className={`tab ${view === "table" ? "active" : ""}`} onClick={() => setView("table")}>Table</button>
+          <button className={`tab ${view === "todo" ? "active" : ""}`} onClick={() => setView("todo")}>My To-Do List</button>
         </div>
+        {view !== "todo" && (
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <div style={{ position: "relative", maxWidth: 260 }}>
             <Search size={15} style={{ position: "absolute", left: 12, top: 9, color: "var(--ink-soft)" }} />
@@ -67,14 +70,17 @@ export function TasksPage({ state, dispatch, role, userId }) {
           </button>
           {manager && <button className="btn btn-primary" onClick={() => setNewTask(true)}><Plus size={15} /> New task</button>}
         </div>
+        )}
       </div>
+
+      {view === "todo" && <MyToDoListTab state={state} dispatch={dispatch} />}
 
       {view === "table" && (
         <div className="agw-card" style={{ padding: 0 }}>
           {visible.length === 0 ? <Empty icon={ListChecks} text="No tasks yet." /> : (
             <div style={{ overflowX: "auto" }}>
               <table className="agw-table" style={{ minWidth: 820 }}>
-                <thead><tr><th>Task</th><th>Title</th><th>Assigned to</th><th>Department</th><th>Priority</th><th>Progress</th><th>Due date</th><th>Status</th></tr></thead>
+                <thead><tr><th>Task</th><th>Title</th><th>Assigned to</th><th>Department</th><th>Priority</th><th>Progress</th><th>Due date</th><th>Status</th><th></th></tr></thead>
                 <tbody>
                   {visible.map((t) => (
                     <tr key={t.id} onClick={() => setDetailId(t.id)}>
@@ -86,6 +92,11 @@ export function TasksPage({ state, dispatch, role, userId }) {
                       <td className="mono" style={{ fontSize: 12 }}>{t.progressPct}%</td>
                       <td className="mono" style={{ fontSize: 12 }}>{fmtDate(t.dueDate)}</td>
                       <td><Stamp tone={statusTone(t.status)}>{t.status}</Stamp></td>
+                      <td onClick={(e) => e.stopPropagation()}>
+                        {manager && t.status !== "Completed" && (
+                          <button className="btn btn-sm btn-ghost" title="Edit" onClick={() => setEditTask(t)}><Pencil size={13} /></button>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -136,6 +147,7 @@ export function TasksPage({ state, dispatch, role, userId }) {
           approvalTypes={state.approvalTypes} manager={manager} onClose={() => setDetailId(null)} />
       )}
       {newTask && <NewTaskModal state={state} dispatch={dispatch} onClose={() => setNewTask(false)} />}
+      {editTask && <EditTaskModal task={editTask} state={state} dispatch={dispatch} onClose={() => setEditTask(null)} />}
     </div>
   );
 }
@@ -182,6 +194,137 @@ function NewTaskModal({ state, dispatch, onClose }) {
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
         <button className="btn" onClick={onClose}>Cancel</button>
         <button className="btn btn-primary" disabled={!title.trim() || !assignedTo} onClick={submit}>Assign task</button>
+      </div>
+    </Modal>
+  );
+}
+
+function EditTaskModal({ task, state, dispatch, onClose }) {
+  const [title, setTitle] = useState(task.title);
+  const [description, setDescription] = useState(task.description || "");
+  const [priority, setPriority] = useState(task.priority);
+  const [dueDate, setDueDate] = useState(task.dueDate || "");
+  const [assignedTo, setAssignedTo] = useState(task.assignedTo);
+  const [error, setError] = useState("");
+  const activeEmployees = state.employees.filter((e) => e.active !== false && e.category !== "Management");
+  const department = state.employees.find((e) => e.id === assignedTo)?.dept || task.department || "";
+
+  const submit = async () => {
+    setError("");
+    try {
+      await dispatch({ type: "UPDATE_TASK", id: task.id, payload: { title: title.trim(), description, priority, dueDate: dueDate || null, assignedTo, department } });
+      onClose();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't save — please try again.");
+    }
+  };
+
+  return (
+    <Modal title={`Edit ${task.id}`} onClose={onClose} width={520}>
+      <div className="field"><label>Title</label><input value={title} onChange={(e) => setTitle(e.target.value)} /></div>
+      <div className="field"><label>Description</label><textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} /></div>
+      <div className="row2">
+        <div className="field"><label>Assign to</label>
+          <select value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)}>
+            {activeEmployees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+          </select>
+        </div>
+        <div className="field"><label>Priority</label>
+          <select value={priority} onChange={(e) => setPriority(e.target.value)}>
+            {["Low", "Normal", "High", "Urgent"].map((p) => <option key={p}>{p}</option>)}
+          </select>
+        </div>
+      </div>
+      <div className="field"><label>Due date</label><input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></div>
+      {error && <div className="side-note" style={{ borderColor: "#EFC3BC", background: "var(--danger-tint)" }}>{error}</div>}
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+        <button className="btn" onClick={onClose}>Cancel</button>
+        <button className="btn btn-primary" disabled={!title.trim()} onClick={submit}>Save changes</button>
+      </div>
+    </Modal>
+  );
+}
+
+// My To-Do List — a user's own private notes/reminders, unrelated to manager-assigned tasks
+// above. Every item here belongs to the viewer alone (the backend scopes it that way), so there's
+// no visibility/role logic to apply — just add / check off / edit / delete.
+function MyToDoListTab({ state, dispatch }) {
+  const [newItem, setNewItem] = useState(false);
+  const [editItem, setEditItem] = useState(null);
+  const [removeItem, setRemoveItem] = useState(null);
+  const todos = state.todos || [];
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 14 }}>
+        <button className="btn btn-primary" onClick={() => setNewItem(true)}><Plus size={15} /> Add to-do</button>
+      </div>
+      <div className="agw-card" style={{ padding: 0 }}>
+        {todos.length === 0 ? <Empty icon={ListChecks} text="Nothing on your to-do list yet." /> : (
+          <div>
+            {todos.map((t) => (
+              <div key={t.id} className="checklist-item" style={{ padding: "10px 14px" }}>
+                <span className={`checkbox ${t.done ? "checked" : ""}`} style={{ cursor: "pointer" }}
+                  onClick={() => dispatch({ type: "TOGGLE_TODO", id: t.id, done: !t.done })}>
+                  {t.done && <Check size={12} />}
+                </span>
+                <span style={{ flex: 1, textDecoration: t.done ? "line-through" : "none", color: t.done ? "var(--ink-soft)" : "var(--ink)" }}>
+                  {t.title}
+                  {t.reminderEnabled && t.reminderDate && (
+                    <span className="pill" style={{ marginLeft: 8 }}><Bell size={11} style={{ verticalAlign: -2, marginRight: 3 }} />{fmtDate(t.reminderDate)}</span>
+                  )}
+                </span>
+                <button className="btn btn-sm btn-ghost" title="Edit" onClick={() => setEditItem(t)}><Pencil size={13} /></button>
+                <button className="btn btn-sm btn-ghost" title="Remove" style={{ color: "var(--danger)" }} onClick={() => setRemoveItem(t)}><Trash2 size={13} /></button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      {newItem && <ToDoItemModal dispatch={dispatch} onClose={() => setNewItem(false)} />}
+      {editItem && <ToDoItemModal item={editItem} dispatch={dispatch} onClose={() => setEditItem(null)} />}
+      {removeItem && (
+        <ConfirmModal title="Remove this to-do?" body={removeItem.title} confirmLabel="Remove"
+          onConfirm={() => dispatch({ type: "DELETE_TODO", id: removeItem.id })} onClose={() => setRemoveItem(null)} />
+      )}
+    </div>
+  );
+}
+
+function ToDoItemModal({ item, dispatch, onClose }) {
+  const [title, setTitle] = useState(item?.title || "");
+  const [reminderEnabled, setReminderEnabled] = useState(!!item?.reminderEnabled);
+  const [reminderDate, setReminderDate] = useState(item?.reminderDate || "");
+  const [error, setError] = useState("");
+
+  const submit = async () => {
+    setError("");
+    try {
+      const payload = { title: title.trim(), reminderEnabled, reminderDate: reminderEnabled ? reminderDate || null : null };
+      if (item) await dispatch({ type: "UPDATE_TODO", id: item.id, payload });
+      else await dispatch({ type: "CREATE_TODO", payload });
+      onClose();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't save — please try again.");
+    }
+  };
+
+  return (
+    <Modal title={item ? "Edit to-do" : "Add to-do"} onClose={onClose} width={440}>
+      <div className="field"><label>What do you need to do?</label><input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Call back the printer vendor" /></div>
+      <div className="field">
+        <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+          <input type="checkbox" checked={reminderEnabled} onChange={(e) => setReminderEnabled(e.target.checked)} />
+          {reminderEnabled ? <Bell size={14} /> : <BellOff size={14} />} Remind me
+        </label>
+      </div>
+      {reminderEnabled && (
+        <div className="field"><label>Reminder date</label><input type="date" value={reminderDate} onChange={(e) => setReminderDate(e.target.value)} /></div>
+      )}
+      {error && <div className="side-note" style={{ borderColor: "#EFC3BC", background: "var(--danger-tint)" }}>{error}</div>}
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+        <button className="btn" onClick={onClose}>Cancel</button>
+        <button className="btn btn-primary" disabled={!title.trim() || (reminderEnabled && !reminderDate)} onClick={submit}>{item ? "Save changes" : "Add to-do"}</button>
       </div>
     </Modal>
   );
