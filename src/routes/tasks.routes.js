@@ -93,7 +93,11 @@ router.post("/:id/submit-for-approval", async (req, res) => {
   if (!["Accepted", "In Progress", "Rejected"].includes(task.status)) return res.status(400).json({ error: "This task isn't in a state that can be submitted" });
   await query("UPDATE tasks SET status = 'Pending Approval', submitted_at = NOW() WHERE id = ?", [req.params.id]);
   await query("INSERT INTO task_status_log (task_id, status, by_user) VALUES (?, 'Pending Approval', ?)", [req.params.id, req.user.id]);
-  const audience = await approverAudience("task_approval", MANAGER_ROLES.map((r) => (r === "admin_like" ? "super_admin" : r)).concat(["admin", "admin_exec"]));
+  // Notify admin-tier only — not the full MANAGER_ROLES set. Task assignment already went to just
+  // the assignee; this is the mirror case (approval-needed goes to just admin-tier), even though
+  // MANAGER_ROLES (sales/ops manager, HR) can still act as an approver if they check in directly —
+  // this only narrows who gets proactively pinged.
+  const audience = await approverAudience("task_approval", ["super_admin", "admin", "admin_exec"]);
   await query("INSERT INTO notifications (id, type, title, body, audience) VALUES (?, 'task_approval', ?, ?, ?)",
     [nextId("NT"), "Task submitted for approval", `${req.params.id} — ${task.title} — ready for review.`, JSON.stringify(audience)]);
   res.json({ ok: true });
