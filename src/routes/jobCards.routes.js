@@ -1,8 +1,8 @@
 const express = require("express");
-const { query } = require("../config/db");
+const { query, withTransaction } = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
 const { requireRole, isAdminLike } = require("../middleware/roles");
-const { nextId, daysFromNow } = require("../utils/helpers");
+const { nextId, nextSequentialId, daysFromNow } = require("../utils/helpers");
 const { requireRoleOrApprovalTypeDesignation, isAssignedApprover, approverAudience } = require("../utils/designationApproval");
 const { generateJobCardPdf } = require("../utils/jobCardPdf");
 
@@ -50,7 +50,7 @@ router.get("/", async (req, res) => {
 // same roles the prototype allows: sales/ops leadership + admin tier.
 router.post("/direct", requireRole(["sales_manager", "sales_exec", "ops_manager", "admin_like"]), async (req, res) => {
   const { customer, service, description } = req.body;
-  const id = nextId("JC");
+  const id = await withTransaction((conn) => nextSequentialId(conn, "AGBSJC", "job_card"));
   const [tpl] = await query("SELECT steps FROM checklist_templates WHERE service = ?", [service]);
   const steps = tpl ? tpl.steps : [];
   const checklist = steps.map((label, i) => ({ id: `CI-${i}`, label, done: false }));

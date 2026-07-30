@@ -48,7 +48,7 @@ router.post("/:id/onboard", async (req, res) => {
       [invoiceId, so.id, so.customer, so.fee_type, so.amount, so.professional_fee_amount, daysFromNow(14)]
     );
 
-    const jobId = nextId("JC");
+    const jobId = await nextSequentialId(conn, "AGBSJC", "job_card");
     const [[tpl]] = await conn.execute("SELECT steps FROM checklist_templates WHERE service = ?", [so.service]);
     const steps = tpl ? tpl.steps : [];
     const checklist = steps.map((label, i) => ({ id: `CI-${i}`, label, done: false }));
