@@ -1405,7 +1405,12 @@ function LeadsPage({ state, dispatch, userId, role }) {
   const [ownerFilter, setOwnerFilter] = useState("");
   const canFilterByOwner = role !== "sales_exec";
   const ownedByRole = ["sales_exec"].includes(role) ? state.leads.filter(l => l.owner === userId) : state.leads;
-  const periodFiltered = ownedByRole.filter(l => inRange(l.createdAt, range));
+  // A distributed lead's relevant date for "does this belong in my view right now" is when it
+  // became mine (assignedAt), not when the Lead Manager originally brought it in — otherwise a
+  // lead assigned today but created last month silently vanishes from the assignee's own Leads
+  // page behind the default "This Month" filter. Self-added leads have no assignedAt, so they
+  // fall back to createdAt exactly as before.
+  const periodFiltered = ownedByRole.filter(l => inRange(l.assignedAt || l.createdAt, range));
   const salespeople = [...new Map(periodFiltered.map(l => l.owner).filter(Boolean).map(id => [id, state.employees.find(e => e.id === id)]).filter(([,e]) => e)).values()];
   const ownerFiltered = ownerFilter ? periodFiltered.filter(l => l.owner === ownerFilter) : periodFiltered;
   const owned = ownerFiltered.filter(l => {
@@ -4633,7 +4638,13 @@ function periodRange(period, customFrom, customTo) {
 function inRange(dateStr, range) {
   if (!dateStr) return false;
   if (!range[0]) return true;
-  return dateStr >= range[0] && dateStr <= range[1];
+  // Bounds are always plain "YYYY-MM-DD"; dateStr from the DB is often a full timestamp
+  // ("YYYY-MM-DD HH:MM:SS"). Comparing the full strings breaks the upper bound for anything dated
+  // today: "2026-07-30 07:25:17" sorts AFTER "2026-07-30" lexicographically (same prefix, then
+  // longer), so today's own leads/deals/etc. would fail `<= range[1]` and vanish from their own
+  // creation/assignment day. Truncating to the date portion before comparing fixes that everywhere.
+  const d = String(dateStr).slice(0, 10);
+  return d >= range[0] && d <= range[1];
 }
 
 function PeriodFilter({ period, setPeriod, customFrom, setCustomFrom, customTo, setCustomTo }) {
