@@ -4854,6 +4854,7 @@ function HrPage({ state, dispatch, role, userId }) {
   const isAdmin = ADMIN_LIKE.includes(role) || role === "hr";
   const [tab, setTab] = useState(isAdmin ? "team" : "me");
   const [teamView, setTeamView] = useState("table");
+  const [teamCategory, setTeamCategory] = useState("All");
   const [query, setQuery] = useState("");
   const [docsFor, setDocsFor] = useState(null);
   const [leaveFor, setLeaveFor] = useState(null);
@@ -4867,6 +4868,7 @@ function HrPage({ state, dispatch, role, userId }) {
   const onVacationToday = (e) => !onLeaveToday(e) && todayStatusOf(e) === "Vacation";
 
   const filtered = state.employees.filter(e => {
+    if (teamCategory !== "All" && (e.category || "Staff") !== teamCategory) return false;
     const haystack = [e.name, e.dept, e.designation].filter(Boolean).join(" ").toLowerCase();
     return haystack.includes(query.trim().toLowerCase());
   });
@@ -4905,7 +4907,15 @@ function HrPage({ state, dispatch, role, userId }) {
             {(isAdmin ? pendingPunchCount : myPendingPunchCount) > 0 && <span className="agw-nav-badge" style={{marginLeft:6}}>{isAdmin ? pendingPunchCount : myPendingPunchCount}</span>}
           </button>
         </div>
-        {tab === "team" && (
+      </div>
+
+      {tab === "team" && (
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 14, flexWrap:"wrap", gap:10 }}>
+          <div className="tabbar" style={{ marginBottom:0, borderBottom:"none" }}>
+            <button className={`tab ${teamCategory==="All"?"active":""}`} onClick={()=>setTeamCategory("All")}>All</button>
+            <button className={`tab ${teamCategory==="Staff"?"active":""}`} onClick={()=>setTeamCategory("Staff")}>Staff</button>
+            <button className={`tab ${teamCategory==="Management"?"active":""}`} onClick={()=>setTeamCategory("Management")}>Management</button>
+          </div>
           <div style={{ display:"flex", gap:8, alignItems:"center" }}>
             <div className="tabbar" style={{ marginBottom:0, borderBottom:"none" }}>
               <button className={`tab ${teamView==="table"?"active":""}`} onClick={()=>setTeamView("table")}>Table</button>
@@ -4918,13 +4928,13 @@ function HrPage({ state, dispatch, role, userId }) {
                 style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:8, padding:"7px 12px 7px 34px", fontSize:13, background:"var(--surface)" }} />
             </div>
             <button className="btn btn-sm" onClick={()=>exportCSV("team.csv",
-              ["Name","Department","Designation","Status","Leave Balance"],
-              filtered.map(e=>[e.name, e.dept, e.designation||"", e.active===false?"Deactivated":"Active", e.leaveBalance ?? 21]))}>
+              ["Name","Category","Department","Designation","Join Date","Date of Birth","Status","Leave Balance"],
+              filtered.map(e=>[e.name, e.category||"Staff", e.dept, e.designation||"", e.joined||"", e.dateOfBirth||"", e.active===false?"Deactivated":"Active", e.leaveBalance ?? 21]))}>
               <Download size={13}/> Export
             </button>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {tab === "me" && me && (
         <div style={{ maxWidth: 420 }}>
@@ -4936,8 +4946,8 @@ function HrPage({ state, dispatch, role, userId }) {
         <div className="agw-card" style={{ padding: 0 }}>
           {filtered.length === 0 ? <Empty icon={Search} text="No team members match that search." /> : (
           <div style={{ overflowX:"auto" }}>
-          <table className="agw-table" style={{ minWidth: 760 }}>
-            <thead><tr><th>Employee</th><th>Department</th><th>Designation</th><th>Today</th><th>Leave balance</th><th>Docs</th><th></th></tr></thead>
+          <table className="agw-table" style={{ minWidth: 940 }}>
+            <thead><tr><th>Employee</th><th>Category</th><th>Department</th><th>Designation</th><th>Join date</th><th>Date of birth</th><th>Today</th><th>Leave balance</th><th>Docs</th><th></th></tr></thead>
             <tbody>
               {filtered.map(e => {
                 const status = onLeaveToday(e) ? "Leave" : todayStatusOf(e);
@@ -4948,8 +4958,11 @@ function HrPage({ state, dispatch, role, userId }) {
                       {e.photoUrl ? <img src={e.photoUrl} alt={e.name} style={{width:28,height:28,borderRadius:"50%",objectFit:"cover"}} /> : <span className="avatar">{e.initials}</span>}
                       {e.name}
                     </td>
+                    <td><Stamp tone={e.category==="Management" ? "gold" : "neutral"}>{e.category||"Staff"}</Stamp></td>
                     <td>{e.dept}</td>
                     <td style={{fontSize:12.5}}>{e.designation}</td>
+                    <td className="mono" style={{fontSize:12}}>{e.joined ? fmtDate(e.joined) : "—"}</td>
+                    <td className="mono" style={{fontSize:12}}>{e.dateOfBirth ? fmtDate(e.dateOfBirth) : "—"}</td>
                     <td><Stamp tone={attendanceTone(status)}>{status}</Stamp></td>
                     <td>{e.leaveBalance}</td>
                     <td>{flagged > 0 ? <Stamp tone="warning">{flagged} flagged</Stamp> : <Stamp tone="success">Clear</Stamp>}</td>
@@ -5168,6 +5181,17 @@ function EmployeeHrCard({ e, state, dispatch, isAdmin, userId, onOpenDocs, onOpe
         <div style={{ background:"var(--page)", borderRadius:8, padding:"8px 10px" }}>
           <div style={{ fontSize:10.5, color:"var(--ink-soft)", textTransform:"uppercase", letterSpacing:".03em" }}>Leave balance</div>
           <div className="disp" style={{ fontSize:15 }}>{e.leaveBalance ?? 21} days</div>
+        </div>
+      </div>
+
+      <div className="row2" style={{ marginTop: 8 }}>
+        <div style={{ background:"var(--page)", borderRadius:8, padding:"8px 10px" }}>
+          <div style={{ fontSize:10.5, color:"var(--ink-soft)", textTransform:"uppercase", letterSpacing:".03em" }}>Join date</div>
+          <div style={{ fontSize:13, fontWeight:500, marginTop:2 }}>{e.joined ? fmtDate(e.joined) : "—"}</div>
+        </div>
+        <div style={{ background:"var(--page)", borderRadius:8, padding:"8px 10px" }}>
+          <div style={{ fontSize:10.5, color:"var(--ink-soft)", textTransform:"uppercase", letterSpacing:".03em" }}>Date of birth</div>
+          <div style={{ fontSize:13, fontWeight:500, marginTop:2 }}>{e.dateOfBirth ? fmtDate(e.dateOfBirth) : "—"}</div>
         </div>
       </div>
 
