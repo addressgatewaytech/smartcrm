@@ -161,7 +161,7 @@ router.post("/:id/approve-discount", requireRoleOrApprovalTypeDesignation(["sale
 });
 
 router.post("/:id/status", async (req, res) => {
-  const { status } = req.body; // "Sent" | "Under Negotiation" | "Rejected" | "Approved" (Government Fee terminal state — see below)
+  const { status } = req.body; // "Sent" | "Under Negotiation" | "Client Accepted" | "Rejected" | "Approved" (Government Fee terminal state — see below)
 
   if (status === "Sent") {
     const [q] = await query("SELECT status FROM quotations WHERE id = ?", [req.params.id]);
@@ -173,6 +173,17 @@ router.post("/:id/status", async (req, res) => {
     }
     if (q.status === "Draft" && !(await canSendDirectly(req.user))) {
       return res.status(403).json({ error: "Submit this quotation for approval before sending it to the client" });
+    }
+  }
+
+  // The salesperson marks the client's verbal/written acceptance here — this is a communication
+  // step, not a financial one, so it stays open to whoever's talking to the client (no accounts/
+  // admin gate). Converting that acceptance into an actual Sales Order is the gated step, below.
+  if (status === "Client Accepted") {
+    const [q] = await query("SELECT status FROM quotations WHERE id = ?", [req.params.id]);
+    if (!q) return res.status(404).json({ error: "Not found" });
+    if (!["Sent", "Under Negotiation"].includes(q.status)) {
+      return res.status(400).json({ error: "Only a Sent or Under Negotiation quotation can be marked as client accepted" });
     }
   }
 
@@ -214,7 +225,16 @@ router.post("/:id/clone", async (req, res) => {
 // --- Convert to Sales Order ---------------------------------------------------------------
 // CRITICAL RULE: Government Fee quotations NEVER create a Sales Order/Invoice/Job Card.
 // Accepting one just marks it Approved and stops there — enforced here, not just in the UI.
-router.post("/:id/convert-to-sales-order", async (req, res) => {
+// Restricted to Accounts/Admin — a sales user's part in this workflow ends at marking the
+// quotation Client Accepted (see /:id/status above); only Accounts turns that into a real
+// Sales Order, and only once the client has actually accepted.
+router.post("/:id/convert-to-sales-order", requireRole(["accounts", "admin_like"]), async (req, res) => {
+  const [q0] = await query("SELECT status FROM quotations WHERE id = ?", [req.params.id]);
+  if (!q0) return res.status(404).json({ error: "Not found" });
+  if (q0.status !== "Client Accepted") {
+    return res.status(400).json({ error: "Only a quotation the client has accepted can be converted to a sales order" });
+  }
+
   const result = await withTransaction(async (conn) => {
     const [[q]] = await conn.execute("SELECT * FROM quotations WHERE id = ?", [req.params.id]);
     if (!q) throw new Error("Quotation not found");

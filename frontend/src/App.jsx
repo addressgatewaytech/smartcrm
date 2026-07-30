@@ -327,6 +327,14 @@ const ROLE_LABEL = {
 // "Executive" is intentionally NOT in this list — it's a read-only oversight role
 // (Dashboard + Reports only, no create/edit/approve/delete anywhere in the app).
 const ADMIN_LIKE = ["super_admin", "admin", "admin_exec"];
+// Only Accounts/Admin-tier convert an accepted quotation into a Sales Order, onboard a Sales Order
+// into an Invoice, and get the clean (non-watermarked, downloadable) Sales Order/Invoice PDF —
+// every other role sees those documents watermarked "INTERNAL USE ONLY" and can't download them.
+const isAccountsOrAdmin = (role) => ADMIN_LIKE.includes(role) || role === "accounts";
+// A quotation sitting in "Client Accepted" is, from the salesperson's own point of view, just
+// waiting on Accounts to invoice it — Accounts/Admin still need to see the real "Client Accepted"
+// label (that's their cue to convert it), so this only relabels the display for everyone else.
+const quotationStatusLabel = (status, role) => (status === "Client Accepted" && !isAccountsOrAdmin(role) ? "Under Payment Process" : status);
 
 // Mirrors src/utils/helpers.js's professionalFeeTotal exactly — only Professional Fee line items
 // count toward business volume, pipeline value, and incentive calculations. A line's effective fee
@@ -2152,7 +2160,7 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, onHighligh
                 <td><Stamp tone={quotationFeeTypeTone(q)}>{quotationFeeTypeLabel(q)}</Stamp></td>
                 <td className="mono">{money(total(q))}</td>
                 <td className="mono" style={{fontSize:12}}>{fmtDate(q.validTill)}</td>
-                <td><Stamp tone={statusTone(q.status)}>{q.status}</Stamp></td>
+                <td><Stamp tone={statusTone(q.status)}>{quotationStatusLabel(q.status, role)}</Stamp></td>
                 <td className="mono" style={{fontSize:12}}>{fmtDate(q.createdAt)}</td>
                 <td><button className="btn btn-sm btn-ghost" title="Clone" onClick={(e)=>{ e.stopPropagation(); setCloneFor(q); }}><Copy size={13}/></button></td>
                 <td>
@@ -2294,7 +2302,8 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
       {view === "details" && (
         <>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
-            <Rail steps={["Draft","Pending Manager Approval","Sent","Approved"]} current={q.status === "Rejected" || q.status === "Expired" ? "Sent" : q.status} />
+            <Rail steps={["Draft","Pending Manager Approval","Sent",quotationStatusLabel("Client Accepted", role),"Approved"]}
+              current={q.status === "Rejected" || q.status === "Expired" ? "Sent" : quotationStatusLabel(q.status, role)} />
             <Stamp tone={quotationFeeTypeTone(q)}>{quotationFeeTypeLabel(q)}</Stamp>
           </div>
           {q.feeType === "Government Fee" && (
@@ -2359,7 +2368,7 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
               {q.feeType === "Government Fee" ? (
                 <button className="btn btn-primary" disabled={actionBusy} onClick={()=>runAction({type:"SET_QUOTATION_STATUS", id:q.id, status:"Approved"})}>Client accepted — mark approved</button>
               ) : (
-                <button className="btn btn-primary" disabled={actionBusy} onClick={()=>runAction({type:"CONVERT_TO_SALES_ORDER", quotationId:q.id})}>{actionBusy ? "Creating…" : "Client accepted — create sales order"}</button>
+                <button className="btn btn-primary" disabled={actionBusy} onClick={()=>runAction({type:"SET_QUOTATION_STATUS", id:q.id, status:"Client Accepted"}, { keepOpen: true })}>Client accepted</button>
               )}
               <button className="btn" style={{color:"var(--danger)"}} disabled={actionBusy} onClick={()=>runAction({type:"SET_QUOTATION_STATUS", id:q.id, status:"Rejected"})}>Mark rejected</button>
             </>}
@@ -2367,7 +2376,14 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
               q.feeType === "Government Fee" ? (
                 <button className="btn btn-primary" disabled={actionBusy} onClick={()=>runAction({type:"SET_QUOTATION_STATUS", id:q.id, status:"Approved"})}>Client accepted — mark approved</button>
               ) : (
-                <button className="btn btn-primary" disabled={actionBusy} onClick={()=>runAction({type:"CONVERT_TO_SALES_ORDER", quotationId:q.id})}>{actionBusy ? "Creating…" : "Client accepted — create sales order"}</button>
+                <button className="btn btn-primary" disabled={actionBusy} onClick={()=>runAction({type:"SET_QUOTATION_STATUS", id:q.id, status:"Client Accepted"}, { keepOpen: true })}>Client accepted</button>
+              )
+            )}
+            {q.status === "Client Accepted" && (
+              isAccountsOrAdmin(role) ? (
+                <button className="btn btn-primary" disabled={actionBusy} onClick={()=>runAction({type:"CONVERT_TO_SALES_ORDER", quotationId:q.id})}>{actionBusy ? "Creating…" : "Convert Sales Order"}</button>
+              ) : (
+                <div className="side-note" style={{marginTop:0}}>Client accepted — now under payment process. Accounts will convert this into a sales order.</div>
               )
             )}
             {q.status === "Approved" &&
@@ -3838,6 +3854,7 @@ function OrdersPage({ state, dispatch, role }) {
   // it exists.
   const isOnboarded = (soId) => state.invoices.some(inv => inv.salesOrderId === soId);
   const isAdmin = ADMIN_LIKE.includes(role);
+  const canOnboard = isAccountsOrAdmin(role);
   const [removeSo, setRemoveSo] = useState(null);
   const [pdfSo, setPdfSo] = useState(null);
   const [query, setQuery] = useState("");
@@ -3872,7 +3889,8 @@ function OrdersPage({ state, dispatch, role }) {
               <td className="mono">{money(so.amount)}</td>
               <td><Stamp tone={onboarded ? "success" : "warning"}>{onboarded ? "Onboarded" : "Pending onboarding"}</Stamp></td>
               <td style={{ display:"flex", gap:6, alignItems:"center" }}>
-                {!onboarded && <button className="btn btn-sm btn-primary" onClick={()=>dispatch({type:"ONBOARD_CLIENT", salesOrderId:so.id})}>Onboard client → create invoice & job</button>}
+                {!onboarded && canOnboard && <button className="btn btn-sm btn-primary" onClick={()=>dispatch({type:"ONBOARD_CLIENT", salesOrderId:so.id})}>Onboard client → create invoice & job</button>}
+                {!onboarded && !canOnboard && <span className="pill">Awaiting Accounts</span>}
                 {onboarded && <span className="pill"><BadgeCheck size={12} style={{verticalAlign:-2}}/> Invoice & job card created</span>}
                 <button className="btn btn-sm btn-ghost" onClick={()=>setPdfSo(so)}><FileText size={13}/> PDF</button>
                 {isAdmin && <RowActions onRemove={()=>setRemoveSo(so)} />}
@@ -3883,14 +3901,33 @@ function OrdersPage({ state, dispatch, role }) {
       </table>)}
       {removeSo && <ConfirmModal title={`Remove sales order ${removeSo.id}?`} body={`${removeSo.customer} — ${money(removeSo.amount)}. Any invoice or job card already created from it is kept, just unlinked. This can't be undone.`}
         onConfirm={()=>{ dispatch({type:"DELETE_SALES_ORDER", id:removeSo.id}); setRemoveSo(null); }} onClose={()=>setRemoveSo(null)} />}
-      {pdfSo && <SalesOrderPdfModal salesOrder={pdfSo} onboarded={isOnboarded(pdfSo.id)} items={state.quotations.find(q=>q.id===pdfSo.quotationId)?.items || []} onClose={()=>setPdfSo(null)} />}
+      {pdfSo && <SalesOrderPdfModal salesOrder={pdfSo} onboarded={isOnboarded(pdfSo.id)} items={state.quotations.find(q=>q.id===pdfSo.quotationId)?.items || []} role={role} onClose={()=>setPdfSo(null)} />}
       </div>
     </div>
   );
 }
 
-function SalesOrderPdfModal({ salesOrder: so, onboarded, items=[], onClose }) {
+// Diagonal, low-opacity stamp overlaid on the on-screen Sales Order / Invoice previews for anyone
+// who isn't Accounts/Admin — mirrors the same watermark PDFKit draws into the actual downloadable
+// PDF for those roles (see drawWatermark in src/utils/pdfCommon.js), so the on-screen "view" and
+// the real file (if ever fetched directly) always agree.
+function PdfWatermarkOverlay() {
+  return (
+    <div style={{
+      position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center",
+      pointerEvents:"none", overflow:"hidden", zIndex:1,
+    }}>
+      <span style={{
+        transform:"rotate(-35deg)", fontSize:44, fontWeight:700, letterSpacing:"0.04em",
+        color:"#C0392B", opacity:0.15, whiteSpace:"nowrap",
+      }}>INTERNAL USE ONLY</span>
+    </div>
+  );
+}
+
+function SalesOrderPdfModal({ salesOrder: so, onboarded, items=[], role, onClose }) {
   const [downloading, setDownloading] = useState(false);
+  const canDownload = isAccountsOrAdmin(role);
   const profFee = Number(so.professionalFeeAmount ?? so.amount);
   const govFee = Math.max(0, so.amount - profFee);
   const isMixed = govFee > 0.005 && profFee > 0.005;
@@ -3898,7 +3935,8 @@ function SalesOrderPdfModal({ salesOrder: so, onboarded, items=[], onClose }) {
 
   return (
     <Modal title={`Sales Order — ${so.id}`} sub={so.customer} onClose={onClose} width={720}>
-      <div style={{ border:"1px solid var(--hair)", borderRadius:8, padding:"32px 36px", background:"#fff" }}>
+      <div style={{ position:"relative", border:"1px solid var(--hair)", borderRadius:8, padding:"32px 36px", background:"#fff", overflow:"hidden" }}>
+        {!canDownload && <PdfWatermarkOverlay />}
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:24 }}>
           <div>
             <div className="disp" style={{ fontSize:28, fontWeight:500, letterSpacing:"-.01em" }}>SALES ORDER</div>
@@ -3958,17 +3996,21 @@ function SalesOrderPdfModal({ salesOrder: so, onboarded, items=[], onClose }) {
           <span style={{color:"var(--ink-soft)"}}>Status :</span> {onboarded ? "Onboarded" : "Pending onboarding"}
         </div>
       </div>
-      <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop: 14 }}>
-        <button className="btn btn-sm" disabled={downloading} onClick={async ()=>{
-          setDownloading(true);
-          try {
-            const blob = await api.salesOrders.downloadPdf(so.id);
-            downloadBlob(`SalesOrder-${so.id}.pdf`, blob);
-          } finally {
-            setDownloading(false);
-          }
-        }}><Download size={13}/> {downloading ? "Generating…" : "Download PDF"}</button>
-      </div>
+      {canDownload ? (
+        <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop: 14 }}>
+          <button className="btn btn-sm" disabled={downloading} onClick={async ()=>{
+            setDownloading(true);
+            try {
+              const blob = await api.salesOrders.downloadPdf(so.id);
+              downloadBlob(`SalesOrder-${so.id}.pdf`, blob);
+            } finally {
+              setDownloading(false);
+            }
+          }}><Download size={13}/> {downloading ? "Generating…" : "Download PDF"}</button>
+        </div>
+      ) : (
+        <div className="side-note" style={{marginTop:14}}>Internal viewing only — this document isn't available for download on your account.</div>
+      )}
     </Modal>
   );
 }
@@ -3986,6 +4028,7 @@ function InvoicesPage({ state, dispatch, role }) {
   const [removeInvoice, setRemoveInvoice] = useState(null);
   const [pdfInvoice, setPdfInvoice] = useState(null);
   const isAdmin = ADMIN_LIKE.includes(role);
+  const canRecordPayment = isAccountsOrAdmin(role);
   const [query, setQuery] = useState("");
   const rows = state.invoices.filter(inv => [inv.customer, inv.id].filter(Boolean).join(" ").toLowerCase().includes(query.trim().toLowerCase()));
 
@@ -4022,7 +4065,7 @@ function InvoicesPage({ state, dispatch, role }) {
                   <td className="mono" style={{fontSize:12}}>{fmtDate(inv.dueDate)}</td>
                   <td><Stamp tone={statusTone(inv.status)}>{inv.status}</Stamp></td>
                   <td style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-                    {balance > 0 && <button className="btn btn-sm" onClick={()=>{ setPay(inv); setAmount(balance); }}>Record payment</button>}
+                    {balance > 0 && canRecordPayment && <button className="btn btn-sm" onClick={()=>{ setPay(inv); setAmount(balance); }}>Record payment</button>}
                     {inv.payments.length > 0 && <button className="btn btn-sm btn-ghost" onClick={()=>setHistory(inv)}>Payments</button>}
                     <button className="btn btn-sm btn-ghost" onClick={()=>setEmailFor(inv)}>
                       {inv.emailedToClient ? <><BadgeCheck size={13}/> Emailed</> : <><Mail size={13}/> Email</>}
@@ -4070,14 +4113,15 @@ function InvoicesPage({ state, dispatch, role }) {
       {pdfInvoice && (() => {
         const linkedSo = pdfInvoice.salesOrderId ? state.salesOrders.find(s=>s.id===pdfInvoice.salesOrderId) : null;
         const linkedQuotation = linkedSo?.quotationId ? state.quotations.find(q=>q.id===linkedSo.quotationId) : null;
-        return <InvoicePdfModal invoice={pdfInvoice} items={linkedQuotation?.items || []} onClose={()=>setPdfInvoice(null)} />;
+        return <InvoicePdfModal invoice={pdfInvoice} items={linkedQuotation?.items || []} role={role} onClose={()=>setPdfInvoice(null)} />;
       })()}
     </div>
   );
 }
 
-function InvoicePdfModal({ invoice: inv, items=[], onClose }) {
+function InvoicePdfModal({ invoice: inv, items=[], role, onClose }) {
   const [downloading, setDownloading] = useState(false);
+  const canDownload = isAccountsOrAdmin(role);
   const profFee = Number(inv.professionalFeeAmount ?? inv.amount);
   const govFee = Math.max(0, inv.amount - profFee);
   const isMixed = govFee > 0.005 && profFee > 0.005;
@@ -4087,7 +4131,8 @@ function InvoicePdfModal({ invoice: inv, items=[], onClose }) {
 
   return (
     <Modal title={`Invoice — ${inv.id}`} sub={inv.customer} onClose={onClose} width={720}>
-      <div style={{ border:"1px solid var(--hair)", borderRadius:8, padding:"32px 36px", background:"#fff" }}>
+      <div style={{ position:"relative", border:"1px solid var(--hair)", borderRadius:8, padding:"32px 36px", background:"#fff", overflow:"hidden" }}>
+        {!canDownload && <PdfWatermarkOverlay />}
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:24 }}>
           <div>
             <div className="disp" style={{ fontSize:28, fontWeight:500, letterSpacing:"-.01em" }}>INVOICE</div>
@@ -4164,17 +4209,21 @@ function InvoicePdfModal({ invoice: inv, items=[], onClose }) {
           </div>
         )}
       </div>
-      <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop: 14 }}>
-        <button className="btn btn-sm" disabled={downloading} onClick={async ()=>{
-          setDownloading(true);
-          try {
-            const blob = await api.invoices.downloadPdf(inv.id);
-            downloadBlob(`Invoice-${inv.id}.pdf`, blob);
-          } finally {
-            setDownloading(false);
-          }
-        }}><Download size={13}/> {downloading ? "Generating…" : "Download PDF"}</button>
-      </div>
+      {canDownload ? (
+        <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop: 14 }}>
+          <button className="btn btn-sm" disabled={downloading} onClick={async ()=>{
+            setDownloading(true);
+            try {
+              const blob = await api.invoices.downloadPdf(inv.id);
+              downloadBlob(`Invoice-${inv.id}.pdf`, blob);
+            } finally {
+              setDownloading(false);
+            }
+          }}><Download size={13}/> {downloading ? "Generating…" : "Download PDF"}</button>
+        </div>
+      ) : (
+        <div className="side-note" style={{marginTop:14}}>Internal viewing only — this document isn't available for download on your account.</div>
+      )}
     </Modal>
   );
 }

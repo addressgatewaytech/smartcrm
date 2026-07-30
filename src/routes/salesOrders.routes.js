@@ -32,12 +32,18 @@ router.get("/:id/pdf", async (req, res) => {
   if (!row) return res.status(404).json({ error: "Not found" });
   const [invoice] = await query("SELECT id FROM invoices WHERE sales_order_id = ?", [row.id]);
   const [quotation] = row.quotation_id ? await query("SELECT items FROM quotations WHERE id = ?", [row.quotation_id]) : [];
-  generateSalesOrderPdf({ ...row, items: quotation?.items || [], onboarded: !!invoice }, res);
+  // Only Accounts/Admin get the clean, downloadable original — every other role (sales, ops, ...)
+  // gets the same document watermarked "INTERNAL USE ONLY", since this is for their own reference
+  // only, not something meant to leave the building as-is.
+  const internalOnly = !(isAdminLike(req.user.roles) || req.user.roles.includes("accounts"));
+  generateSalesOrderPdf({ ...row, items: quotation?.items || [], onboarded: !!invoice, internalOnly }, res);
 });
 
 // Onboard client: generates the Invoice and the first Job Card (normal path — starts at "Created",
 // unlike a directly-created job card which starts at "Pending Approval"; see jobCards.routes.js).
-router.post("/:id/onboard", async (req, res) => {
+// Restricted to Accounts/Admin — sales orders and invoices are financial documents only Accounts
+// should be creating; a sales user's role in this flow ends at marking the quotation Client Accepted.
+router.post("/:id/onboard", requireRole(["accounts", "admin_like"]), async (req, res) => {
   const result = await withTransaction(async (conn) => {
     const [[so]] = await conn.execute("SELECT * FROM sales_orders WHERE id = ?", [req.params.id]);
     if (!so) throw new Error("Sales order not found");

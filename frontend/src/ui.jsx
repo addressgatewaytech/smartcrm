@@ -18,7 +18,7 @@ export function statusTone(status) {
     New: "info", Contacted: "info", "Follow-up Scheduled": "warning", Interested: "gold", "Not Interested": "danger", Qualified: "success", Unqualified: "neutral", Converted: "success",
     Open: "info", "Quotation Sent": "gold", Won: "success", Lost: "danger",
     Draft: "neutral", "Pending Manager Approval": "warning", Sent: "info",
-    "Under Negotiation": "warning", Approved: "success", Expired: "danger", Rejected: "danger",
+    "Under Negotiation": "warning", "Client Accepted": "gold", Approved: "success", Expired: "danger", Rejected: "danger",
     Confirmed: "info", Invoiced: "gold", "Client Onboarded": "success",
     "Partially Paid": "warning", Paid: "success", Overdue: "danger",
     Created: "neutral", "Pending Approval": "warning", Assigned: "info", "In Progress": "gold", "On Hold": "warning",

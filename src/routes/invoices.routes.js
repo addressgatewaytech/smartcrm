@@ -45,10 +45,13 @@ router.get("/:id/pdf", async (req, res) => {
         [row.sales_order_id]
       )
     : [];
-  generateInvoicePdf({ ...row, items: items?.items || [], payments }, res);
+  // Same rule as sales orders' PDF: only Accounts/Admin get the clean original, everyone else gets
+  // it watermarked "INTERNAL USE ONLY".
+  const internalOnly = !(isAdminLike(req.user.roles) || req.user.roles.includes("accounts"));
+  generateInvoicePdf({ ...row, items: items?.items || [], payments, internalOnly }, res);
 });
 
-router.post("/:id/payments", async (req, res) => {
+router.post("/:id/payments", requireRole(["accounts", "admin_like"]), async (req, res) => {
   const { amount, mode } = req.body;
   await query("INSERT INTO invoice_payments (id, invoice_id, amount, mode, recorded_by) VALUES (?,?,?,?,?)", [nextId("PMT"), req.params.id, amount, mode, req.user.id]);
 

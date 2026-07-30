@@ -110,7 +110,19 @@ function drawItemsTable(doc, items, y, tableRight) {
   return { y: y + 12, subtotal };
 }
 
+/** Diagonal, semi-transparent full-page watermark — same treatment quotationPdf.js uses for its
+ * DRAFT stamp. Call once per page inside a doc.bufferedPageRange() loop. */
+function drawWatermark(doc, text) {
+  doc.save();
+  doc.opacity(0.15);
+  doc.font("Inter-Bold").fontSize(60).fillColor("#C0392B")
+    .rotate(-45, { origin: [doc.page.width / 2, doc.page.height / 2] })
+    .text(text, 0, doc.page.height / 2 - 30, { width: doc.page.width, align: "center", lineBreak: false });
+  doc.restore();
+  doc.fillColor(INK);
+}
+
 module.exports = {
   MARGIN, GRAY, INK, DARK_BG, HAIR, LIGHT_BG,
-  registerFonts, money2, fmtDate, drawBrandHeader, drawBillTo, drawItemsTable,
+  registerFonts, money2, fmtDate, drawBrandHeader, drawBillTo, drawItemsTable, drawWatermark,
 };

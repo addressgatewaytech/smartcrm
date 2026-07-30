@@ -266,7 +266,7 @@ CREATE TABLE IF NOT EXISTS quotations (
   footer_note      TEXT,
   notes            TEXT,
   terms            TEXT,
-  status           ENUM('Draft','Pending Manager Approval','Sent','Under Negotiation','Approved','Rejected','Expired') DEFAULT 'Draft',
+  status           ENUM('Draft','Pending Manager Approval','Sent','Under Negotiation','Client Accepted','Approved','Rejected','Expired') DEFAULT 'Draft',
   valid_till       DATE,
   owner            VARCHAR(20),
   favorite         TINYINT(1) DEFAULT 0,

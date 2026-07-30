@@ -1,6 +1,6 @@
 // Server-side A4 PDF for a Sales Order — same PDFKit approach and brand header as quotationPdf.js.
 const PDFDocument = require("pdfkit");
-const { MARGIN, GRAY, INK, HAIR, LIGHT_BG, registerFonts, money2, fmtDate, drawBrandHeader, drawBillTo, drawItemsTable } = require("./pdfCommon");
+const { MARGIN, GRAY, INK, HAIR, LIGHT_BG, registerFonts, money2, fmtDate, drawBrandHeader, drawBillTo, drawItemsTable, drawWatermark } = require("./pdfCommon");
 
 const FOOTER_NOTE = "This document confirms the sales order raised from an accepted quotation.";
 
@@ -84,6 +84,7 @@ function generateSalesOrderPdf(salesOrder, res) {
   const range = doc.bufferedPageRange();
   for (let i = range.start; i < range.start + range.count; i++) {
     doc.switchToPage(i);
+    if (salesOrder.internalOnly) drawWatermark(doc, "INTERNAL USE ONLY");
     doc.font("Inter").fontSize(7).fillColor(GRAY)
       .text(FOOTER_NOTE, MARGIN, doc.page.height - MARGIN - 24, { width: doc.page.width - MARGIN * 2, align: "center" });
     doc.fillColor(INK);

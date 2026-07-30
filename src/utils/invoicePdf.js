@@ -1,6 +1,6 @@
 // Server-side A4 PDF for an Invoice — same PDFKit approach and brand header as quotationPdf.js.
 const PDFDocument = require("pdfkit");
-const { MARGIN, GRAY, INK, HAIR, LIGHT_BG, registerFonts, money2, fmtDate, drawBrandHeader, drawBillTo, drawItemsTable } = require("./pdfCommon");
+const { MARGIN, GRAY, INK, HAIR, LIGHT_BG, registerFonts, money2, fmtDate, drawBrandHeader, drawBillTo, drawItemsTable, drawWatermark } = require("./pdfCommon");
 
 const FOOTER_NOTE = "Please make payment by the due date to the bank account details shared separately.";
 
@@ -113,6 +113,7 @@ function generateInvoicePdf(invoice, res) {
   const range = doc.bufferedPageRange();
   for (let i = range.start; i < range.start + range.count; i++) {
     doc.switchToPage(i);
+    if (invoice.internalOnly) drawWatermark(doc, "INTERNAL USE ONLY");
     doc.font("Inter").fontSize(7).fillColor(GRAY)
       .text(FOOTER_NOTE, MARGIN, doc.page.height - MARGIN - 24, { width: doc.page.width - MARGIN * 2, align: "center" });
     doc.fillColor(INK);
