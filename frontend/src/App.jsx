@@ -1856,7 +1856,6 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
   // template, tagged per item — see quotation_templates in schema.sql), so there's no fee-type
   // keying to do here anymore.
   const tpl = templates[templateService];
-  const categories = [...new Set(items.map(it => it.category).filter(Boolean))];
 
   const update = (i, field, val) => setItems(items.map((it,idx) => idx===i ? { ...it, [field]: val } : it));
 
@@ -2004,8 +2003,7 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
         <div key={i} className="agw-card" style={{ marginBottom: 10, padding: 12 }}>
           <div className="row2">
             <div className="field"><label>Category / stage</label>
-              <input list="category-options" value={it.category || ""} onChange={e=>update(i,"category",e.target.value)} placeholder="e.g. STAGE - 1 : GOVERNMENT FEES" />
-              <datalist id="category-options">{categories.map(c=><option key={c} value={c} />)}</datalist>
+              <input value={it.category || ""} onChange={e=>update(i,"category",e.target.value)} placeholder="e.g. STAGE - 1 : GOVERNMENT FEES" />
             </div>
             <div className="field"><label>Service type (internal tag)</label>
               <select value={it.service} onChange={e=>update(i,"service",e.target.value)}>
@@ -2665,7 +2663,6 @@ function QuotationTemplatesPage({ state, dispatch }) {
   };
 
   const update = (i, field, val) => setItems(items.map((it,idx) => idx===i ? { ...it, [field]: val } : it));
-  const categories = [...new Set(items.map(it => it.category).filter(Boolean))];
   const addItem = () => {
     const lastCategory = items.length ? items[items.length-1].category || "" : "";
     setItems([...items, { category: lastCategory, service, description: "", note: "", qty: 1, price: 0, discountPct: 0, feeType: "Professional Fee" }]);
@@ -2702,8 +2699,7 @@ function QuotationTemplatesPage({ state, dispatch }) {
           <div key={i} className="agw-card" style={{ marginBottom: 10, padding: 12 }}>
             <div className="row2">
               <div className="field"><label>Category / stage</label>
-                <input list="tpl-category-options" value={it.category || ""} onChange={e=>update(i,"category",e.target.value)} placeholder="e.g. STAGE - 1 : GOVERNMENT FEES" />
-                <datalist id="tpl-category-options">{categories.map(c=><option key={c} value={c} />)}</datalist>
+                <input value={it.category || ""} onChange={e=>update(i,"category",e.target.value)} placeholder="e.g. STAGE - 1 : GOVERNMENT FEES" />
               </div>
               <div className="field"><label>Fee type</label>
                 <select value={it.feeType || "Professional Fee"} onChange={e=>update(i,"feeType",e.target.value)}>
