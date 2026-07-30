@@ -189,6 +189,9 @@ export const api = {
     updateEmployeeDoc: (id, empId, docId, payload) => patch(`/customers/${id}/employees/${empId}/docs/${docId}`, payload),
     removeEmployeeDoc: (id, empId, docId) => del(`/customers/${id}/employees/${empId}/docs/${docId}`),
     dashboard: (id) => get(`/customers/${id}/dashboard`),
+    getOnboarding: (id) => get(`/customers/${id}/onboarding`),
+    saveOnboarding: (id, payload) => patch(`/customers/${id}/onboarding`, payload),
+    generateOnboardingLink: (id) => post(`/customers/${id}/onboarding-link`),
   },
   jobCards: {
     list: () => get("/job-cards"),

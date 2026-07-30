@@ -1,4 +1,5 @@
 const express = require("express");
+const crypto = require("crypto");
 const { query } = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
 const { requireRole, isAdminLike } = require("../middleware/roles");
@@ -143,6 +144,70 @@ router.get("/:id/dashboard", async (req, res) => {
     jobCards,
     statement: { totalInvoiced, totalPaid, balance: totalInvoiced - totalPaid },
   });
+});
+
+// --- Onboarding Form (company-formation data collection) -----------------------------------
+// One row per customer. Staff can view/fill it directly here, or generate a public link (a
+// random token, no auth) so the client fills it in themselves — see publicOnboarding.routes.js
+// for the unauthenticated counterpart of GET/PATCH below.
+const emptyOnboardingForm = {
+  companyNamesEn: [], companyNamesAr: [], activities: [], capitalAmount: null,
+  legalStatus: "WLL", partners: [], visas: [], status: "Draft", submittedAt: null,
+};
+
+router.get("/:id/onboarding", async (req, res) => {
+  const [row] = await query("SELECT * FROM onboarding_forms WHERE customer_id = ?", [req.params.id]);
+  if (!row) return res.json({ exists: false, ...emptyOnboardingForm });
+  res.json({
+    exists: true,
+    companyNamesEn: row.company_names_en || [], companyNamesAr: row.company_names_ar || [],
+    activities: row.activities || [], capitalAmount: row.capital_amount,
+    legalStatus: row.legal_status || "WLL", partners: row.partners || [], visas: row.visas || [],
+    status: row.status, submittedAt: row.submitted_at,
+  });
+});
+
+router.patch("/:id/onboarding", async (req, res) => {
+  const b = req.body;
+  const [customer] = await query("SELECT id FROM customers WHERE id = ?", [req.params.id]);
+  if (!customer) return res.status(404).json({ error: "Not found" });
+  const [existing] = await query("SELECT id FROM onboarding_forms WHERE customer_id = ?", [req.params.id]);
+  const fields = [
+    JSON.stringify(b.companyNamesEn || []), JSON.stringify(b.companyNamesAr || []),
+    JSON.stringify(b.activities || []), b.capitalAmount ?? null, b.legalStatus || "WLL",
+    JSON.stringify(b.partners || []), JSON.stringify(b.visas || []),
+  ];
+  if (existing) {
+    await query(
+      `UPDATE onboarding_forms SET company_names_en=?, company_names_ar=?, activities=?, capital_amount=?, legal_status=?, partners=?, visas=? WHERE customer_id = ?`,
+      [...fields, req.params.id]
+    );
+  } else {
+    const id = nextId("OB");
+    const token = crypto.randomBytes(24).toString("hex");
+    await query(
+      `INSERT INTO onboarding_forms (id, customer_id, token, company_names_en, company_names_ar, activities, capital_amount, legal_status, partners, visas, created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+      [id, req.params.id, token, ...fields, req.user.id]
+    );
+  }
+  res.json({ ok: true });
+});
+
+router.post("/:id/onboarding-link", async (req, res) => {
+  const [customer] = await query("SELECT id FROM customers WHERE id = ?", [req.params.id]);
+  if (!customer) return res.status(404).json({ error: "Not found" });
+  let [row] = await query("SELECT token FROM onboarding_forms WHERE customer_id = ?", [req.params.id]);
+  if (!row) {
+    const id = nextId("OB");
+    const token = crypto.randomBytes(24).toString("hex");
+    await query(
+      `INSERT INTO onboarding_forms (id, customer_id, token, created_by) VALUES (?,?,?,?)`,
+      [id, req.params.id, token, req.user.id]
+    );
+    row = { token };
+  }
+  const url = `${req.protocol}://${req.get("host")}/onboarding/${row.token}`;
+  res.json({ token: row.token, url });
 });
 
 module.exports = router;

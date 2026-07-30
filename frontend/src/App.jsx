@@ -15,6 +15,7 @@ import { money, fmtDate, Stamp, statusTone, Rail, DonutChart, LineChart, BarChar
 import { TasksPage } from "./pages/tasks.jsx";
 import { AttendanceWidget, AttendancePage } from "./pages/attendance.jsx";
 import { LeadAssignmentManagerPage } from "./pages/leadAssignment.jsx";
+import { OnboardingFormTab, PublicOnboardingPage } from "./pages/onboardingForm.jsx";
 
 /* ---------------------------------------------------------------------- */
 /* DESIGN TOKENS                                                          */
@@ -699,6 +700,12 @@ function Login({ onLogin }) {
 /* ---------------------------------------------------------------------- */
 
 export default function App() {
+  // The app's one unauthenticated route — a client filling in their Onboarding Form via a shared
+  // link never sees the login screen or the CRM shell at all. Checked before anything else in this
+  // component (no token verification, no data fetch) since this path has no session to check.
+  const publicOnboardingToken = window.location.pathname.match(/^\/onboarding\/([^/]+)\/?$/)?.[1];
+  if (publicOnboardingToken) return <PublicOnboardingPage token={publicOnboardingToken} />;
+
   const [currentUser, setCurrentUser] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [activeRole, setActiveRole] = useState(null);
@@ -3012,6 +3019,7 @@ function CustomerDetailModal({ customer: c, state, dispatch, userId, onClose }) 
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
         <div className="tabbar" style={{ marginBottom:0, borderBottom:"none" }}>
           <button className={`tab ${tab==="profile"?"active":""}`} onClick={()=>setTab("profile")}>Profile & KYC</button>
+          <button className={`tab ${tab==="onboarding"?"active":""}`} onClick={()=>setTab("onboarding")}>Onboarding Form</button>
           <button className={`tab ${tab==="dashboard"?"active":""}`} onClick={()=>setTab("dashboard")}>Dashboard</button>
         </div>
         <div style={{ display:"flex", gap:8 }}>
@@ -3033,6 +3041,8 @@ function CustomerDetailModal({ customer: c, state, dispatch, userId, onClose }) 
       )}
 
       {tab === "dashboard" && <CustomerDashboard customer={c} state={state} />}
+
+      {tab === "onboarding" && <OnboardingFormTab api={api} customerId={c.id} />}
 
       {tab === "profile" && (
       <>

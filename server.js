@@ -28,6 +28,7 @@ app.use("/api/quotations", require("./src/routes/quotations.routes"));
 app.use("/api/sales-orders", require("./src/routes/salesOrders.routes"));
 app.use("/api/invoices", require("./src/routes/invoices.routes"));
 app.use("/api/customers", require("./src/routes/customers.routes"));
+app.use("/api/public/onboarding", require("./src/routes/publicOnboarding.routes")); // no requireAuth — public form-fill link
 app.use("/api/job-cards", require("./src/routes/jobCards.routes"));
 app.use("/api/tasks", require("./src/routes/tasks.routes"));
 app.use("/api/todos", require("./src/routes/todos.routes"));

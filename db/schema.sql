@@ -412,6 +412,29 @@ CREATE TABLE IF NOT EXISTS todo_items (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
+-- Company-formation "Data Collection Form" per customer — one row per customer, filled in either
+-- by staff directly (Onboarding Form tab on the Customer KYC card) or by the client themselves via
+-- an unauthenticated public link (token). Array-shaped sections (company names, activities,
+-- partners, visas) are stored as JSON, same convention as quotation line items / job-card checklists.
+CREATE TABLE IF NOT EXISTS onboarding_forms (
+  id                VARCHAR(20) PRIMARY KEY,
+  customer_id       VARCHAR(20) NOT NULL UNIQUE,
+  token             VARCHAR(64) NOT NULL UNIQUE,
+  company_names_en  JSON,
+  company_names_ar  JSON,
+  activities        JSON,
+  capital_amount    DECIMAL(14,2),
+  legal_status      VARCHAR(50) DEFAULT 'WLL',
+  partners          JSON,
+  visas             JSON,
+  status            ENUM('Draft','Submitted') NOT NULL DEFAULT 'Draft',
+  submitted_at      TIMESTAMP NULL,
+  created_by        VARCHAR(20),
+  created_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
 -- ---------------------------------------------------------------------------
 -- SUBSCRIPTIONS (Plans & Services catalog + customer subscriptions)
 -- ---------------------------------------------------------------------------
