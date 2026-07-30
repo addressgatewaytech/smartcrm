@@ -15,6 +15,8 @@ export const mapUser = (u) => ({
   active: !!(u.active ?? true),
   joined: u.joined_date ?? u.joined,
   dateOfBirth: u.date_of_birth ?? u.dateOfBirth ?? null,
+  nationality: u.nationality ?? null,
+  empCode: u.emp_code ?? u.empCode ?? null,
   docs: (u.docs || []).map(mapStaffDoc),
   attendance: [],
   dataActivity: { date: null, emailsSent: 0, whatsappsSent: 0, lastEmailAt: null, lastWhatsappAt: null },

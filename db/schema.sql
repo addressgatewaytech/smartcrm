@@ -37,6 +37,8 @@ CREATE TABLE IF NOT EXISTS users (
   active        TINYINT(1) DEFAULT 1,
   joined_date   DATE,
   date_of_birth DATE,
+  nationality   VARCHAR(100),
+  emp_code      VARCHAR(20),                        -- HR employee code, e.g. AGBS001 — from the HR spreadsheet, not the login id
   created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 

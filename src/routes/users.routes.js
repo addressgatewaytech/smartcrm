@@ -25,7 +25,7 @@ router.use(requireAuth);
 // HR ("roles: all" in the nav) needs every authenticated user to see the roster — only
 // create/edit/delete of Users & Roles itself stays restricted to super_admin/admin below.
 router.get("/", async (req, res) => {
-  const rows = await query("SELECT id, name, email, roles, dept, initials, designation, category, photo_url, leave_balance, active, joined_date, date_of_birth FROM users ORDER BY name");
+  const rows = await query("SELECT id, name, email, roles, dept, initials, designation, category, photo_url, leave_balance, active, joined_date, date_of_birth, nationality, emp_code FROM users ORDER BY name");
   const docs = await query("SELECT * FROM staff_docs");
   res.json(rows.map((r) => ({ ...r, docs: docs.filter((d) => d.user_id === r.id) })));
 });

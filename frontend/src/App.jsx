@@ -4973,8 +4973,8 @@ function HrPage({ state, dispatch, role, userId }) {
                 style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:8, padding:"7px 12px 7px 34px", fontSize:13, background:"var(--surface)" }} />
             </div>
             <button className="btn btn-sm" onClick={()=>exportCSV("team.csv",
-              ["Name","Category","Department","Designation","Join Date","Date of Birth","Status","Leave Balance"],
-              filtered.map(e=>[e.name, e.category||"Staff", e.dept, e.designation||"", e.joined||"", e.dateOfBirth||"", e.active===false?"Deactivated":"Active", e.leaveBalance ?? 21]))}>
+              ["Employee ID","Name","Category","Department","Designation","Nationality","Join Date","Date of Birth","Status","Leave Balance"],
+              filtered.map(e=>[e.empCode||"", e.name, e.category||"Staff", e.dept, e.designation||"", e.nationality||"", e.joined||"", e.dateOfBirth||"", e.active===false?"Deactivated":"Active", e.leaveBalance ?? 21]))}>
               <Download size={13}/> Export
             </button>
           </div>
@@ -5203,7 +5203,7 @@ function EmployeeHrCard({ e, state, dispatch, isAdmin, userId, onOpenDocs, onOpe
           )}
         </div>
         <div style={{ flex:1, minWidth:0 }}>
-          <strong style={{ fontSize:14.5 }}>{e.name}</strong>
+          <strong style={{ fontSize:14.5 }}>{e.name}</strong>{e.empCode && <span className="mono" style={{ fontSize:11, color:"var(--ink-soft)", marginLeft:6 }}>{e.empCode}</span>}
           <div style={{ fontSize:12, color:"var(--ink-soft)" }}>{e.designation}</div>
         </div>
         <div style={{ textAlign:"right" }}>
@@ -5237,6 +5237,13 @@ function EmployeeHrCard({ e, state, dispatch, isAdmin, userId, onOpenDocs, onOpe
         <div style={{ background:"var(--page)", borderRadius:8, padding:"8px 10px" }}>
           <div style={{ fontSize:10.5, color:"var(--ink-soft)", textTransform:"uppercase", letterSpacing:".03em" }}>Date of birth</div>
           <div style={{ fontSize:13, fontWeight:500, marginTop:2 }}>{e.dateOfBirth ? fmtDate(e.dateOfBirth) : "—"}</div>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 8 }}>
+        <div style={{ background:"var(--page)", borderRadius:8, padding:"8px 10px" }}>
+          <div style={{ fontSize:10.5, color:"var(--ink-soft)", textTransform:"uppercase", letterSpacing:".03em" }}>Nationality</div>
+          <div style={{ fontSize:13, fontWeight:500, marginTop:2 }}>{e.nationality || "—"}</div>
         </div>
       </div>
 
