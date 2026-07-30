@@ -4905,6 +4905,9 @@ function HrPage({ state, dispatch, role, userId }) {
   const [leaveFor, setLeaveFor] = useState(null);
   const [attendanceFor, setAttendanceFor] = useState(null);
   const [punchFor, setPunchFor] = useState(null);
+  const [viewCardFor, setViewCardFor] = useState(null);
+  const [editHrFor, setEditHrFor] = useState(null);
+  const [removeUserFor, setRemoveUserFor] = useState(null);
 
   const me = state.employees.find(e => e.id === userId);
   const today = daysFromNow(0);
@@ -5011,10 +5014,12 @@ function HrPage({ state, dispatch, role, userId }) {
                     <td><Stamp tone={attendanceTone(status)}>{status}</Stamp></td>
                     <td>{e.leaveBalance}</td>
                     <td>{flagged > 0 ? <Stamp tone="warning">{flagged} flagged</Stamp> : <Stamp tone="success">Clear</Stamp>}</td>
-                    <td style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                    <td style={{ display:"flex", gap:6, flexWrap:"wrap", alignItems:"center" }}>
+                      <button className="btn btn-sm btn-ghost" onClick={()=>setViewCardFor(e)}>View</button>
                       <button className="btn btn-sm btn-ghost" onClick={()=>setDocsFor(e)}>Docs</button>
                       <button className="btn btn-sm btn-ghost" onClick={()=>setLeaveFor(e)}>Leave</button>
                       {isAdmin && <button className="btn btn-sm btn-ghost" onClick={()=>setAttendanceFor(e.id)}>Attendance</button>}
+                      {isAdmin && <RowActions onEdit={()=>setEditHrFor(e)} onRemove={e.id!==userId ? ()=>setRemoveUserFor(e) : null} />}
                     </td>
                   </tr>
                 );
@@ -5028,7 +5033,9 @@ function HrPage({ state, dispatch, role, userId }) {
       {tab === "team" && teamView === "card" && (
         <div className="agw-grid" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
           {filtered.map(e => (
-            <EmployeeHrCard key={e.id} e={e} state={state} dispatch={dispatch} isAdmin={isAdmin} userId={userId} onOpenDocs={()=>setDocsFor(e)} onOpenLeave={()=>setLeaveFor(e)} onMarkAttendance={()=>setAttendanceFor(e.id)} onRequestPunch={()=>setPunchFor(e)} />
+            <EmployeeHrCard key={e.id} e={e} state={state} dispatch={dispatch} isAdmin={isAdmin} userId={userId}
+              onOpenDocs={()=>setDocsFor(e)} onOpenLeave={()=>setLeaveFor(e)} onMarkAttendance={()=>setAttendanceFor(e.id)} onRequestPunch={()=>setPunchFor(e)}
+              onEditHr={isAdmin ? ()=>setEditHrFor(e) : null} onRemoveUser={isAdmin && e.id!==userId ? ()=>setRemoveUserFor(e) : null} />
           ))}
           {filtered.length === 0 && <Empty icon={Search} text="No team members match that search." />}
         </div>
@@ -5044,7 +5051,72 @@ function HrPage({ state, dispatch, role, userId }) {
       {leaveFor && <LeaveRequestModal employee={leaveFor} dispatch={dispatch} onClose={()=>setLeaveFor(null)} />}
       {attendanceFor && <MarkAttendanceModal employees={state.employees} initialEmployeeId={attendanceFor} dispatch={dispatch} onClose={()=>setAttendanceFor(null)} />}
       {punchFor && <PunchRequestModal employee={punchFor} state={state} dispatch={dispatch} onClose={()=>setPunchFor(null)} />}
+      {viewCardFor && (
+        <Modal title={viewCardFor.name} sub={viewCardFor.designation || "HR card"} onClose={()=>setViewCardFor(null)} width={420}>
+          <EmployeeHrCard e={viewCardFor} state={state} dispatch={dispatch} isAdmin={isAdmin} userId={userId}
+            onOpenDocs={()=>setDocsFor(viewCardFor)} onOpenLeave={()=>setLeaveFor(viewCardFor)} onMarkAttendance={()=>setAttendanceFor(viewCardFor.id)} onRequestPunch={()=>setPunchFor(viewCardFor)}
+            onEditHr={isAdmin ? ()=>setEditHrFor(viewCardFor) : null} onRemoveUser={isAdmin && viewCardFor.id!==userId ? ()=>setRemoveUserFor(viewCardFor) : null} />
+        </Modal>
+      )}
+      {editHrFor && <EditHrDetailsModal employee={editHrFor} dispatch={dispatch} onClose={()=>setEditHrFor(null)} />}
+      {removeUserFor && (
+        <ConfirmModal title={`Remove ${removeUserFor.name}?`}
+          body="This permanently deletes the user account. Consider Deactivate (in Users & Roles) instead if you might need this account again."
+          onConfirm={()=>{ dispatch({type:"DELETE_USER", id:removeUserFor.id}); setRemoveUserFor(null); setViewCardFor(null); }}
+          onClose={()=>setRemoveUserFor(null)} />
+      )}
     </div>
+  );
+}
+
+function EditHrDetailsModal({ employee: e, dispatch, onClose }) {
+  const [form, setForm] = useState({
+    designation: e.designation || "", dept: e.dept || "", category: e.category || "Staff",
+    joinedDate: (e.joined || "").slice(0,10), dateOfBirth: (e.dateOfBirth || "").slice(0,10),
+    nationality: e.nationality || "", empCode: e.empCode || "",
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const save = async () => {
+    setSaving(true); setError("");
+    try {
+      await dispatch({ type:"UPDATE_USER", id:e.id, payload:form });
+      onClose();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't save — please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal title={`Edit HR details — ${e.name}`} onClose={onClose}>
+      <div className="row2">
+        <div className="field"><label>Designation (job title)</label><input value={form.designation} onChange={ev=>setForm({...form,designation:ev.target.value})} /></div>
+        <div className="field"><label>Department</label><input value={form.dept} onChange={ev=>setForm({...form,dept:ev.target.value})} /></div>
+      </div>
+      <div className="field">
+        <label>Category</label>
+        <select value={form.category} onChange={ev=>setForm({...form,category:ev.target.value})}>
+          <option value="Staff">Staff</option>
+          <option value="Management">Management</option>
+        </select>
+      </div>
+      <div className="row2">
+        <div className="field"><label>Join date</label><input type="date" value={form.joinedDate} onChange={ev=>setForm({...form,joinedDate:ev.target.value})} /></div>
+        <div className="field"><label>Date of birth</label><input type="date" value={form.dateOfBirth} onChange={ev=>setForm({...form,dateOfBirth:ev.target.value})} /></div>
+      </div>
+      <div className="row2">
+        <div className="field"><label>Nationality</label><input value={form.nationality} onChange={ev=>setForm({...form,nationality:ev.target.value})} /></div>
+        <div className="field"><label>Employee ID</label><input value={form.empCode} onChange={ev=>setForm({...form,empCode:ev.target.value})} placeholder="e.g. AGBS021" /></div>
+      </div>
+      {error && <div className="side-note" style={{ color:"var(--danger)" }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{error}</div>}
+      <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop: 16 }}>
+        <button className="btn" onClick={onClose}>Cancel</button>
+        <button className="btn btn-primary" disabled={saving} onClick={save}>{saving ? "Saving…" : "Save changes"}</button>
+      </div>
+    </Modal>
   );
 }
 
@@ -5159,7 +5231,7 @@ function HrAttendanceReport({ state, dispatch, onMarkAttendance }) {
   );
 }
 
-function EmployeeHrCard({ e, state, dispatch, isAdmin, userId, onOpenDocs, onOpenLeave, onMarkAttendance, onRequestPunch }) {
+function EmployeeHrCard({ e, state, dispatch, isAdmin, userId, onOpenDocs, onOpenLeave, onMarkAttendance, onRequestPunch, onEditHr, onRemoveUser }) {
   const today = daysFromNow(0);
   const todayEntry = e.attendance.find(a => a.date === today);
   const todayStatus = todayEntry?.status || "Present";
@@ -5187,6 +5259,11 @@ function EmployeeHrCard({ e, state, dispatch, isAdmin, userId, onOpenDocs, onOpe
 
   return (
     <div className="agw-card">
+      {(onEditHr || onRemoveUser) && (
+        <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:4 }}>
+          <RowActions onEdit={onEditHr} onRemove={onRemoveUser} />
+        </div>
+      )}
       <div style={{ display:"flex", gap:12, alignItems:"flex-start" }}>
         <div style={{ position:"relative", width:48, height:48, flexShrink:0 }}>
           {e.photoUrl ? (

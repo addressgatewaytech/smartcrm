@@ -52,7 +52,7 @@ router.post("/", requireRole(["super_admin", "admin"]), async (req, res) => {
 });
 
 router.patch("/:id", requireRole(["super_admin", "admin"]), async (req, res) => {
-  const { name, email, roles, dept, initials, joinedDate, dateOfBirth, designation, category } = req.body;
+  const { name, email, roles, dept, initials, joinedDate, dateOfBirth, designation, category, nationality, empCode } = req.body;
   const fields = [];
   const params = [];
   if (name) { fields.push("name = ?"); params.push(name); }
@@ -70,6 +70,8 @@ router.patch("/:id", requireRole(["super_admin", "admin"]), async (req, res) => 
   if (initials) { fields.push("initials = ?"); params.push(initials); }
   if (joinedDate !== undefined) { fields.push("joined_date = ?"); params.push(joinedDate || null); }
   if (dateOfBirth !== undefined) { fields.push("date_of_birth = ?"); params.push(dateOfBirth || null); }
+  if (nationality !== undefined) { fields.push("nationality = ?"); params.push(nationality?.trim() || null); }
+  if (empCode !== undefined) { fields.push("emp_code = ?"); params.push(empCode?.trim() || null); }
   if (!fields.length) return res.status(400).json({ error: "Nothing to update" });
   params.push(req.params.id);
   await query(`UPDATE users SET ${fields.join(", ")} WHERE id = ?`, params);
