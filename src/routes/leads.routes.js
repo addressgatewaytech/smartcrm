@@ -21,7 +21,13 @@ router.get("/", async (req, res) => {
   const rows = isAdmin
     ? await query("SELECT * FROM leads ORDER BY created_at DESC")
     : await query("SELECT * FROM leads WHERE owner = ? ORDER BY created_at DESC", [req.user.id]);
-  const followUps = await query("SELECT * FROM lead_followups WHERE lead_id IN (?) ORDER BY at DESC", [rows.map((r) => r.id).length ? rows.map((r) => r.id) : [""]]);
+  // Placeholders are expanded explicitly: query() wraps pool.execute() (prepared statements),
+  // which — unlike pool.query() — does NOT turn a single array param into IN (?,?,...). Passing
+  // the array as one `?` silently matches nothing, so every lead came back with no follow-ups.
+  const leadIds = rows.map((r) => r.id);
+  const followUps = leadIds.length
+    ? await query(`SELECT * FROM lead_followups WHERE lead_id IN (${leadIds.map(() => "?").join(",")}) ORDER BY at DESC`, leadIds)
+    : [];
   res.json(rows.map((r) => ({ ...r, followUps: followUps.filter((f) => f.lead_id === r.id) })));
 });
 

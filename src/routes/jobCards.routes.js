@@ -86,7 +86,12 @@ router.post("/:id/assign", requireRole(["ops_manager", "admin_like"]), async (re
   await query("DELETE FROM job_card_assignees WHERE job_card_id = ?", [req.params.id]);
   for (const uid of assignees || []) await query("INSERT INTO job_card_assignees (job_card_id, user_id) VALUES (?,?)", [req.params.id, uid]);
   await query("UPDATE job_cards SET status = IF(status = 'Created', 'Assigned', status) WHERE id = ?", [req.params.id]);
-  const names = assignees?.length ? await query("SELECT name FROM users WHERE id IN (?)", [assignees]) : [];
+  // Placeholders expanded explicitly — see the note in leads.routes.js: pool.execute() doesn't
+  // expand an array param for IN, so this silently returned no names and every assignment was
+  // logged as "Unassigned".
+  const names = assignees?.length
+    ? await query(`SELECT name FROM users WHERE id IN (${assignees.map(() => "?").join(",")})`, assignees)
+    : [];
   await query("INSERT INTO job_card_status_log (job_card_id, status, by_user, note) VALUES (?, 'Assigned', ?, ?)",
     [req.params.id, req.user.id, names.length ? `Assigned to ${names.map((n) => n.name).join(", ")}` : "Unassigned"]);
   res.json({ ok: true });
@@ -165,7 +170,9 @@ router.get("/:id/pdf", async (req, res) => {
   const assigneeIds = (await query("SELECT user_id FROM job_card_assignees WHERE job_card_id = ?", [req.params.id])).map((a) => a.user_id);
   const log = await query("SELECT * FROM job_card_status_log WHERE job_card_id = ? ORDER BY at ASC", [req.params.id]);
   const userIds = [...new Set([...assigneeIds, ...log.map((l) => l.by_user).filter(Boolean)])];
-  const users = userIds.length ? await query("SELECT id, name FROM users WHERE id IN (?)", [userIds]) : [];
+  const users = userIds.length
+    ? await query(`SELECT id, name FROM users WHERE id IN (${userIds.map(() => "?").join(",")})`, userIds)
+    : [];
   const nameOf = (id) => users.find((u) => u.id === id)?.name || id;
   generateJobCardPdf({
     ...job,

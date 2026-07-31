@@ -52,7 +52,12 @@ router.get("/earned/:userId", async (req, res) => {
     [req.params.userId]
   );
 
-  const rules = await query("SELECT * FROM incentive_rules WHERE role IN (?)", [roles]);
+  // Placeholders expanded explicitly — query() uses pool.execute(), which doesn't turn a single
+  // array param into IN (?,?,...); passing the array as one `?` matched nothing, so every
+  // employee's earned incentive came back as 0 regardless of their activity.
+  const rules = roles.length
+    ? await query(`SELECT * FROM incentive_rules WHERE role IN (${roles.map(() => "?").join(",")})`, roles)
+    : [];
   let total = 0;
   for (const rule of rules) {
     const count = rule.role === "sales_exec" || rule.role === "sales_manager" ? dealsWon : rule.role === "ops_member" ? jobsDone : rule.role === "accounts" ? paymentsCollected : 0;
