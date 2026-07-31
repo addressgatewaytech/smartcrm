@@ -1,9 +1,9 @@
 const express = require("express");
 const crypto = require("crypto");
-const { query } = require("../config/db");
+const { query, withTransaction } = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
 const { requireRole, isAdminLike } = require("../middleware/roles");
-const { nextId, quoteTotal, findDuplicateCustomer } = require("../utils/helpers");
+const { nextId, nextSequentialId, quoteTotal, findDuplicateCustomer } = require("../utils/helpers");
 
 const router = express.Router();
 router.use(requireAuth);
@@ -52,7 +52,7 @@ router.post("/", async (req, res) => {
   if (dup) {
     return res.status(400).json({ error: `This looks like a duplicate of the existing customer "${dup.match.name}" (matched by ${dup.field}) — please use that profile instead of creating a new one.` });
   }
-  const id = nextId("CU");
+  const id = await withTransaction((conn) => nextSequentialId(conn, "AGBSCU", "customer"));
   await query("INSERT INTO customers (id, name, type, contact, phone, landline, contact_mobile, email, address, company_size) VALUES (?,?,?,?,?,?,?,?,?,?)",
     [id, b.name, b.type || "Company", b.contact || null, b.phone || null, b.landline || null, b.contactMobile || null, b.email || null, b.address || null, b.companySize || null]);
   res.status(201).json({ id });

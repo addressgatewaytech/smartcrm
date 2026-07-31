@@ -1,5 +1,6 @@
 // Shared helpers used across route modules.
 const crypto = require("crypto");
+const { withTransaction } = require("../config/db");
 
 /**
  * Generates prototype-style IDs, e.g. nextId("LD") -> "LD-KX3F9A1B2C".
@@ -78,7 +79,9 @@ async function findOrCreateCustomer(query, { name, phone, email, contact }) {
   const dup = await findDuplicateCustomer(query, { name, phone, email });
   if (dup) return { customerId: dup.match.id, duplicateOf: dup.field === "name" ? null : dup.match.name };
 
-  const customerId = nextId("CU");
+  // Branded sequential ID (AGBSCU10100, ...), same format as every other entity — its own short
+  // transaction since callers pass the plain `query` function, not a shared connection.
+  const customerId = await withTransaction((conn) => nextSequentialId(conn, "AGBSCU", "customer"));
   await query("INSERT INTO customers (id, name, type, contact, phone, email) VALUES (?,?,?,?,?,?)",
     [customerId, name, "Company", contact || null, phone || null, email || null]);
   return { customerId, duplicateOf: null };

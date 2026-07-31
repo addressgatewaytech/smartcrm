@@ -211,6 +211,8 @@ CREATE TABLE IF NOT EXISTS deals (
 -- ---------------------------------------------------------------------------
 -- CUSTOMERS / KYC
 -- ---------------------------------------------------------------------------
+-- id: branded sequential format (AGBSCU10100, ...), same as Leads/Deals/Quotations/etc. —
+-- customers created before this format existed keep their old CU-xxxxx random ids.
 CREATE TABLE IF NOT EXISTS customers (
   id           VARCHAR(20) PRIMARY KEY,
   name         VARCHAR(200) NOT NULL,
