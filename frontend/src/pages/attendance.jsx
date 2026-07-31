@@ -79,7 +79,11 @@ export function AttendancePage({ role, state }) {
   }, [from, to]);
   useEffect(() => { load(); }, [load]);
 
-  const rows = isAdmin ? (Array.isArray(data) ? data : []) : data ? [data] : [];
+  // Management-category people (owners/directors) don't punch in/out — the team-wide report
+  // should only track Staff, same rule already applied to assignee dropdowns elsewhere.
+  const rows = isAdmin
+    ? (Array.isArray(data) ? data : []).filter((r) => state.employees.find((e) => e.id === r.userId)?.category !== "Management")
+    : data ? [data] : [];
   const nameOf = (uid) => state.employees.find((e) => e.id === uid)?.name || uid;
   const deptOf = (uid) => state.employees.find((e) => e.id === uid)?.dept || "";
 

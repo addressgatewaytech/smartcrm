@@ -1436,6 +1436,8 @@ function LeadsPage({ state, dispatch, userId, role }) {
   const [view, setView] = useState("table");
   const [draggedLeadId, setDraggedLeadId] = useState(null);
   const [dragOverStatus, setDragOverStatus] = useState(null);
+  const [expandedCols, setExpandedCols] = useState({});
+  const KANBAN_PAGE_SIZE = 5;
   const [showAdd, setShowAdd] = useState(false);
   const [editLead, setEditLead] = useState(null);
   const [removeLead, setRemoveLead] = useState(null);
@@ -1566,13 +1568,17 @@ function LeadsPage({ state, dispatch, userId, role }) {
 
       {view === "kanban" && (
         <div className="board" style={{ gridTemplateColumns: `repeat(${LEAD_STATUSES.length}, minmax(210px,1fr))` }}>
-          {LEAD_STATUSES.map(status => (
+          {LEAD_STATUSES.map(status => {
+            const colLeads = owned.filter(l => l.status === status);
+            const isExpanded = !!expandedCols[status];
+            const shownLeads = isExpanded ? colLeads : colLeads.slice(0, KANBAN_PAGE_SIZE);
+            return (
             <div className={`board-col ${dragOverStatus===status ? "drag-over" : ""}`} key={status}
               onDragOver={(e)=>{ e.preventDefault(); if (dragOverStatus!==status) setDragOverStatus(status); }}
               onDragLeave={()=>setDragOverStatus(prev => prev===status ? null : prev)}
               onDrop={(e)=>{ e.preventDefault(); if (draggedLeadId) dispatch({type:"SET_LEAD_STATUS", id:draggedLeadId, status}); setDraggedLeadId(null); setDragOverStatus(null); }}>
-              <h4>{status}<span className="pill">{owned.filter(l=>l.status===status).length}</span></h4>
-              {owned.filter(l => l.status === status).map(l => (
+              <h4>{status}<span className="pill">{colLeads.length}</span></h4>
+              {shownLeads.map(l => (
                 <div className={`job-card ${draggedLeadId===l.id ? "dragging" : ""}`} key={l.id} draggable
                   onDragStart={(e)=>{ setDraggedLeadId(l.id); e.dataTransfer.effectAllowed = "move"; }}
                   onDragEnd={()=>{ setDraggedLeadId(null); setDragOverStatus(null); }}>
@@ -1599,9 +1605,16 @@ function LeadsPage({ state, dispatch, userId, role }) {
                   </div>
                 </div>
               ))}
-              {owned.filter(l=>l.status===status).length===0 && <div style={{fontSize:12,color:"var(--ink-soft)",padding:"6px 6px"}}>No leads</div>}
+              {colLeads.length===0 && <div style={{fontSize:12,color:"var(--ink-soft)",padding:"6px 6px"}}>No leads</div>}
+              {colLeads.length > KANBAN_PAGE_SIZE && (
+                <button className="btn btn-sm btn-ghost" style={{width:"100%",marginTop:4}}
+                  onClick={()=>setExpandedCols(prev=>({...prev,[status]:!prev[status]}))}>
+                  {isExpanded ? "Show less" : `Show ${colLeads.length - KANBAN_PAGE_SIZE} more`}
+                </button>
+              )}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
