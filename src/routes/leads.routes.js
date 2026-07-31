@@ -2,7 +2,7 @@ const express = require("express");
 const { query, withTransaction } = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
 const { requireRole, isAdminLike } = require("../middleware/roles");
-const { nextId, nextSequentialId, today, findDuplicateCustomer } = require("../utils/helpers");
+const { nextId, nextSequentialId, today, findOrCreateCustomer } = require("../utils/helpers");
 const { checkExistingData } = require("./dataManager.routes").internal;
 const { nextSlaDeadline } = require("../utils/officeHours");
 
@@ -25,23 +25,6 @@ router.get("/", async (req, res) => {
   res.json(rows.map((r) => ({ ...r, followUps: followUps.filter((f) => f.lead_id === r.id) })));
 });
 
-// Finds a Customer that already matches this lead (by company name, or by phone/email belonging
-// to a different-named customer — both normalized the same way findDuplicateCustomer uses
-// everywhere else, so "+974 5049 4933" correctly matches "50494933") rather than creating a
-// duplicate profile; only creates a new Customer when nothing matches. Returns
-// { customerId, duplicateOf } — duplicateOf is set (existing customer name) only when the match
-// came from phone/email, not name, so the frontend can surface "this looks like an existing
-// customer" instead of silently merging.
-async function findOrCreateCustomerForLead(b) {
-  const dup = await findDuplicateCustomer(query, { name: b.company, phone: b.phone, email: b.email });
-  if (dup) return { customerId: dup.match.id, duplicateOf: dup.field === "name" ? null : dup.match.name };
-
-  const customerId = nextId("CU");
-  await query("INSERT INTO customers (id, name, type, contact, phone, email) VALUES (?,?,?,?,?,?)",
-    [customerId, b.company, "Company", b.name || null, b.phone || null, b.email || null]);
-  return { customerId, duplicateOf: null };
-}
-
 router.post("/", async (req, res) => {
   const b = req.body;
   const id = await withTransaction((conn) => nextSequentialId(conn, "AGBSLS", "lead"));
@@ -58,19 +41,22 @@ router.post("/", async (req, res) => {
   // doing the same — self-owned, no SLA.
   const assignedAt = distributing && owner && owner !== req.user.id ? new Date() : null;
   const slaDueAt = assignedAt ? nextSlaDeadline(assignedAt) : null;
+
+  // Every lead gets a Customer profile from day one — reusing an existing one (matched by
+  // name, or by phone/email under a different name) instead of creating a duplicate, and
+  // persisting the link so this lead's `company` text stays reconciled with that Customer
+  // forever (see customers.routes.js PATCH's rename cascade).
+  const { customerId, duplicateOf } = await findOrCreateCustomer(query, { name: b.company, phone: b.phone, email: b.email, contact: b.name });
+
   await query(
-    `INSERT INTO leads (id, name, company, phone, email, reference, source, service, owner, status, next_follow_up, created_by, assigned_at, sla_due_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-    [id, b.name, b.company, b.phone || null, b.email || null, b.reference || null, b.source || null, b.service || null, owner, "New", b.nextFollowUp || null, req.user.id, assignedAt, slaDueAt]
+    `INSERT INTO leads (id, name, company, phone, email, reference, source, service, owner, status, next_follow_up, created_by, assigned_at, sla_due_at, customer_id)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    [id, b.name, b.company, b.phone || null, b.email || null, b.reference || null, b.source || null, b.service || null, owner, "New", b.nextFollowUp || null, req.user.id, assignedAt, slaDueAt, customerId]
   );
   await query("INSERT INTO activity_log (text) VALUES (?)", [`New lead ${id} — ${b.company}`]);
 
   // Data Manager integration: notify if this lead matches an existing outreach data record.
   await checkExistingData({ id, company: b.company, email: b.email, phone: b.phone });
-
-  // Every lead gets a Customer profile from day one — reusing an existing one (matched by
-  // name, or by phone/email under a different name) instead of creating a duplicate.
-  const { customerId, duplicateOf } = await findOrCreateCustomerForLead(b);
 
   res.status(201).json({ id, customerId, duplicateOf });
 });
@@ -95,6 +81,12 @@ router.patch("/:id", async (req, res) => {
   const params = [];
   for (const [col, key] of [["name", "name"], ["company", "company"], ["phone", "phone"], ["email", "email"], ["reference", "reference"], ["source", "source"], ["service", "service"], ["status", "status"], ["next_follow_up", "nextFollowUp"]]) {
     if (b[key] !== undefined) { fields.push(`${col} = ?`); params.push(b[key]); }
+  }
+  // Editing the company name means it may now belong to a different (or new) Customer profile —
+  // re-resolve rather than leaving customer_id pointed at the old one.
+  if (b.company !== undefined) {
+    const { customerId } = await findOrCreateCustomer(query, { name: b.company, phone: b.phone, email: b.email });
+    fields.push("customer_id = ?"); params.push(customerId);
   }
   if (!fields.length) return res.status(400).json({ error: "Nothing to update" });
   params.push(req.params.id);
@@ -134,8 +126,8 @@ router.post("/:id/convert-to-deal", async (req, res) => {
     await conn.execute("UPDATE leads SET status = 'Converted' WHERE id = ?", [req.params.id]);
     const dealId = await nextSequentialId(conn, "AGBSDS", "deal");
     await conn.execute(
-      `INSERT INTO deals (id, lead_id, customer, service, value, owner, stage, expected_close) VALUES (?,?,?,?,?,?,?,?)`,
-      [dealId, lead.id, lead.company, lead.service, value || 0, lead.owner, "Open", (() => { const d = new Date(); d.setDate(d.getDate() + 21); return d.toISOString().slice(0, 10); })()]
+      `INSERT INTO deals (id, lead_id, customer, service, value, owner, stage, expected_close, customer_id) VALUES (?,?,?,?,?,?,?,?,?)`,
+      [dealId, lead.id, lead.company, lead.service, value || 0, lead.owner, "Open", (() => { const d = new Date(); d.setDate(d.getDate() + 21); return d.toISOString().slice(0, 10); })(), lead.customer_id]
     );
     return dealId;
   });

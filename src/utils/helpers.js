@@ -65,6 +65,25 @@ async function findDuplicateCustomer(query, { name, phone, email }, excludeId = 
   return null;
 }
 
+/**
+ * Resolves the Customer a freehand "customer name" typed on a Lead/Deal/Quotation/Job Card
+ * belongs to — reusing another Customer already on file (matched by name, or by phone/email
+ * under a different name, via findDuplicateCustomer) rather than creating a duplicate profile;
+ * only creates a new Customer when nothing matches. Returns { customerId, duplicateOf } —
+ * duplicateOf is set (existing customer name) only when the match came from phone/email, not
+ * name, so the caller can surface "this looks like an existing customer" instead of silently
+ * merging into it.
+ */
+async function findOrCreateCustomer(query, { name, phone, email, contact }) {
+  const dup = await findDuplicateCustomer(query, { name, phone, email });
+  if (dup) return { customerId: dup.match.id, duplicateOf: dup.field === "name" ? null : dup.match.name };
+
+  const customerId = nextId("CU");
+  await query("INSERT INTO customers (id, name, type, contact, phone, email) VALUES (?,?,?,?,?,?)",
+    [customerId, name, "Company", contact || null, phone || null, email || null]);
+  return { customerId, duplicateOf: null };
+}
+
 /** Sum of a quotation/order's line items after per-item and order-level discount. */
 function quoteTotal(items, orderDiscount = 0) {
   const subtotal = (items || []).reduce((a, it) => a + it.qty * it.price * (1 - (it.discountPct || 0) / 100), 0);
@@ -92,4 +111,4 @@ function professionalFeeTotal(items, orderDiscount, quotationFeeType) {
   return Math.max(0, profSubtotal - (orderDiscount || 0) * profShare);
 }
 
-module.exports = { nextId, nextSequentialId, today, daysFromNow, normPhone, normEmail, normCompany, money, quoteTotal, professionalFeeTotal, findDuplicateCustomer };
+module.exports = { nextId, nextSequentialId, today, daysFromNow, normPhone, normEmail, normCompany, money, quoteTotal, professionalFeeTotal, findDuplicateCustomer, findOrCreateCustomer };

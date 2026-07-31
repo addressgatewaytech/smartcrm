@@ -2,7 +2,7 @@ const express = require("express");
 const { query, withTransaction } = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
 const { requireRole, isAdminLike } = require("../middleware/roles");
-const { nextId, nextSequentialId, daysFromNow } = require("../utils/helpers");
+const { nextId, nextSequentialId, daysFromNow, findOrCreateCustomer } = require("../utils/helpers");
 const { requireRoleOrApprovalTypeDesignation, isAssignedApprover, approverAudience } = require("../utils/designationApproval");
 const { generateJobCardPdf } = require("../utils/jobCardPdf");
 
@@ -54,10 +54,11 @@ router.post("/direct", requireRole(["sales_manager", "sales_exec", "ops_manager"
   const [tpl] = await query("SELECT steps FROM checklist_templates WHERE service = ?", [service]);
   const steps = tpl ? tpl.steps : [];
   const checklist = steps.map((label, i) => ({ id: `CI-${i}`, label, done: false }));
+  const { customerId } = await findOrCreateCustomer(query, { name: customer });
 
   await query(
-    `INSERT INTO job_cards (id, customer, service, description, status, priority, target_date, checklist, created_by) VALUES (?,?,?,?, 'Pending Approval', 'Normal', ?, ?, ?)`,
-    [id, customer, service, description || null, daysFromNow(7), JSON.stringify(checklist), req.user.id]
+    `INSERT INTO job_cards (id, customer, service, description, status, priority, target_date, checklist, created_by, customer_id) VALUES (?,?,?,?, 'Pending Approval', 'Normal', ?, ?, ?, ?)`,
+    [id, customer, service, description || null, daysFromNow(7), JSON.stringify(checklist), req.user.id, customerId]
   );
   await query("INSERT INTO job_card_status_log (job_card_id, status, by_user) VALUES (?, 'Pending Approval', ?)", [id, req.user.id]);
   const audience = await approverAudience("job_card_signoff", ["super_admin", "admin", "admin_exec", "accounts"]);

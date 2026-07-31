@@ -23,18 +23,20 @@ router.get("/", async (req, res) => {
     // user for a sales_exec, so the client never has enough data to derive anyone else's ownership.
     // Only hides a customer this user can prove belongs to someone else — one with no lead/deal
     // match (e.g. added directly) stays visible rather than vanishing on its creator.
-    const leads = await query("SELECT company, owner, created_at FROM leads ORDER BY created_at DESC");
-    const deals = await query("SELECT customer, owner, created_at FROM deals ORDER BY created_at DESC");
-    // Case-insensitive, matching how findOrCreateCustomerForLead itself matches names in leads.routes.js —
+    const leads = await query("SELECT company, owner, customer_id, created_at FROM leads ORDER BY created_at DESC");
+    const deals = await query("SELECT customer, owner, customer_id, created_at FROM deals ORDER BY created_at DESC");
+    // Case-insensitive, matching how findOrCreateCustomer itself matches names —
     // real data has inconsistent casing between a lead's company and its linked customer's name.
     const sameName = (a, b) => (a || "").trim().toLowerCase() === (b || "").trim().toLowerCase();
-    const ownerFor = (name) => {
-      const lead = leads.find((l) => sameName(l.company, name));
+    const ownerFor = (customer) => {
+      // Prefer the reliable customer_id link; fall back to name-matching only for legacy
+      // leads/deals with no customer_id (predates this linking).
+      const lead = leads.find((l) => l.customer_id === customer.id) || leads.find((l) => !l.customer_id && sameName(l.company, customer.name));
       if (lead) return lead.owner;
-      const deal = deals.find((d) => sameName(d.customer, name));
+      const deal = deals.find((d) => d.customer_id === customer.id) || deals.find((d) => !d.customer_id && sameName(d.customer, customer.name));
       return deal ? deal.owner : null;
     };
-    visible = customers.filter((c) => { const owner = ownerFor(c.name); return owner == null || owner === req.user.id; });
+    visible = customers.filter((c) => { const owner = ownerFor(c); return owner == null || owner === req.user.id; });
   }
 
   res.json(visible.map((c) => ({
@@ -62,8 +64,22 @@ router.patch("/:id", requireRole(["admin_like"]), async (req, res) => {
   if (dup) {
     return res.status(400).json({ error: `This would duplicate the existing customer "${dup.match.name}" (matched by ${dup.field}) — please merge into that profile instead.` });
   }
+  const [before] = await query("SELECT name FROM customers WHERE id = ?", [req.params.id]);
   await query("UPDATE customers SET name=COALESCE(?,name), type=COALESCE(?,type), contact=?, phone=?, landline=?, contact_mobile=?, email=?, address=?, company_size=? WHERE id=?",
     [b.name, b.type, b.contact || null, b.phone || null, b.landline || null, b.contactMobile || null, b.email || null, b.address || null, b.companySize || null, req.params.id]);
+  // A corrected/renamed customer name is kept in sync everywhere that references this customer_id
+  // — leads/deals/quotations/sales orders/invoices/job cards/subscriptions each store the name as
+  // their own text snapshot (for display/PDFs/CSV), so without this cascade a rename here would
+  // never be reflected anywhere else, exactly the bug this was built to fix.
+  if (b.name && before && b.name !== before.name) {
+    await query("UPDATE leads SET company = ? WHERE customer_id = ?", [b.name, req.params.id]);
+    await query("UPDATE deals SET customer = ? WHERE customer_id = ?", [b.name, req.params.id]);
+    await query("UPDATE quotations SET customer = ? WHERE customer_id = ?", [b.name, req.params.id]);
+    await query("UPDATE sales_orders SET customer = ? WHERE customer_id = ?", [b.name, req.params.id]);
+    await query("UPDATE invoices SET customer = ? WHERE customer_id = ?", [b.name, req.params.id]);
+    await query("UPDATE job_cards SET customer = ? WHERE customer_id = ?", [b.name, req.params.id]);
+    await query("UPDATE customer_subscriptions SET customer = ? WHERE customer_id = ?", [b.name, req.params.id]);
+  }
   res.json({ ok: true });
 });
 
@@ -130,10 +146,14 @@ router.get("/:id/dashboard", async (req, res) => {
   const [customer] = await query("SELECT name FROM customers WHERE id = ?", [req.params.id]);
   if (!customer) return res.status(404).json({ error: "Not found" });
 
-  const quotations = await query("SELECT * FROM quotations WHERE customer = ? ORDER BY created_at DESC", [customer.name]);
-  const invoices = await query("SELECT * FROM invoices WHERE customer = ? ORDER BY created_at DESC", [customer.name]);
-  const payments = await query("SELECT * FROM invoice_payments WHERE invoice_id IN (SELECT id FROM invoices WHERE customer = ?)", [customer.name]);
-  const jobCards = await query("SELECT * FROM job_cards WHERE customer = ? ORDER BY created_at DESC", [customer.name]);
+  // Prefer the reliable customer_id link; only fall back to the fragile name match for legacy
+  // rows created before this customer was linked (customer_id IS NULL) — a linked row with a
+  // stale/mismatched name (the exact bug this was built to fix) is still found correctly.
+  const byCustomer = "(customer_id = ? OR (customer_id IS NULL AND customer = ?))";
+  const quotations = await query(`SELECT * FROM quotations WHERE ${byCustomer} ORDER BY created_at DESC`, [req.params.id, customer.name]);
+  const invoices = await query(`SELECT * FROM invoices WHERE ${byCustomer} ORDER BY created_at DESC`, [req.params.id, customer.name]);
+  const payments = await query(`SELECT * FROM invoice_payments WHERE invoice_id IN (SELECT id FROM invoices WHERE ${byCustomer})`, [req.params.id, customer.name]);
+  const jobCards = await query(`SELECT * FROM job_cards WHERE ${byCustomer} ORDER BY created_at DESC`, [req.params.id, customer.name]);
 
   const totalInvoiced = invoices.reduce((a, i) => a + Number(i.amount), 0);
   const totalPaid = payments.reduce((a, p) => a + Number(p.amount), 0);

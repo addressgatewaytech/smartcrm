@@ -50,8 +50,8 @@ router.post("/:id/onboard", requireRole(["accounts", "admin_like"]), async (req,
 
     const invoiceId = await nextSequentialId(conn, "AGBSIN", "invoice");
     await conn.execute(
-      `INSERT INTO invoices (id, sales_order_id, customer, fee_type, amount, professional_fee_amount, status, due_date) VALUES (?,?,?,?,?,?, 'Sent', ?)`,
-      [invoiceId, so.id, so.customer, so.fee_type, so.amount, so.professional_fee_amount, daysFromNow(14)]
+      `INSERT INTO invoices (id, sales_order_id, customer, fee_type, amount, professional_fee_amount, status, due_date, customer_id) VALUES (?,?,?,?,?,?, 'Sent', ?, ?)`,
+      [invoiceId, so.id, so.customer, so.fee_type, so.amount, so.professional_fee_amount, daysFromNow(14), so.customer_id]
     );
 
     const jobId = await nextSequentialId(conn, "AGBSJC", "job_card");
@@ -59,8 +59,8 @@ router.post("/:id/onboard", requireRole(["accounts", "admin_like"]), async (req,
     const steps = tpl ? tpl.steps : [];
     const checklist = steps.map((label, i) => ({ id: `CI-${i}`, label, done: false }));
     await conn.execute(
-      `INSERT INTO job_cards (id, sales_order_id, customer, service, status, priority, target_date, checklist, created_by) VALUES (?,?,?,?, 'Created', 'Normal', ?, ?, ?)`,
-      [jobId, so.id, so.customer, so.service, daysFromNow(10), JSON.stringify(checklist), req.user.id]
+      `INSERT INTO job_cards (id, sales_order_id, customer, service, status, priority, target_date, checklist, created_by, customer_id) VALUES (?,?,?,?, 'Created', 'Normal', ?, ?, ?, ?)`,
+      [jobId, so.id, so.customer, so.service, daysFromNow(10), JSON.stringify(checklist), req.user.id, so.customer_id]
     );
     await conn.execute("INSERT INTO job_card_status_log (job_card_id, status, by_user) VALUES (?, 'Created', ?)", [jobId, req.user.id]);
 

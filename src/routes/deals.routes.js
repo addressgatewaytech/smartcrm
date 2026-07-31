@@ -2,7 +2,7 @@ const express = require("express");
 const { query, withTransaction } = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
 const { isAdminLike } = require("../middleware/roles");
-const { nextSequentialId } = require("../utils/helpers");
+const { nextSequentialId, findOrCreateCustomer } = require("../utils/helpers");
 
 const router = express.Router();
 router.use(requireAuth);
@@ -22,9 +22,20 @@ router.get("/", async (req, res) => {
 router.post("/", async (req, res) => {
   const b = req.body;
   const id = await withTransaction((conn) => nextSequentialId(conn, "AGBSDS", "deal"));
+  // Inherit the customer link from the lead this deal came from (already resolved there); a
+  // directly-created deal (no leadId — "New Deal" modal's free-text/datalist customer field)
+  // resolves/creates its own Customer link the same way a lead does.
+  let customerId = null;
+  if (b.leadId) {
+    const [lead] = await query("SELECT customer_id FROM leads WHERE id = ?", [b.leadId]);
+    customerId = lead?.customer_id || null;
+  }
+  if (!customerId) {
+    ({ customerId } = await findOrCreateCustomer(query, { name: b.customer }));
+  }
   await query(
-    `INSERT INTO deals (id, lead_id, customer, service, value, owner, stage, expected_close) VALUES (?,?,?,?,?,?,?,?)`,
-    [id, b.leadId || null, b.customer, b.service || null, b.value || 0, b.owner || req.user.id, b.stage || "Open", b.expectedClose || null]
+    `INSERT INTO deals (id, lead_id, customer, service, value, owner, stage, expected_close, customer_id) VALUES (?,?,?,?,?,?,?,?,?)`,
+    [id, b.leadId || null, b.customer, b.service || null, b.value || 0, b.owner || req.user.id, b.stage || "Open", b.expectedClose || null, customerId]
   );
   res.status(201).json({ id });
 });
@@ -48,6 +59,11 @@ router.patch("/:id", async (req, res) => {
   const params = [];
   for (const [col, key] of [["customer", "customer"], ["service", "service"], ["value", "value"], ["stage", "stage"], ["expected_close", "expectedClose"]]) {
     if (b[key] !== undefined) { fields.push(`${col} = ?`); params.push(b[key]); }
+  }
+  // Editing the customer name means it may now belong to a different (or new) Customer profile.
+  if (b.customer !== undefined) {
+    const { customerId } = await findOrCreateCustomer(query, { name: b.customer });
+    fields.push("customer_id = ?"); params.push(customerId);
   }
   // Stamps the moment a deal actually closes — the Dashboard's "today's closed deals" section
   // reads this, not created_at, since a deal is often created well before it's won.

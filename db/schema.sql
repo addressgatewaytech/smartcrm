@@ -172,9 +172,14 @@ CREATE TABLE IF NOT EXISTS leads (
   assigned_at    TIMESTAMP NULL,
   sla_due_at     DATETIME NULL,
   sla_violated   TINYINT(1) DEFAULT 0,
+  -- Links this lead's free-text `company` to its real Customer profile (resolved/created at
+  -- POST time via findOrCreateCustomer) — nullable so pre-existing rows keep working unlinked
+  -- until backfilled. Lets a customer name correction cascade here instead of going stale.
+  customer_id    VARCHAR(20) NULL,
   created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (owner) REFERENCES users(id) ON DELETE SET NULL,
-  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS lead_followups (
@@ -196,9 +201,11 @@ CREATE TABLE IF NOT EXISTS deals (
   stage          ENUM('Open','Quotation Sent','Won','Lost') DEFAULT 'Open',
   expected_close DATE,
   won_at         TIMESTAMP NULL,                    -- set whenever stage becomes 'Won' — drives the Dashboard's "today's closed deals" section
+  customer_id    VARCHAR(20) NULL,                  -- see leads.customer_id
   created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE SET NULL,
-  FOREIGN KEY (owner) REFERENCES users(id) ON DELETE SET NULL
+  FOREIGN KEY (owner) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------------
@@ -276,9 +283,11 @@ CREATE TABLE IF NOT EXISTS quotations (
   emailed_to_client TINYINT(1) DEFAULT 0,
   emailed_at       TIMESTAMP NULL,
   email_cc         JSON,              -- array of internal user names cc'd
+  customer_id      VARCHAR(20) NULL,  -- see leads.customer_id
   created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (deal_id) REFERENCES deals(id) ON DELETE SET NULL,
-  FOREIGN KEY (owner) REFERENCES users(id) ON DELETE SET NULL
+  FOREIGN KEY (owner) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS sales_orders (
@@ -294,8 +303,10 @@ CREATE TABLE IF NOT EXISTS sales_orders (
   -- pipeline value, and incentives. Equals `amount` for a pure Professional Fee order.
   professional_fee_amount DECIMAL(12,2) DEFAULT 0,
   order_discount DECIMAL(12,2) DEFAULT 0,
+  customer_id    VARCHAR(20) NULL,  -- see leads.customer_id
   created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (quotation_id) REFERENCES quotations(id) ON DELETE CASCADE
+  FOREIGN KEY (quotation_id) REFERENCES quotations(id) ON DELETE CASCADE,
+  FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS invoices (
@@ -311,8 +322,10 @@ CREATE TABLE IF NOT EXISTS invoices (
   emailed_to_client TINYINT(1) DEFAULT 0,
   emailed_at        TIMESTAMP NULL,
   email_cc          JSON,
+  customer_id       VARCHAR(20) NULL,  -- see leads.customer_id
   created_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (sales_order_id) REFERENCES sales_orders(id) ON DELETE SET NULL
+  FOREIGN KEY (sales_order_id) REFERENCES sales_orders(id) ON DELETE SET NULL,
+  FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS invoice_payments (
@@ -340,8 +353,10 @@ CREATE TABLE IF NOT EXISTS job_cards (
   checklist      JSON,           -- [{id, label, done}]
   cancel_reason  TEXT,
   created_by     VARCHAR(20),
+  customer_id    VARCHAR(20) NULL,  -- see leads.customer_id
   created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (sales_order_id) REFERENCES sales_orders(id) ON DELETE SET NULL
+  FOREIGN KEY (sales_order_id) REFERENCES sales_orders(id) ON DELETE SET NULL,
+  FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS job_card_assignees (

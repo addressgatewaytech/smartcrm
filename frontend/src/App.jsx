@@ -2928,7 +2928,9 @@ function CustomersPage({ state, dispatch, role, userId }) {
                 const flagged = [...c.docs, ...c.employees.flatMap(e=>e.docs)].filter(d => docState(d.expiry).label !== "Valid").length;
                 return (
                   <tr key={c.id} onClick={()=>setOpenId(c.id)}>
-                    <td>{c.name}</td>
+                    <td>{c.name}
+                      <div className="mono" style={{fontSize:11,color:"var(--ink-soft)"}}>{c.id}</div>
+                    </td>
                     <td className="mono" style={{fontSize:12}}>{fmtDate(c.createdAt)}</td>
                     <td>{c.contact || "—"}</td>
                     <td className="mono" style={{fontSize:12}}>{c.phone || "—"}</td>
@@ -2955,6 +2957,7 @@ function CustomersPage({ state, dispatch, role, userId }) {
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
                 <div>
                   <strong style={{ fontSize: 14.5 }}>{c.name}</strong>
+                  <div className="mono" style={{ fontSize:11, color:"var(--ink-soft)" }}>{c.id}</div>
                   <div style={{ fontSize:12, color:"var(--ink-soft)", marginTop:2 }}>{c.contact || "—"} · {c.phone || "no phone on file"}</div>
                   {c.companySize && <span className="pill" style={{ marginTop:6, display:"inline-block" }}>{c.companySize}</span>}
                 </div>
@@ -3104,7 +3107,7 @@ function CustomerDetailModal({ customer: c, state, dispatch, userId, onClose }) 
   const [emailingCustomer, setEmailingCustomer] = useState(false);
 
   return (
-    <Modal title={c.name} sub="Customer profile, KYC vault & account dashboard" onClose={onClose} width={720}>
+    <Modal title={c.name} sub={`ID: ${c.id} · Customer profile, KYC vault & account dashboard`} onClose={onClose} width={720}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
         <div className="tabbar" style={{ marginBottom:0, borderBottom:"none" }}>
           <button className={`tab ${tab==="profile"?"active":""}`} onClick={()=>setTab("profile")}>Profile & KYC</button>
