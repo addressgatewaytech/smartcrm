@@ -2980,7 +2980,7 @@ function CustomersPage({ state, dispatch, role, userId }) {
         {visibleCustomers.length===0 && <Empty icon={UserCheck} text="No customers yet — add one directly, or they'll appear once a quotation converts to a sales order." />}
       </div>
       )}
-      {open && <CustomerDetailModal customer={open} state={state} dispatch={dispatch} userId={userId} onClose={()=>setOpenId(null)} />}
+      {open && <CustomerDetailModal customer={open} state={state} dispatch={dispatch} role={role} userId={userId} onClose={()=>setOpenId(null)} />}
       {editCustomer && <NewCustomerModal customer={editCustomer} dispatch={dispatch} onClose={()=>setEditCustomer(null)} />}
       {removeCustomer && <ConfirmModal title={`Remove ${removeCustomer.name}?`} body="This deletes the customer profile, their KYC documents, and any employee records on file. This can't be undone." onConfirm={()=>dispatch({type:"DELETE_CUSTOMER", id:removeCustomer.id})} onClose={()=>setRemoveCustomer(null)} />}
       {showAdd && <NewCustomerModal dispatch={dispatch} onClose={()=>setShowAdd(false)} />}
@@ -3056,7 +3056,7 @@ function NewCustomerModal({ dispatch, onClose, onCreated, customer=null }) {
   );
 }
 
-function CustomerDetailModal({ customer: c, state, dispatch, userId, onClose }) {
+function CustomerDetailModal({ customer: c, state, dispatch, role, userId, onClose }) {
   const [tab, setTab] = useState("profile");
   const [creatingDeal, setCreatingDeal] = useState(false);
   const blankDoc = { type: "Passport", number: "", expiry: daysFromNow(365), cloudLink: "" };
@@ -3132,7 +3132,7 @@ function CustomerDetailModal({ customer: c, state, dispatch, userId, onClose }) 
         />
       )}
 
-      {tab === "dashboard" && <CustomerDashboard customer={c} state={state} />}
+      {tab === "dashboard" && <CustomerDashboard customer={c} state={state} dispatch={dispatch} role={role} userId={userId} />}
 
       {tab === "onboarding" && <OnboardingFormTab api={api} customerId={c.id} />}
 
@@ -3247,10 +3247,17 @@ function CustomerDetailModal({ customer: c, state, dispatch, userId, onClose }) 
   );
 }
 
-function CustomerDashboard({ customer: c, state }) {
-  const quotations = state.quotations.filter(q => q.customer === c.name);
-  const invoices = state.invoices.filter(inv => inv.customer === c.name);
-  const jobCards = state.jobCards.filter(j => j.customer === c.name);
+function CustomerDashboard({ customer: c, state, dispatch, role, userId }) {
+  // Prefer the reliable customerId link; only fall back to name-matching for legacy rows that
+  // predate that link (customerId null) — same rule as the backend's /customers/:id/dashboard.
+  const belongsToCustomer = (x) => x.customerId ? x.customerId === c.id : x.customer === c.name;
+  const quotations = state.quotations.filter(belongsToCustomer);
+  const invoices = state.invoices.filter(belongsToCustomer);
+  const jobCards = state.jobCards.filter(belongsToCustomer);
+  const [openQuoteId, setOpenQuoteId] = useState(null);
+  const openQuote = openQuoteId ? state.quotations.find(q => q.id === openQuoteId) : null;
+  const [pdfInvoice, setPdfInvoice] = useState(null);
+  const customerOptions = state.customers.map(cu => cu.name);
 
   const quoteTotal = (q) => Math.max(0, q.items.reduce((a,it)=>a+it.qty*it.price*(1-(it.discountPct||0)/100),0) - (q.orderDiscount||0));
   const totalInvoiced = invoices.reduce((a,inv) => a + inv.amount, 0);
@@ -3272,14 +3279,15 @@ function CustomerDashboard({ customer: c, state }) {
       <div className="agw-card" style={{ padding:0, marginBottom:18 }}>
         {quotations.length === 0 ? <Empty icon={FileText} text="No quotations for this customer yet." /> : (
         <table className="agw-table">
-          <thead><tr><th>Quotation</th><th>Fee type</th><th>Amount</th><th>Status</th></tr></thead>
+          <thead><tr><th>Quotation</th><th>Fee type</th><th>Amount</th><th>Status</th><th></th></tr></thead>
           <tbody>
             {quotations.map(q => (
-              <tr key={q.id}>
+              <tr key={q.id} style={{ cursor:"pointer" }} onClick={()=>setOpenQuoteId(q.id)}>
                 <td className="mono">{q.id}</td>
                 <td><Stamp tone={quotationFeeTypeTone(q)}>{quotationFeeTypeLabel(q)}</Stamp></td>
                 <td className="mono">{money(quoteTotal(q))}</td>
                 <td><Stamp tone={statusTone(q.status)}>{q.status}</Stamp></td>
+                <td><button className="btn btn-sm btn-ghost" onClick={(e)=>{ e.stopPropagation(); setOpenQuoteId(q.id); }}><FileText size={13}/> View</button></td>
               </tr>
             ))}
           </tbody>
@@ -3290,7 +3298,7 @@ function CustomerDashboard({ customer: c, state }) {
       <div className="agw-card" style={{ padding:0, marginBottom:8 }}>
         {invoices.length === 0 ? <Empty icon={Receipt} text="No invoices for this customer yet." /> : (
         <table className="agw-table">
-          <thead><tr><th>Invoice</th><th>Fee type</th><th>Amount</th><th>Paid</th><th>Balance</th><th>Status</th></tr></thead>
+          <thead><tr><th>Invoice</th><th>Fee type</th><th>Amount</th><th>Paid</th><th>Balance</th><th>Status</th><th></th></tr></thead>
           <tbody>
             {invoices.map(inv => {
               const paid = inv.payments.reduce((a,p)=>a+p.amount,0);
@@ -3303,6 +3311,7 @@ function CustomerDashboard({ customer: c, state }) {
                   <td className="mono">{money(paid)}</td>
                   <td className="mono" style={{ color: balance>0 ? "var(--danger)" : "var(--success)" }}>{money(balance)}</td>
                   <td><Stamp tone={statusTone(inv.status)}>{inv.status}</Stamp></td>
+                  <td><button className="btn btn-sm btn-ghost" onClick={()=>setPdfInvoice(inv)}><FileText size={13}/> View</button></td>
                 </tr>
               );
             })}
@@ -3338,6 +3347,13 @@ function CustomerDashboard({ customer: c, state }) {
           </tbody>
         </table>)}
       </div>
+
+      {openQuote && <QuoteDetailModal quotation={openQuote} state={state} dispatch={dispatch} role={role} userId={userId} customerOptions={customerOptions} templates={state.quotationTemplates} onClose={()=>setOpenQuoteId(null)} />}
+      {pdfInvoice && (() => {
+        const linkedSo = pdfInvoice.salesOrderId ? state.salesOrders.find(s=>s.id===pdfInvoice.salesOrderId) : null;
+        const linkedQuotation = linkedSo?.quotationId ? state.quotations.find(q=>q.id===linkedSo.quotationId) : null;
+        return <InvoicePdfModal invoice={pdfInvoice} items={linkedQuotation?.items || []} role={role} onClose={()=>setPdfInvoice(null)} />;
+      })()}
     </div>
   );
 }
