@@ -1,6 +1,48 @@
 // Shared UI primitives used across App.jsx and the page-level modules under ./pages/*.
 // Extracted from App.jsx so new pages don't duplicate this code inline.
+import { useState } from "react";
 import { X, Pencil, Trash2 } from "lucide-react";
+
+// Client-side pagination for a list page's already-filtered `rows` array. Callers slice their
+// own render with `pageRows` and drop <PaginationBar {...pagination} /> below the table — every
+// list page in the app uses this same pair rather than each rolling its own page-size/prev-next
+// state, so behavior (and the row-count reset below) stays identical everywhere.
+export function usePagination(rows, defaultPageSize = 25) {
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSizeRaw] = useState(defaultPageSize);
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  // Clamp rather than reset outright — a filter/search narrowing the list shouldn't strand you on
+  // a blank "page 5 of 1"; it should just show you the new last page instead.
+  const safePage = Math.min(page, totalPages);
+  const start = (safePage - 1) * pageSize;
+  const pageRows = rows.slice(start, start + pageSize);
+  const setPageSize = (n) => { setPageSizeRaw(n); setPage(1); };
+  return { page: safePage, setPage, pageSize, setPageSize, totalPages, total: rows.length, start, pageRows };
+}
+
+export function PaginationBar({ page, setPage, pageSize, setPageSize, totalPages, total, start }) {
+  if (total === 0) return null;
+  const end = Math.min(start + pageSize, total);
+  return (
+    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:10, padding:"10px 4px 2px" }}>
+      <div style={{ fontSize:12.5, color:"var(--ink-soft)" }}>{start+1}–{end} of {total}</div>
+      <div style={{ display:"flex", alignItems:"center", gap:14, flexWrap:"wrap" }}>
+        <label style={{ fontSize:12.5, color:"var(--ink-soft)", display:"flex", alignItems:"center", gap:6 }}>
+          Rows per page
+          <select value={pageSize} onChange={e=>setPageSize(Number(e.target.value))}
+            style={{ fontSize:12.5, border:"1px solid var(--hair)", borderRadius:8, padding:"4px 8px", background:"var(--surface)" }}>
+            {[10,25,50,100].map(n=><option key={n} value={n}>{n}</option>)}
+          </select>
+        </label>
+        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+          <button className="btn btn-sm" disabled={page<=1} onClick={()=>setPage(page-1)}>Previous</button>
+          <span style={{ fontSize:12.5, color:"var(--ink-soft)" }}>Page {page} of {totalPages}</span>
+          <button className="btn btn-sm" disabled={page>=totalPages} onClick={()=>setPage(page+1)}>Next</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export const money = (n) => "QAR " + Number(n || 0).toLocaleString("en-US", { maximumFractionDigits: 0 });
 

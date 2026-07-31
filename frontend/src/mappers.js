@@ -36,7 +36,7 @@ export const mapLead = (l) => ({
 
 export const mapDeal = (d) => ({
   id: d.id, leadId: d.lead_id, customer: d.customer, service: d.service, value: Number(d.value),
-  owner: d.owner, stage: d.stage, expectedClose: d.expected_close, createdAt: d.created_at,
+  owner: d.owner, stage: d.stage, expectedClose: d.expected_close, createdAt: d.created_at, wonAt: d.won_at,
 });
 
 export const mapQuotation = (q) => ({
@@ -52,7 +52,7 @@ export const mapQuotation = (q) => ({
 export const mapCustomer = (c) => ({
   id: c.id, name: c.name, type: c.type, contact: c.contact, phone: c.phone,
   landline: c.landline, contactMobile: c.contact_mobile, email: c.email,
-  address: c.address, companySize: c.company_size,
+  address: c.address, companySize: c.company_size, createdAt: c.created_at,
   docs: (c.docs || []).map((d) => ({ id: d.id, type: d.type, number: d.number, expiry: d.expiry, cloudLink: d.cloud_link || "" })),
   employees: (c.employees || []).map((e) => ({
     id: e.id, name: e.name, designation: e.designation,

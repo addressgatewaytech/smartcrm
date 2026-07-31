@@ -195,6 +195,7 @@ CREATE TABLE IF NOT EXISTS deals (
   owner          VARCHAR(20),
   stage          ENUM('Open','Quotation Sent','Won','Lost') DEFAULT 'Open',
   expected_close DATE,
+  won_at         TIMESTAMP NULL,                    -- set whenever stage becomes 'Won' — drives the Dashboard's "today's closed deals" section
   created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE SET NULL,
   FOREIGN KEY (owner) REFERENCES users(id) ON DELETE SET NULL

@@ -5,7 +5,6 @@ const { query } = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
 const { requireRole, isAdminLike } = require("../middleware/roles");
 const { nextId, today, normPhone, normEmail, normCompany } = require("../utils/helpers");
-const { sendMail } = require("../utils/mailer");
 const { runAutoAssign, runEndOfDayReturn, runRecycling } = require("../services/dataManagerJobs");
 
 const router = express.Router();
@@ -156,10 +155,12 @@ router.post("/:id/send-email", async (req, res) => {
     if (minsSince < settings.email_interval_minutes) return res.status(400).json({ error: `Wait ${Math.ceil(settings.email_interval_minutes - minsSince)} more minute(s)` });
   }
 
-  const subject = req.body.subject || settings.email_subject;
-  const body = req.body.body || settings.email_body;
-  await sendMail({ to: record.email, subject, text: body });
-
+  // The actual send already happened client-side — the mailto: link this triggers opens the
+  // user's own email app with the composed subject/body already filled in, exactly like the data
+  // record's WhatsApp counterpart (wa.me link). This endpoint only logs that it happened (pacing
+  // counters, recontact cooldown) — it must not also dispatch a duplicate copy via server SMTP,
+  // which would silently double-send (and, since neither the dispatch call nor this route ever
+  // received the user's edited subject/body, would send the wrong content besides).
   await query("UPDATE data_records SET email_sent_at = NOW(), last_contact_date = CURDATE(), status = IF(status='New','Contacted',status) WHERE id = ?", [req.params.id]);
   await query(
     `INSERT INTO data_user_activity (user_id, activity_date, emails_sent, last_email_at) VALUES (?,?,1,NOW())

@@ -49,6 +49,9 @@ router.patch("/:id", async (req, res) => {
   for (const [col, key] of [["customer", "customer"], ["service", "service"], ["value", "value"], ["stage", "stage"], ["expected_close", "expectedClose"]]) {
     if (b[key] !== undefined) { fields.push(`${col} = ?`); params.push(b[key]); }
   }
+  // Stamps the moment a deal actually closes — the Dashboard's "today's closed deals" section
+  // reads this, not created_at, since a deal is often created well before it's won.
+  if (b.stage === "Won") fields.push("won_at = NOW()");
   if (!fields.length) return res.status(400).json({ error: "Nothing to update" });
   params.push(req.params.id);
   await query(`UPDATE deals SET ${fields.join(", ")} WHERE id = ?`, params);

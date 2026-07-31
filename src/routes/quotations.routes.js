@@ -258,7 +258,7 @@ router.post("/:id/convert-to-sales-order", requireRole(["accounts", "admin_like"
       `INSERT INTO sales_orders (id, quotation_id, customer, service, fee_type, amount, professional_fee_amount, order_discount) VALUES (?,?,?,?,?,?,?,?)`,
       [soId, q.id, q.customer, items[0]?.service || null, q.fee_type, total, professionalFeeAmount, q.order_discount]
     );
-    if (q.deal_id) await conn.execute("UPDATE deals SET stage = 'Won' WHERE id = ?", [q.deal_id]);
+    if (q.deal_id) await conn.execute("UPDATE deals SET stage = 'Won', won_at = NOW() WHERE id = ?", [q.deal_id]);
     return { salesOrderId: soId, governmentFee: false };
   });
   res.json(result);

@@ -11,7 +11,7 @@ import {
   Database, Upload, MessageCircle, Recycle, ArchiveX, ShieldAlert, Settings as SettingsIcon,
   Sun, Moon, BookOpen
 } from "lucide-react";
-import { money, fmtDate, Stamp, statusTone, Rail, DonutChart, LineChart, BarChart, SalesPersonBars, Modal, Empty, ConfirmModal, RowActions, exportCSV } from "./ui.jsx";
+import { money, fmtDate, Stamp, statusTone, Rail, DonutChart, LineChart, BarChart, SalesPersonBars, Modal, Empty, ConfirmModal, RowActions, exportCSV, usePagination, PaginationBar } from "./ui.jsx";
 import { TasksPage } from "./pages/tasks.jsx";
 import { AttendanceWidget, AttendancePage } from "./pages/attendance.jsx";
 import { LeadAssignmentManagerPage } from "./pages/leadAssignment.jsx";
@@ -114,6 +114,9 @@ const CSS = `
     .row2, .row3 { grid-template-columns: 1fr !important; }
     .agw-card { overflow-x: auto; }
     .agw-table { min-width: 560px; }
+    .modal-backdrop { padding: 14px 10px; align-items: center; }
+    .modal { padding: 16px 14px 18px; max-height: calc(100vh - 28px); }
+    .doc-paper { padding: 18px 16px; }
 
     .agw-bottom-nav { display: flex; position: fixed; left: 0; right: 0; bottom: 0; height: 62px;
       background: var(--sidebar); border-top: 1px solid var(--sidebar-line); z-index: 40;
@@ -187,7 +190,12 @@ const CSS = `
 
   .modal-backdrop { position: fixed; inset: 0; background: rgba(20,18,14,.4); display: flex;
     align-items: flex-start; justify-content: center; padding: 40px 20px; z-index: 50; overflow-y:auto; }
-  .modal { background: var(--surface); border-radius: 14px; width: 100%; max-width: 620px; padding: 22px 24px 24px; }
+  .modal { background: var(--surface); border-radius: 14px; width: 100%; max-width: 620px; padding: 22px 24px 24px; max-height: calc(100vh - 80px); overflow-y: auto; }
+  /* Any table sitting directly inside a modal (several PDF/document preview modals render one
+     without their own overflow wrapper) scrolls horizontally instead of blowing out the modal's
+     width on a narrow screen. */
+  .modal div:has(> table) { overflow-x: auto; }
+  .doc-paper { border: 1px solid var(--hair); border-radius: 8px; padding: 32px 36px; background: #fff; overflow-x: auto; }
   .modal h3 { font-family:'Space Grotesk', sans-serif; font-size: 16.5px; margin: 0 0 4px; font-weight: 500; }
   .modal-sub { font-size: 12.5px; color: var(--ink-soft); margin-bottom: 18px; }
   .field { margin-bottom: 12px; }
@@ -1074,6 +1082,19 @@ function Dashboard({ state, role, userId, setPage }) {
 
   const myJobs = state.jobCards.filter(j => j.assignees.includes(userId));
 
+  // Every user's Dashboard shows this — not just sales — since a closed deal is company-wide good
+  // news. Grouped by salesperson (a person can close more than one in a day) and keyed off won_at
+  // (when the deal actually closed), not created_at (when it was first opened, possibly weeks ago).
+  const [showAllClosed, setShowAllClosed] = useState(false);
+  const today = daysFromNow(0);
+  const todayWonDeals = state.deals.filter(d => d.stage === "Won" && (d.wonAt || "").slice(0,10) === today);
+  const closedByOwner = {};
+  todayWonDeals.forEach(d => { if (d.owner) (closedByOwner[d.owner] ||= []).push(d); });
+  const closedOwners = Object.entries(closedByOwner)
+    .map(([uid, deals]) => ({ employee: state.employees.find(e=>e.id===uid), deals }))
+    .filter(x => x.employee)
+    .sort((a,b) => b.deals.length - a.deals.length);
+
   // Top customers by Professional Fee business volume within the selected period.
   const byCustomer = {};
   periodQuotes.forEach(q => { byCustomer[q.customer] = (byCustomer[q.customer]||0) + quoteAmount(q); });
@@ -1217,6 +1238,40 @@ function Dashboard({ state, role, userId, setPage }) {
           })()}
         </div>
       </div>
+
+      {closedOwners.length > 0 && (
+        <div className="agw-card" style={{ marginBottom: 20, borderColor: "#F2C089" }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 12, flexWrap:"wrap", gap:8 }}>
+            <strong style={{ fontSize: 14 }}>🏆 Today's closed deals</strong>
+            {closedOwners.length > 3 && <button className="btn btn-sm btn-ghost" onClick={()=>setShowAllClosed(true)}>View all {todayWonDeals.length}</button>}
+          </div>
+          <div style={{ display:"flex", gap:12, flexWrap:"wrap" }}>
+            {closedOwners.slice(0,3).map(({ employee: e, deals }) => (
+              <div key={e.id} style={{ display:"flex", alignItems:"center", gap:10, background:"var(--gold-tint)", borderRadius:10, padding:"8px 14px 8px 8px" }}>
+                {e.photoUrl ? <img src={e.photoUrl} alt={e.name} style={{ width:36, height:36, borderRadius:"50%", objectFit:"cover" }} /> : <span className="avatar" style={{ width:36, height:36 }}>{e.initials}</span>}
+                <div>
+                  <div style={{ fontSize:13, fontWeight:600 }}>{e.name} 🏆</div>
+                  <div style={{ fontSize:11.5, color:"var(--ink-soft)" }}>{deals.length} deal{deals.length!==1?"s":""} closed today</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {showAllClosed && (
+        <Modal title="🏆 Today's closed deals" sub={`${todayWonDeals.length} deal${todayWonDeals.length!==1?"s":""} closed across the team today`} onClose={()=>setShowAllClosed(false)}>
+          {closedOwners.map(({ employee: e, deals }) => (
+            <div key={e.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 0", borderBottom:"1px solid var(--hair)" }}>
+              {e.photoUrl ? <img src={e.photoUrl} alt={e.name} style={{ width:36, height:36, borderRadius:"50%", objectFit:"cover", flexShrink:0 }} /> : <span className="avatar" style={{ width:36, height:36, flexShrink:0 }}>{e.initials}</span>}
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontSize:13, fontWeight:600 }}>{e.name} 🏆</div>
+                <div style={{ fontSize:11.5, color:"var(--ink-soft)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{deals.map(d=>d.customer).join(", ")}</div>
+              </div>
+              <Stamp tone="success">{deals.length}</Stamp>
+            </div>
+          ))}
+        </Modal>
+      )}
 
       <div className="agw-grid" style={{ gridTemplateColumns: "1.4fr 1fr" }}>
         <div className="agw-card">
@@ -1432,6 +1487,7 @@ function LeadsPage({ state, dispatch, userId, role }) {
     const haystack = [l.name, l.company, l.email, l.phone, l.id, l.reference].filter(Boolean).join(" ").toLowerCase();
     return haystack.includes(query.trim().toLowerCase());
   });
+  const pg = usePagination(owned);
 
   const openFollowUp = (l) => { setFollowFor(l); setFuNote(""); setFuStatus(l.status); setFuNext(l.nextFollowUp || daysFromNow(3)); };
   const openEdit = (l) => { setEditLead(l); setForm({ name:l.name, company:l.company, phone:l.phone||"", email:l.email||"", reference:l.reference||"", source:l.source, service:l.service }); };
@@ -1459,8 +1515,8 @@ function LeadsPage({ state, dispatch, userId, role }) {
               style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:8, padding:"7px 12px 7px 34px", fontSize:13, background:"var(--surface)" }} />
           </div>
           <button className="btn btn-sm" onClick={()=>exportCSV("leads.csv",
-            ["Lead ID","Name","Company","Service","Source","Reference","Owner","Status","Next Follow-up","Created"],
-            owned.map(l=>[l.id, l.name, l.company, l.service, l.source, l.reference||"", state.employees.find(t=>t.id===l.owner)?.name||"", l.status, l.nextFollowUp||"", l.createdAt]))}>
+            ["Lead ID","Created","Name","Company","Service","Source","Reference","Owner","Status","Next Follow-up"],
+            owned.map(l=>[l.id, l.createdAt, l.name, l.company, l.service, l.source, l.reference||"", state.employees.find(t=>t.id===l.owner)?.name||"", l.status, l.nextFollowUp||""]))}>
             <Download size={13}/> Export
           </button>
           <button className="btn btn-primary" onClick={()=>{ setForm(blankForm); setShowAdd(true); }}><Plus size={15}/> New lead</button>
@@ -1472,14 +1528,15 @@ function LeadsPage({ state, dispatch, userId, role }) {
         {owned.length === 0 ? <Empty icon={Users} text="No leads yet. Add your first enquiry." /> : (
         <div style={{ overflowX: "auto" }}>
         <table className="agw-table" style={{ minWidth: 900 }}>
-          <thead><tr><th>Lead</th><th>Company</th><th>Service</th><th>Source</th><th>Reference</th><th>Owner</th><th>Status</th><th>Next follow-up</th><th>Created</th><th></th></tr></thead>
+          <thead><tr><th>Lead</th><th>Created</th><th>Company</th><th>Service</th><th>Source</th><th>Reference</th><th>Owner</th><th>Status</th><th>Next follow-up</th><th></th></tr></thead>
           <tbody>
-            {owned.map(l => (
+            {pg.pageRows.map(l => (
               <tr key={l.id}>
                 <td>{l.name}
                   <div className="mono" style={{fontSize:11,color:"var(--ink-soft)"}}>{l.id}</div>
                   {l.email && <div style={{fontSize:11,color:"var(--ink-soft)"}}>{l.email}</div>}
                 </td>
+                <td className="mono" style={{fontSize:12}}>{fmtDate(l.createdAt)}</td>
                 <td>{l.company}</td>
                 <td style={{maxWidth:180}}>{l.service}</td>
                 <td><span className="pill">{l.source}</span></td>
@@ -1492,7 +1549,6 @@ function LeadsPage({ state, dispatch, userId, role }) {
                   </select>
                 </td>
                 <td className="mono" style={{fontSize:12}}>{l.nextFollowUp ? fmtDate(l.nextFollowUp) : "—"}</td>
-                <td className="mono" style={{fontSize:12}}>{fmtDate(l.createdAt)}</td>
                 <td style={{ display:"flex", gap:6, alignItems:"center", flexWrap:"wrap", minWidth:200 }}>
                   <button className="btn btn-sm" onClick={()=>openFollowUp(l)}>Log follow-up</button>
                   {l.status !== "Unqualified" && !state.deals.find(d=>d.leadId===l.id) &&
@@ -1504,6 +1560,7 @@ function LeadsPage({ state, dispatch, userId, role }) {
           </tbody>
         </table>
         </div>)}
+        <PaginationBar {...pg} />
       </div>
       )}
 
@@ -1652,6 +1709,7 @@ function DealsPage({ state, dispatch, setPage, onViewQuotation, role, userId }) 
     const haystack = [d.customer, d.id, d.service].filter(Boolean).join(" ").toLowerCase();
     return haystack.includes(query.trim().toLowerCase());
   });
+  const pg = usePagination(deals);
 
   return (
     <div>
@@ -1674,8 +1732,8 @@ function DealsPage({ state, dispatch, setPage, onViewQuotation, role, userId }) 
               style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:8, padding:"7px 12px 7px 34px", fontSize:13, background:"var(--surface)" }} />
           </div>
           <button className="btn btn-sm" onClick={()=>exportCSV("deals.csv",
-            ["Deal ID","Customer","Service","Value","Owner","Stage","Expected Close","Created"],
-            deals.map(d=>[d.id, d.customer, d.service, d.value, state.employees.find(t=>t.id===d.owner)?.name||"", d.stage, d.expectedClose, d.createdAt]))}>
+            ["Deal ID","Created","Customer","Service","Value","Owner","Stage","Expected Close"],
+            deals.map(d=>[d.id, d.createdAt, d.customer, d.service, d.value, state.employees.find(t=>t.id===d.owner)?.name||"", d.stage, d.expectedClose]))}>
             <Download size={13}/> Export
           </button>
           <button className="btn btn-primary" onClick={()=>setNewDeal(true)}><Plus size={15}/> New deal</button>
@@ -1687,11 +1745,12 @@ function DealsPage({ state, dispatch, setPage, onViewQuotation, role, userId }) 
           {deals.length === 0 ? <Empty icon={Handshake} text="No deals yet. Convert a lead to get started." /> : (
           <div style={{ overflowX:"auto" }}>
           <table className="agw-table" style={{ minWidth: 720 }}>
-            <thead><tr><th>Customer</th><th>Service</th><th>Value</th><th>Owner</th><th>Stage</th><th>Expected close</th><th>Created</th><th></th></tr></thead>
+            <thead><tr><th>Customer</th><th>Created</th><th>Service</th><th>Value</th><th>Owner</th><th>Stage</th><th>Expected close</th><th></th></tr></thead>
             <tbody>
-              {deals.map(d => (
+              {pg.pageRows.map(d => (
                 <tr key={d.id}>
                   <td>{d.customer}<div className="mono" style={{fontSize:11,color:"var(--ink-soft)"}}>{d.id}</div></td>
+                  <td className="mono" style={{fontSize:12}}>{fmtDate(d.createdAt)}</td>
                   <td style={{maxWidth:200}}>{d.service}</td>
                   <td className="mono">{money(d.value)}</td>
                   <td>{state.employees.find(t=>t.id===d.owner)?.name}</td>
@@ -1702,7 +1761,6 @@ function DealsPage({ state, dispatch, setPage, onViewQuotation, role, userId }) 
                     </select>
                   </td>
                   <td className="mono" style={{fontSize:12}}>{fmtDate(d.expectedClose)}</td>
-                  <td className="mono" style={{fontSize:12}}>{fmtDate(d.createdAt)}</td>
                   <td style={{ display:"flex", gap:6, alignItems:"center", flexWrap:"wrap" }}>
                     {d.stage === "Open" && !state.quotations.find(q=>q.dealId===d.id) &&
                       <button className="btn btn-sm" onClick={()=>setQuoteFor(d)}>Create quotation</button>}
@@ -1715,6 +1773,7 @@ function DealsPage({ state, dispatch, setPage, onViewQuotation, role, userId }) 
             </tbody>
           </table>
           </div>)}
+          <PaginationBar {...pg} />
         </div>
       )}
 
@@ -2095,6 +2154,7 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, onHighligh
     .filter(q => [q.customer, q.id].filter(Boolean).join(" ").toLowerCase().includes(query.trim().toLowerCase()))
     .slice().sort((a,b) => (b.favorite?1:0) - (a.favorite?1:0));
   const favoriteCount = ownerFiltered.filter(q => q.favorite).length;
+  const pg = usePagination(rows);
   const total = q => Math.max(0, q.items.reduce((a,it)=>a+it.qty*it.price*(1-(it.discountPct||0)/100),0) - (q.orderDiscount||0));
   const customerOptions = state.customers.map(c=>c.name);
   const isAdmin = ADMIN_LIKE.includes(role);
@@ -2131,8 +2191,8 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, onHighligh
               style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:8, padding:"7px 12px 7px 34px", fontSize:13, background:"var(--surface)" }} />
           </div>
           <button className="btn btn-sm" onClick={()=>exportCSV("quotations.csv",
-            ["Quotation ID","Customer","Fee Type","Amount (QAR)","Valid Till","Status","Created"],
-            rows.map(q=>[q.id, q.customer, quotationFeeTypeLabel(q), total(q), q.validTill, q.status, q.createdAt]))}>
+            ["Quotation ID","Created","Customer","Fee Type","Amount (QAR)","Valid Till","Status"],
+            rows.map(q=>[q.id, q.createdAt, q.customer, quotationFeeTypeLabel(q), total(q), q.validTill, q.status]))}>
             <Download size={13}/> Export
           </button>
           <button className="btn btn-primary" onClick={()=>setNewQuote(true)}><Plus size={15}/> New quotation</button>
@@ -2141,9 +2201,9 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, onHighligh
       <div className="agw-card" style={{ padding: 0 }}>
         {rows.length === 0 ? <Empty icon={favoritesOnly ? Star : FileText} text={favoritesOnly ? "No favorite quotations yet — star a quotation to use it as a go-to format." : "No quotations yet. Create one from a deal, or start a new one."} /> : (
         <table className="agw-table">
-          <thead><tr><th></th><th>Quotation</th><th>Customer</th><th>Fee type</th><th>Amount (QAR)</th><th>Valid till</th><th>Status</th><th>Created</th><th></th><th></th></tr></thead>
+          <thead><tr><th></th><th>Quotation</th><th>Created</th><th>Customer</th><th>Fee type</th><th>Amount (QAR)</th><th>Valid till</th><th>Status</th><th></th><th></th></tr></thead>
           <tbody>
-            {rows.map(q => (
+            {pg.pageRows.map(q => (
               <tr key={q.id} id={`quote-row-${q.id}`}
                 onClick={()=>{ setOpenId(q.id); if (highlightId) onHighlightHandled(); }}
                 style={q.id === highlightId ? { background:"var(--gold-tint)", boxShadow:"inset 3px 0 0 var(--gold)" } : undefined}>
@@ -2154,12 +2214,12 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, onHighligh
                   </button>
                 </td>
                 <td className="mono">{q.id}</td>
+                <td className="mono" style={{fontSize:12}}>{fmtDate(q.createdAt)}</td>
                 <td>{q.customer}</td>
                 <td><Stamp tone={quotationFeeTypeTone(q)}>{quotationFeeTypeLabel(q)}</Stamp></td>
                 <td className="mono">{money(total(q))}</td>
                 <td className="mono" style={{fontSize:12}}>{fmtDate(q.validTill)}</td>
                 <td><Stamp tone={statusTone(q.status)}>{quotationStatusLabel(q.status, role)}</Stamp></td>
-                <td className="mono" style={{fontSize:12}}>{fmtDate(q.createdAt)}</td>
                 <td><button className="btn btn-sm btn-ghost" title="Clone" onClick={(e)=>{ e.stopPropagation(); setCloneFor(q); }}><Copy size={13}/></button></td>
                 <td>
                   <RowActions onRemove={q.status==="Draft" && isAdmin ? ()=>setRemoveQuote(q) : null} />
@@ -2168,6 +2228,7 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, onHighligh
             ))}
           </tbody>
         </table>)}
+        <PaginationBar {...pg} />
       </div>
       {open && <QuoteDetailModal quotation={open} state={state} dispatch={dispatch} role={role} userId={userId} customerOptions={customerOptions} templates={state.quotationTemplates} onClose={()=>setOpenId(null)} />}
       {newQuote && <QuoteBuilderModal editableCustomer customerOptions={customerOptions} defaultService={state.services[0]} services={state.services} dispatch={dispatch} templates={state.quotationTemplates} onClose={()=>setNewQuote(false)} />}
@@ -2444,7 +2505,7 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
             </div>
           )}
 
-          <div style={{ border:"1px solid var(--hair)", borderRadius:8, padding:"32px 36px", background:"#fff" }}>
+          <div className="doc-paper">
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:24 }}>
               <div>
                 <div className="disp" style={{ fontSize:30, fontWeight:500, letterSpacing:"-.01em" }}>QUOTE</div>
@@ -2568,7 +2629,7 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
             </div>
           </div>
 
-          <div style={{ border:"1px solid var(--hair)", borderRadius:8, padding:"32px 36px", background:"#fff", marginTop:16 }}>
+          <div className="doc-paper" style={{ marginTop:16 }}>
             {(editingNow || termLines.length > 0) && (
               <div style={{ marginBottom:24 }}>
                 <div className="disp" style={{ fontSize:14, fontWeight:500, marginBottom:10, color:themeColors.heading }}>Terms & Conditions</div>
@@ -2805,6 +2866,7 @@ function CustomersPage({ state, dispatch, role, userId }) {
     const haystack = [c.name, c.contact, c.phone, c.email].filter(Boolean).join(" ").toLowerCase();
     return haystack.includes(query.trim().toLowerCase()) && (!sizeFilter || c.companySize === sizeFilter) && matchesExpiryFilter(c, expiryFilter);
   });
+  const pg = usePagination(filtered);
 
   return (
     <div>
@@ -2825,8 +2887,8 @@ function CustomersPage({ state, dispatch, role, userId }) {
         </div>
         <div style={{ display:"flex", gap:8 }}>
           <button className="btn btn-sm" onClick={()=>exportCSV("customers-kyc.csv",
-            ["Customer","Contact","Phone","Email","Company Size","KYC Status"],
-            filtered.map(c=>{ const flagged = [...c.docs, ...c.employees.flatMap(e=>e.docs)].filter(d => docState(d.expiry).label !== "Valid").length; return [c.name, c.contact||"", c.phone||"", c.email||"", c.companySize||"", flagged>0?`${flagged} flagged`:"Clear"]; }))}>
+            ["Customer","Created","Contact","Phone","Email","Company Size","KYC Status"],
+            filtered.map(c=>{ const flagged = [...c.docs, ...c.employees.flatMap(e=>e.docs)].filter(d => docState(d.expiry).label !== "Valid").length; return [c.name, c.createdAt, c.contact||"", c.phone||"", c.email||"", c.companySize||"", flagged>0?`${flagged} flagged`:"Clear"]; }))}>
             <Download size={13}/> Export
           </button>
           <button className="btn btn-primary" onClick={()=>setShowAdd(true)}><Plus size={15}/> New customer</button>
@@ -2847,13 +2909,14 @@ function CustomersPage({ state, dispatch, role, userId }) {
           ) : (
           <div style={{ overflowX:"auto" }}>
           <table className="agw-table" style={{ minWidth: 780 }}>
-            <thead><tr><th>Customer</th><th>Contact</th><th>Phone</th><th>Email</th><th>Company size</th><th>KYC</th><th></th></tr></thead>
+            <thead><tr><th>Customer</th><th>Created</th><th>Contact</th><th>Phone</th><th>Email</th><th>Company size</th><th>KYC</th><th></th></tr></thead>
             <tbody>
-              {filtered.map(c => {
+              {pg.pageRows.map(c => {
                 const flagged = [...c.docs, ...c.employees.flatMap(e=>e.docs)].filter(d => docState(d.expiry).label !== "Valid").length;
                 return (
                   <tr key={c.id} onClick={()=>setOpenId(c.id)}>
                     <td>{c.name}</td>
+                    <td className="mono" style={{fontSize:12}}>{fmtDate(c.createdAt)}</td>
                     <td>{c.contact || "—"}</td>
                     <td className="mono" style={{fontSize:12}}>{c.phone || "—"}</td>
                     <td style={{fontSize:12.5}}>{c.email || "—"}</td>
@@ -2866,6 +2929,7 @@ function CustomersPage({ state, dispatch, role, userId }) {
             </tbody>
           </table>
           </div>)}
+          <PaginationBar {...pg} />
         </div>
       )}
 
@@ -3308,6 +3372,7 @@ function SubscriptionsPage({ state, dispatch, role, userId }) {
   const [query, setQuery] = useState("");
   const visibleSubs = (canSeeAllSubs ? state.subscriptions : state.subscriptions.filter(s => subOwnerId(s) === userId))
     .filter(s => [s.customer, s.id, s.plan].filter(Boolean).join(" ").toLowerCase().includes(query.trim().toLowerCase()));
+  const pg = usePagination(visibleSubs);
 
   const activeCount = visibleSubs.filter(s => subStatusOf(s) === "Active").length;
   const expiringCount = visibleSubs.filter(s => subStatusOf(s) === "Expiring Soon").length;
@@ -3351,7 +3416,7 @@ function SubscriptionsPage({ state, dispatch, role, userId }) {
           <table className="agw-table">
             <thead><tr><th>Customer</th><th>Plan</th><th>Tier</th><th>Annual fee</th><th>Start</th><th>Expiry</th><th>Job cards used</th><th>Status</th><th></th></tr></thead>
             <tbody>
-              {visibleSubs.map(sub => {
+              {pg.pageRows.map(sub => {
                 const tierDef = state.subscriptionPlans[sub.plan]?.tiers.find(t=>t.name===sub.tier);
                 const status = subStatusOf(sub);
                 const used = subTransactionsUsed(sub, state);
@@ -3372,6 +3437,7 @@ function SubscriptionsPage({ state, dispatch, role, userId }) {
               })}
             </tbody>
           </table>)}
+          <PaginationBar {...pg} />
         </div>
       )}
 
@@ -3855,6 +3921,7 @@ function OrdersPage({ state, dispatch, role }) {
   const [pdfSo, setPdfSo] = useState(null);
   const [query, setQuery] = useState("");
   const rows = state.salesOrders.filter(so => [so.customer, so.id, so.service].filter(Boolean).join(" ").toLowerCase().includes(query.trim().toLowerCase()));
+  const pg = usePagination(rows);
   return (
     <div>
       <div style={{ display:"flex", justifyContent:"flex-end", marginBottom: 14, gap:8 }}>
@@ -3864,21 +3931,22 @@ function OrdersPage({ state, dispatch, role }) {
             style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:8, padding:"7px 12px 7px 34px", fontSize:13, background:"var(--surface)" }} />
         </div>
         <button className="btn btn-sm" onClick={()=>exportCSV("sales-orders.csv",
-          ["Order ID","Customer","Service","Fee Type","Amount (QAR)","Status"],
-          rows.map(so=>[so.id, so.customer, so.service, so.feeType||"Professional Fee", so.amount, isOnboarded(so.id)?"Onboarded":"Pending onboarding"]))}>
+          ["Order ID","Created","Customer","Service","Fee Type","Amount (QAR)","Status"],
+          rows.map(so=>[so.id, so.createdAt, so.customer, so.service, so.feeType||"Professional Fee", so.amount, isOnboarded(so.id)?"Onboarded":"Pending onboarding"]))}>
           <Download size={13}/> Export
         </button>
       </div>
       <div className="agw-card" style={{ padding: 0 }}>
       {rows.length === 0 ? <Empty icon={ShoppingCart} text="No sales orders yet — approve a quotation to create one." /> : (
       <table className="agw-table">
-        <thead><tr><th>Order</th><th>Customer</th><th>Service</th><th>Fee type</th><th>Amount (QAR)</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th>Order</th><th>Created</th><th>Customer</th><th>Service</th><th>Fee type</th><th>Amount (QAR)</th><th>Status</th><th></th></tr></thead>
         <tbody>
-          {rows.map(so => {
+          {pg.pageRows.map(so => {
             const onboarded = isOnboarded(so.id);
             return (
             <tr key={so.id}>
               <td className="mono">{so.id}</td>
+              <td className="mono" style={{fontSize:12}}>{fmtDate(so.createdAt)}</td>
               <td>{so.customer}</td>
               <td style={{maxWidth:200}}>{so.service}</td>
               <td><Stamp tone={so.feeType==="Government Fee" ? "neutral" : "success"}>{so.feeType || "Professional Fee"}</Stamp></td>
@@ -3895,6 +3963,7 @@ function OrdersPage({ state, dispatch, role }) {
           );})}
         </tbody>
       </table>)}
+      <PaginationBar {...pg} />
       {removeSo && <ConfirmModal title={`Remove sales order ${removeSo.id}?`} body={`${removeSo.customer} — ${money(removeSo.amount)}. Any invoice or job card already created from it is kept, just unlinked. This can't be undone.`}
         onConfirm={()=>{ dispatch({type:"DELETE_SALES_ORDER", id:removeSo.id}); setRemoveSo(null); }} onClose={()=>setRemoveSo(null)} />}
       {pdfSo && <SalesOrderPdfModal salesOrder={pdfSo} onboarded={isOnboarded(pdfSo.id)} items={state.quotations.find(q=>q.id===pdfSo.quotationId)?.items || []} role={role} onClose={()=>setPdfSo(null)} />}
@@ -3931,7 +4000,7 @@ function SalesOrderPdfModal({ salesOrder: so, onboarded, items=[], role, onClose
 
   return (
     <Modal title={`Sales Order — ${so.id}`} sub={so.customer} onClose={onClose} width={720}>
-      <div style={{ position:"relative", border:"1px solid var(--hair)", borderRadius:8, padding:"32px 36px", background:"#fff", overflow:"hidden" }}>
+      <div className="doc-paper" style={{ position:"relative" }}>
         {!canDownload && <PdfWatermarkOverlay />}
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:24 }}>
           <div>
@@ -4027,6 +4096,7 @@ function InvoicesPage({ state, dispatch, role }) {
   const canRecordPayment = isAccountsOrAdmin(role);
   const [query, setQuery] = useState("");
   const rows = state.invoices.filter(inv => [inv.customer, inv.id].filter(Boolean).join(" ").toLowerCase().includes(query.trim().toLowerCase()));
+  const pg = usePagination(rows);
 
   return (
     <div>
@@ -4037,22 +4107,23 @@ function InvoicesPage({ state, dispatch, role }) {
             style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:8, padding:"7px 12px 7px 34px", fontSize:13, background:"var(--surface)" }} />
         </div>
         <button className="btn btn-sm" onClick={()=>exportCSV("invoices.csv",
-          ["Invoice ID","Customer","Fee Type","Amount","Paid","Balance","Due","Status"],
-          rows.map(inv=>{ const paid = inv.payments.reduce((a,p)=>a+p.amount,0); return [inv.id, inv.customer, inv.feeType||"Professional Fee", inv.amount, paid, inv.amount-paid, inv.dueDate, inv.status]; }))}>
+          ["Invoice ID","Created","Customer","Fee Type","Amount","Paid","Balance","Due","Status"],
+          rows.map(inv=>{ const paid = inv.payments.reduce((a,p)=>a+p.amount,0); return [inv.id, inv.createdAt, inv.customer, inv.feeType||"Professional Fee", inv.amount, paid, inv.amount-paid, inv.dueDate, inv.status]; }))}>
           <Download size={13}/> Export
         </button>
       </div>
       <div className="agw-card" style={{ padding: 0 }}>
         {rows.length === 0 ? <Empty icon={Receipt} text="No invoices yet." /> : (
         <table className="agw-table">
-          <thead><tr><th>Invoice</th><th>Customer</th><th>Fee type</th><th>Amount</th><th>Paid</th><th>Balance</th><th>Due</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>Invoice</th><th>Created</th><th>Customer</th><th>Fee type</th><th>Amount</th><th>Paid</th><th>Balance</th><th>Due</th><th>Status</th><th></th></tr></thead>
           <tbody>
-            {rows.map(inv => {
+            {pg.pageRows.map(inv => {
               const paid = inv.payments.reduce((a,p)=>a+p.amount,0);
               const balance = inv.amount - paid;
               return (
                 <tr key={inv.id}>
                   <td className="mono">{inv.id}</td>
+                  <td className="mono" style={{fontSize:12}}>{fmtDate(inv.createdAt)}</td>
                   <td>{inv.customer}</td>
                   <td><Stamp tone={inv.feeType==="Government Fee" ? "neutral" : "success"}>{inv.feeType || "Professional Fee"}</Stamp></td>
                   <td className="mono">{money(inv.amount)}</td>
@@ -4074,6 +4145,7 @@ function InvoicesPage({ state, dispatch, role }) {
             })}
           </tbody>
         </table>)}
+        <PaginationBar {...pg} />
       </div>
 
       {removeInvoice && <ConfirmModal title={`Remove invoice ${removeInvoice.id}?`} body={`${removeInvoice.customer} — ${money(removeInvoice.amount)}. Any recorded payments are removed with it. This can't be undone.`}
@@ -4127,7 +4199,7 @@ function InvoicePdfModal({ invoice: inv, items=[], role, onClose }) {
 
   return (
     <Modal title={`Invoice — ${inv.id}`} sub={inv.customer} onClose={onClose} width={720}>
-      <div style={{ position:"relative", border:"1px solid var(--hair)", borderRadius:8, padding:"32px 36px", background:"#fff", overflow:"hidden" }}>
+      <div className="doc-paper" style={{ position:"relative" }}>
         {!canDownload && <PdfWatermarkOverlay />}
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:24 }}>
           <div>
@@ -4279,6 +4351,7 @@ function JobsPage({ state, dispatch, role, userId }) {
   const leadBySalespeople = [...new Set(periodFiltered.map(j => j.leadCreatorName).filter(Boolean))];
   const leadByFiltered = leadByFilter ? periodFiltered.filter(j => j.leadCreatorName === leadByFilter) : periodFiltered;
   const visible = leadByFiltered.filter(j => [j.customer, j.id, j.service].filter(Boolean).join(" ").toLowerCase().includes(query.trim().toLowerCase()));
+  const pg = usePagination(visible);
 
   const openDetail = (j, cancelOnOpen=false) => { setDetailId(j.id); setDetailCancelOnOpen(cancelOnOpen); };
 
@@ -4337,15 +4410,15 @@ function JobsPage({ state, dispatch, role, userId }) {
           {visible.length === 0 ? <Empty icon={ClipboardList} text="No job cards yet." /> : (
           <div style={{ overflowX:"auto" }}>
           <table className="agw-table" style={{ minWidth: 820 }}>
-            <thead><tr><th>Job card</th><th>Customer</th><th>Service</th><th>Lead by</th><th>Age</th><th>Assigned</th><th>Checklist</th><th>Priority</th><th>Target date</th><th>Status</th></tr></thead>
+            <thead><tr><th>Job card</th><th>Age</th><th>Customer</th><th>Service</th><th>Lead by</th><th>Assigned</th><th>Checklist</th><th>Priority</th><th>Target date</th><th>Status</th></tr></thead>
             <tbody>
-              {visible.map(j => (
+              {pg.pageRows.map(j => (
                 <tr key={j.id} onClick={()=>openDetail(j)}>
                   <td className="mono">{j.id}</td>
+                  <td className="mono" style={{fontSize:12}}>{daysSince(j.createdAt)}d<div style={{fontSize:11,color:"var(--ink-soft)"}}>{fmtDate(j.createdAt)}</div></td>
                   <td>{j.customer}</td>
                   <td style={{maxWidth:180}}>{j.service}{j.description && ` — ${j.description}`}</td>
                   <td style={{fontSize:12,color:"var(--ink-soft)"}}>{j.leadCreatorName || "—"}</td>
-                  <td className="mono" style={{fontSize:12}}>{daysSince(j.createdAt)}d<div style={{fontSize:11,color:"var(--ink-soft)"}}>{fmtDate(j.createdAt)}</div></td>
                   <td>
                     <div className="avatars">
                       {j.assignees.length === 0 ? <span className="pill">Unassigned</span> :
@@ -4361,6 +4434,7 @@ function JobsPage({ state, dispatch, role, userId }) {
             </tbody>
           </table>
           </div>)}
+          <PaginationBar {...pg} />
         </div>
       )}
 
@@ -4920,6 +4994,7 @@ function HrPage({ state, dispatch, role, userId }) {
     const haystack = [e.name, e.dept, e.designation].filter(Boolean).join(" ").toLowerCase();
     return haystack.includes(query.trim().toLowerCase());
   });
+  const pg = usePagination(filtered);
 
   const pendingCount = state.leaveRequests.filter(r => r.status === "Pending").length;
   const myPendingCount = state.leaveRequests.filter(r => r.status === "Pending" && r.employeeId === userId).length;
@@ -4997,7 +5072,7 @@ function HrPage({ state, dispatch, role, userId }) {
           <table className="agw-table" style={{ minWidth: 940 }}>
             <thead><tr><th>Employee</th><th>Category</th><th>Department</th><th>Designation</th><th>Join date</th><th>Date of birth</th><th>Today</th><th>Leave balance</th><th>Docs</th><th></th></tr></thead>
             <tbody>
-              {filtered.map(e => {
+              {pg.pageRows.map(e => {
                 const status = onLeaveToday(e) ? "Leave" : todayStatusOf(e);
                 const flagged = e.docs.filter(d => docState(d.expiry).label !== "Valid").length;
                 return (
@@ -5027,17 +5102,21 @@ function HrPage({ state, dispatch, role, userId }) {
             </tbody>
           </table>
           </div>)}
+          <PaginationBar {...pg} />
         </div>
       )}
 
       {tab === "team" && teamView === "card" && (
+        <div>
         <div className="agw-grid" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
-          {filtered.map(e => (
+          {pg.pageRows.map(e => (
             <EmployeeHrCard key={e.id} e={e} state={state} dispatch={dispatch} isAdmin={isAdmin} userId={userId}
               onOpenDocs={()=>setDocsFor(e)} onOpenLeave={()=>setLeaveFor(e)} onMarkAttendance={()=>setAttendanceFor(e.id)} onRequestPunch={()=>setPunchFor(e)}
               onEditHr={isAdmin ? ()=>setEditHrFor(e) : null} onRemoveUser={isAdmin && e.id!==userId ? ()=>setRemoveUserFor(e) : null} />
           ))}
           {filtered.length === 0 && <Empty icon={Search} text="No team members match that search." />}
+        </div>
+        <PaginationBar {...pg} />
         </div>
       )}
 
@@ -5611,6 +5690,7 @@ function UsersPage({ state, dispatch, role }) {
   const toggleRole = (r) => setForm(f => ({ ...f, roles: f.roles.includes(r) ? f.roles.filter(x=>x!==r) : [...f.roles, r] }));
   const [query, setQuery] = useState("");
   const visibleUsers = state.employees.filter(e => [e.name, e.dept, e.designation, e.email].filter(Boolean).join(" ").toLowerCase().includes(query.trim().toLowerCase()));
+  const pg = usePagination(visibleUsers);
 
   const openEdit = (e) => { setEditUser(e); setForm({ name:e.name, email:e.email||"", password:"", roles:e.roles, dept:e.dept, initials:e.initials, joinedDate: (e.joined||"").slice(0,10), dateOfBirth: (e.dateOfBirth||"").slice(0,10), designation:e.designation||"", category:e.category||"Staff" }); setSaveError(""); };
   const closeModal = () => { setShowAdd(false); setEditUser(null); setForm(blank); setSaveError(""); };
@@ -5667,7 +5747,7 @@ function UsersPage({ state, dispatch, role }) {
         <table className="agw-table">
           <thead><tr><th>User</th><th>Roles</th><th>Category</th><th>Department</th><th>Status</th><th></th></tr></thead>
           <tbody>
-            {visibleUsers.map(e => (
+            {pg.pageRows.map(e => (
               <tr key={e.id}>
                 <td style={{display:"flex",alignItems:"center",gap:8}}><span className="avatar">{e.initials}</span>{e.name}</td>
                 <td style={{display:"flex",gap:4,flexWrap:"wrap"}}>{e.roles.map(r=><span key={r} className="pill">{ROLE_LABEL[r]}</span>)}</td>
@@ -5682,6 +5762,7 @@ function UsersPage({ state, dispatch, role }) {
             ))}
           </tbody>
         </table>
+        <PaginationBar {...pg} />
       </div>
       </>}
 
@@ -6637,6 +6718,7 @@ function MyDataTab({ state, dispatch, role, userId }) {
   const ownCount = myRecords.filter(d=>d.dataCategory==="Own").length;
   const companyCount = myRecords.filter(d=>d.dataCategory==="Company").length;
   const pendingFollowups = myRecords.filter(d => !d.emailSentAt && !d.whatsappSentAt).length;
+  const pg = usePagination(myRecords);
 
   const [convertFor, setConvertFor] = useState(null);
   const [archiveFor, setArchiveFor] = useState(null);
@@ -6703,7 +6785,7 @@ function MyDataTab({ state, dispatch, role, userId }) {
         <table className="agw-table" style={{ minWidth: 980 }}>
           <thead><tr><th>Company</th><th>Contact</th><th>Mobile</th><th>Email</th><th>Category</th><th>Status</th><th></th><th></th><th></th></tr></thead>
           <tbody>
-            {myRecords.map(d => {
+            {pg.pageRows.map(d => {
               const eDis = emailBlockedReason(d), wDis = whatsappBlockedReason(d);
               return (
                 <tr key={d.id}>
@@ -6725,6 +6807,7 @@ function MyDataTab({ state, dispatch, role, userId }) {
           </tbody>
         </table>
         </div>)}
+        <PaginationBar {...pg} />
       </div>
 
       {convertFor && <ConfirmModal title={`Convert ${convertFor.id} to a lead?`} body={`${convertFor.companyName} — this creates a new CRM lead linked back to this data record.`} confirmLabel="Convert"
@@ -6793,6 +6876,7 @@ function DataPoolTab({ state, dispatch, role, userId }) {
   const ownTotal = state.dataRecords.filter(d => d.dataCategory==="Own" && d.status!=="Archived" && d.status!=="Converted to Lead").length;
   const [assignFor, setAssignFor] = useState(null);
   const salesUsers = state.employees.filter(e => e.active !== false && e.roles.some(r => ["sales_exec","sales_manager"].includes(r)));
+  const pg = usePagination(pool);
 
   return (
     <div>
@@ -6815,7 +6899,7 @@ function DataPoolTab({ state, dispatch, role, userId }) {
         <table className="agw-table" style={{ minWidth: 860 }}>
           <thead><tr><th>Company</th><th>Contact</th><th>Mobile</th><th>Email</th><th>Business category</th><th>Assigned to</th><th>Status</th><th></th></tr></thead>
           <tbody>
-            {pool.map(d => (
+            {pg.pageRows.map(d => (
               <tr key={d.id}>
                 <td>{d.companyName}<div className="mono" style={{fontSize:11,color:"var(--ink-soft)"}}>{d.id}</div></td>
                 <td>{d.contactName}</td>
@@ -6830,6 +6914,7 @@ function DataPoolTab({ state, dispatch, role, userId }) {
           </tbody>
         </table>
         </div>)}
+        <PaginationBar {...pg} />
       </div>
 
       {assignFor && <AssignDataModal record={assignFor} salesUsers={salesUsers} dispatch={dispatch} onClose={()=>setAssignFor(null)} />}
@@ -6963,6 +7048,7 @@ function AddDataTab({ state, dispatch, role, userId }) {
 
 function ArchivedDataTab({ state, dispatch }) {
   const rows = state.dataRecords.filter(d => d.status === "Archived");
+  const pg = usePagination(rows);
   return (
     <ReportTableCard title="Archived data" empty={rows.length===0 ? "No archived records." : null} emptyIcon={ArchiveX}
       onExport={rows.length ? ()=>exportCSV("archived-data.csv", ["ID","Company","Contact","Mobile","Email","Reason","Category"],
@@ -6970,7 +7056,7 @@ function ArchivedDataTab({ state, dispatch }) {
       <table className="agw-table">
         <thead><tr><th>Company</th><th>Contact</th><th>Mobile</th><th>Email</th><th>Reason</th><th>Category</th></tr></thead>
         <tbody>
-          {rows.map(d => (
+          {pg.pageRows.map(d => (
             <tr key={d.id}>
               <td>{d.companyName}</td><td>{d.contactName}</td>
               <td className="mono" style={{fontSize:12}}>{d.mobile}</td><td style={{fontSize:12}}>{d.email}</td>
@@ -6980,6 +7066,7 @@ function ArchivedDataTab({ state, dispatch }) {
           ))}
         </tbody>
       </table>
+      <PaginationBar {...pg} />
     </ReportTableCard>
   );
 }
