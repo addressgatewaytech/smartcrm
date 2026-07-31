@@ -5,6 +5,7 @@ const { requireAuth } = require("../middleware/auth");
 const { requireRole, isAdminLike } = require("../middleware/roles");
 const { nextId, nextSequentialId, quoteTotal, findDuplicateCustomer } = require("../utils/helpers");
 const { generateOnboardingFormPdf } = require("../utils/onboardingFormPdf");
+const { generateAccountStatementPdf } = require("../utils/accountStatementPdf");
 
 const router = express.Router();
 router.use(requireAuth);
@@ -165,6 +166,34 @@ router.get("/:id/dashboard", async (req, res) => {
     jobCards,
     statement: { totalInvoiced, totalPaid, balance: totalInvoiced - totalPaid },
   });
+});
+
+router.get("/:id/statement/pdf", async (req, res) => {
+  const [customer] = await query("SELECT id, name FROM customers WHERE id = ?", [req.params.id]);
+  if (!customer) return res.status(404).json({ error: "Not found" });
+
+  const byCustomer = "(customer_id = ? OR (customer_id IS NULL AND customer = ?))";
+  const invoices = await query(`SELECT * FROM invoices WHERE ${byCustomer} ORDER BY created_at ASC`, [req.params.id, customer.name]);
+  const payments = await query(`SELECT * FROM invoice_payments WHERE invoice_id IN (SELECT id FROM invoices WHERE ${byCustomer})`, [req.params.id, customer.name]);
+  // pool.execute() (prepared statements) doesn't auto-expand an array param into IN (?,?,...) the
+  // way pool.query() does — build the placeholders explicitly instead.
+  const soIds = [...new Set(invoices.map((i) => i.sales_order_id).filter(Boolean))];
+  const subIds = [...new Set(invoices.map((i) => i.subscription_id).filter(Boolean))];
+  const salesOrders = soIds.length ? await query(`SELECT id, service FROM sales_orders WHERE id IN (${soIds.map(() => "?").join(",")})`, soIds) : [];
+  const subscriptions = subIds.length ? await query(`SELECT id, plan_name FROM customer_subscriptions WHERE id IN (${subIds.map(() => "?").join(",")})`, subIds) : [];
+
+  const totalInvoiced = invoices.reduce((a, i) => a + Number(i.amount), 0);
+  const totalPaid = payments.reduce((a, p) => a + Number(p.amount), 0);
+
+  const invoicesWithService = invoices.map((inv) => ({
+    ...inv,
+    payments: payments.filter((p) => p.invoice_id === inv.id),
+    service: salesOrders.find((so) => so.id === inv.sales_order_id)?.service
+      || subscriptions.find((s) => s.id === inv.subscription_id)?.plan_name
+      || null,
+  }));
+
+  generateAccountStatementPdf(customer, invoicesWithService, { totalInvoiced, totalPaid, balance: totalInvoiced - totalPaid }, res);
 });
 
 // --- Onboarding Form (company-formation data collection) -----------------------------------

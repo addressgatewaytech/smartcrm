@@ -202,6 +202,13 @@ export const api = {
       if (!res.ok) throw new ApiError("Failed to generate PDF", res.status);
       return res.blob();
     },
+    downloadStatementPdf: async (id) => {
+      const headers = {};
+      if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
+      const res = await fetch(`/api/customers/${id}/statement/pdf`, { headers, cache: "no-store" });
+      if (!res.ok) throw new ApiError("Failed to generate PDF", res.status);
+      return res.blob();
+    },
   },
   jobCards: {
     list: () => get("/job-cards"),

@@ -3259,6 +3259,7 @@ function CustomerDashboard({ customer: c, state, dispatch, role, userId }) {
   const [pdfInvoice, setPdfInvoice] = useState(null);
   const [openJobId, setOpenJobId] = useState(null);
   const openJob = openJobId ? state.jobCards.find(j => j.id === openJobId) : null;
+  const [downloadingStatement, setDownloadingStatement] = useState(false);
   const customerOptions = state.customers.map(cu => cu.name);
 
   const quoteTotal = (q) => Math.max(0, q.items.reduce((a,it)=>a+it.qty*it.price*(1-(it.discountPct||0)/100),0) - (q.orderDiscount||0));
@@ -3296,19 +3297,33 @@ function CustomerDashboard({ customer: c, state, dispatch, role, userId }) {
         </table>)}
       </div>
 
-      <div style={{ marginBottom: 8 }}><strong style={{ fontSize:13 }}>Invoices & Statement</strong> <span className="pill">{invoices.length} total</span></div>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 8 }}>
+        <div><strong style={{ fontSize:13 }}>Invoices & Statement</strong> <span className="pill">{invoices.length} total</span></div>
+        <button className="btn btn-sm" disabled={downloadingStatement} onClick={async ()=>{
+          setDownloadingStatement(true);
+          try {
+            const blob = await api.customers.downloadStatementPdf(c.id);
+            downloadBlob(`Statement-${c.id}.pdf`, blob);
+          } catch (err) {
+            alert(err instanceof ApiError ? err.message : "Couldn't generate the statement — please try again.");
+          } finally {
+            setDownloadingStatement(false);
+          }
+        }}><FileText size={13}/> {downloadingStatement ? "Generating…" : "Download Statement"}</button>
+      </div>
       <div className="agw-card" style={{ padding:0, marginBottom:8 }}>
         {invoices.length === 0 ? <Empty icon={Receipt} text="No invoices for this customer yet." /> : (
         <table className="agw-table">
-          <thead><tr><th>Invoice</th><th>Fee type</th><th>Amount</th><th>Paid</th><th>Balance</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>Invoice</th><th>Service</th><th>Amount</th><th>Paid</th><th>Balance</th><th>Status</th><th></th></tr></thead>
           <tbody>
             {invoices.map(inv => {
               const paid = inv.payments.reduce((a,p)=>a+p.amount,0);
               const balance = inv.amount - paid;
+              const invService = state.salesOrders.find(so=>so.id===inv.salesOrderId)?.service || state.subscriptions.find(s=>s.id===inv.subscriptionId)?.plan || "—";
               return (
                 <tr key={inv.id}>
                   <td className="mono">{inv.id}</td>
-                  <td><Stamp tone={inv.feeType==="Government Fee" ? "neutral" : "success"}>{inv.feeType || "Professional Fee"}</Stamp></td>
+                  <td style={{maxWidth:160}}>{invService}</td>
                   <td className="mono">{money(inv.amount)}</td>
                   <td className="mono">{money(paid)}</td>
                   <td className="mono" style={{ color: balance>0 ? "var(--danger)" : "var(--success)" }}>{money(balance)}</td>
