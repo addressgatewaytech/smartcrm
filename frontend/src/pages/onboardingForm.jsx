@@ -3,8 +3,19 @@
 // via a generated link (see App.jsx's public-route check + a dedicated public page component,
 // which both import OnboardingFormFields from here so the two surfaces never drift apart).
 import { useEffect, useState } from "react";
-import { Link2, Copy, Check, Save } from "lucide-react";
+import { Link2, Copy, Check, Save, Plus, Download, ChevronDown, ChevronUp, FileText } from "lucide-react";
 import { ApiError } from "../api";
+import { Stamp, Empty } from "../ui.jsx";
+
+function downloadBlob(filename, blob) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+const fmtDate = (s) => (s ? new Date(s).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—");
 
 const ROW_COUNTS = { companyNames: 4, activities: 5, partners: 5, visas: 10 };
 const LETTERS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"];
@@ -132,34 +143,29 @@ export function OnboardingFormFields({ form, setForm, readOnly }) {
   );
 }
 
-// Staff-facing tab, embedded inside CustomerDetailModal. Fetches on first mount (this data isn't
-// part of the app's up-front global state — a per-customer form fetched only when opened).
-export function OnboardingFormTab({ api, customerId }) {
-  const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState(null);
+// One form card in the list — collapsed by default (created date, status, one-line summary,
+// action buttons); expands in place to the full editable OnboardingFormFields.
+function OnboardingFormCard({ api, customerId, form, onSaved }) {
+  const [expanded, setExpanded] = useState(false);
+  const [draft, setDraft] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
   const [linkInfo, setLinkInfo] = useState(null);
   const [generatingLink, setGeneratingLink] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    api.customers.getOnboarding(customerId)
-      .then((data) => { if (!cancelled) setForm(normalizeOnboardingForm(data)); })
-      .catch((err) => { if (!cancelled) setError(err instanceof ApiError ? err.message : "Couldn't load the onboarding form."); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [customerId]);
+  const open = () => { setDraft(normalizeOnboardingForm(form)); setExpanded(true); };
+  const close = () => { setExpanded(false); setDraft(null); setLinkInfo(null); setError(""); };
 
   const save = async () => {
     setSaving(true); setError(""); setSaved(false);
     try {
-      await api.customers.saveOnboarding(customerId, toPayload(form));
+      await api.customers.saveOnboarding(customerId, form.id, toPayload(draft));
       setSaved(true);
-      setTimeout(() => setSaved(false), 2500);
+      setTimeout(() => setSaved(false), 2000);
+      onSaved();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't save — please try again.");
     } finally {
@@ -170,7 +176,7 @@ export function OnboardingFormTab({ api, customerId }) {
   const generateLink = async () => {
     setGeneratingLink(true); setError("");
     try {
-      setLinkInfo(await api.customers.generateOnboardingLink(customerId));
+      setLinkInfo(await api.customers.generateOnboardingLink(customerId, form.id));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't generate the link — please try again.");
     } finally {
@@ -185,32 +191,111 @@ export function OnboardingFormTab({ api, customerId }) {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  if (loading) return <div className="side-note">Loading onboarding form…</div>;
-  if (!form) return null;
+  const downloadPdf = async () => {
+    setDownloading(true); setError("");
+    try {
+      const blob = await api.customers.downloadOnboardingPdf(customerId, form.id);
+      downloadBlob(`Onboarding-${form.id}.pdf`, blob);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't generate the PDF — please try again.");
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const firstName = (form.companyNamesEn || []).find(Boolean);
+
+  return (
+    <div className="agw-card" style={{ marginBottom: 10 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+          <Stamp tone={form.status === "Submitted" ? "success" : "neutral"}>{form.status}</Stamp>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{firstName || form.id}</div>
+            <div className="mono" style={{ fontSize: 11, color: "var(--ink-soft)" }}>{form.id} · Created {fmtDate(form.createdAt)}{form.legalStatus ? ` · ${form.legalStatus}` : ""}</div>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <button className="btn btn-sm" disabled={downloading} onClick={downloadPdf}><Download size={13} /> {downloading ? "Generating…" : "Download PDF"}</button>
+          <button className="btn btn-sm btn-ghost" onClick={expanded ? close : open}>
+            {expanded ? <><ChevronUp size={13} /> Close</> : <><ChevronDown size={13} /> Open</>}
+          </button>
+        </div>
+      </div>
+
+      {expanded && draft && (
+        <div style={{ marginTop: 14, borderTop: "1px solid var(--hair)", paddingTop: 14 }}>
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+            <button className="btn btn-sm" disabled={generatingLink} onClick={generateLink}><Link2 size={13} /> {linkInfo ? "Regenerate link" : "Generate public link"}</button>
+          </div>
+          {linkInfo && (
+            <div className="side-note" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+              <span className="mono" style={{ fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{linkInfo.url}</span>
+              <button className="btn btn-sm" onClick={copyLink}>{copied ? <><Check size={13} /> Copied</> : <><Copy size={13} /> Copy</>}</button>
+            </div>
+          )}
+
+          <OnboardingFormFields form={draft} setForm={setDraft} />
+
+          {error && <div className="side-note" style={{ borderColor: "#EFC3BC", background: "var(--danger-tint)", marginTop: 12 }}>{error}</div>}
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+            <button className="btn btn-primary" disabled={saving} onClick={save}><Save size={14} /> {saved ? "Saved" : "Save"}</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Staff-facing tab, embedded inside CustomerDetailModal. Fetches on first mount (this data isn't
+// part of the app's up-front global state) — lists every form this customer has, oldest actions
+// preserved permanently, with a "New Form" button to start another one.
+export function OnboardingFormTab({ api, customerId }) {
+  const [loading, setLoading] = useState(true);
+  const [forms, setForms] = useState([]);
+  const [error, setError] = useState("");
+  const [creating, setCreating] = useState(false);
+
+  const load = () => {
+    setLoading(true);
+    return api.customers.listOnboarding(customerId)
+      .then((data) => setForms(data))
+      .catch((err) => setError(err instanceof ApiError ? err.message : "Couldn't load the onboarding forms."))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { load(); }, [customerId]);
+
+  const newForm = async () => {
+    setCreating(true); setError("");
+    try {
+      await api.customers.createOnboarding(customerId);
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't create a new form — please try again.");
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  if (loading) return <div className="side-note">Loading onboarding forms…</div>;
 
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
         <p className="modal-sub" style={{ margin: 0 }}>
-          Company-formation data collection — fill it in here, or share a link so the client fills it in themselves.
-          {form.status === "Submitted" && <span style={{ color: "var(--success)", fontWeight: 500 }}> · Client submitted this form.</span>}
+          Company-formation data collection — a customer can have several forms over time (e.g. repeat company formations); each is kept as its own record.
         </p>
-        <button className="btn btn-sm" disabled={generatingLink} onClick={generateLink}><Link2 size={13} /> {linkInfo ? "Regenerate link" : "Generate public link"}</button>
+        <button className="btn btn-primary btn-sm" disabled={creating} onClick={newForm}><Plus size={14} /> {creating ? "Creating…" : "New Form"}</button>
       </div>
 
-      {linkInfo && (
-        <div className="side-note" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-          <span className="mono" style={{ fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{linkInfo.url}</span>
-          <button className="btn btn-sm" onClick={copyLink}>{copied ? <><Check size={13} /> Copied</> : <><Copy size={13} /> Copy</>}</button>
-        </div>
+      {error && <div className="side-note" style={{ borderColor: "#EFC3BC", background: "var(--danger-tint)", marginBottom: 14 }}>{error}</div>}
+
+      {forms.length === 0 ? (
+        <Empty icon={FileText} text={'No onboarding forms yet — click "New Form" to start one.'} />
+      ) : (
+        forms.map((f) => <OnboardingFormCard key={f.id} api={api} customerId={customerId} form={f} onSaved={load} />)
       )}
-
-      <OnboardingFormFields form={form} setForm={setForm} />
-
-      {error && <div className="side-note" style={{ borderColor: "#EFC3BC", background: "var(--danger-tint)", marginTop: 12 }}>{error}</div>}
-      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
-        <button className="btn btn-primary" disabled={saving} onClick={save}><Save size={14} /> {saved ? "Saved" : "Save"}</button>
-      </div>
     </div>
   );
 }

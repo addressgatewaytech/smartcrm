@@ -3257,6 +3257,8 @@ function CustomerDashboard({ customer: c, state, dispatch, role, userId }) {
   const [openQuoteId, setOpenQuoteId] = useState(null);
   const openQuote = openQuoteId ? state.quotations.find(q => q.id === openQuoteId) : null;
   const [pdfInvoice, setPdfInvoice] = useState(null);
+  const [openJobId, setOpenJobId] = useState(null);
+  const openJob = openJobId ? state.jobCards.find(j => j.id === openJobId) : null;
   const customerOptions = state.customers.map(cu => cu.name);
 
   const quoteTotal = (q) => Math.max(0, q.items.reduce((a,it)=>a+it.qty*it.price*(1-(it.discountPct||0)/100),0) - (q.orderDiscount||0));
@@ -3333,15 +3335,16 @@ function CustomerDashboard({ customer: c, state, dispatch, role, userId }) {
       <div className="agw-card" style={{ padding:0 }}>
         {jobCards.length === 0 ? <Empty icon={ClipboardList} text="No job cards for this customer yet." /> : (
         <table className="agw-table">
-          <thead><tr><th>Job card number</th><th>Service</th><th>Priority</th><th>Target date</th><th>Status</th></tr></thead>
+          <thead><tr><th>Job card number</th><th>Service</th><th>Priority</th><th>Target date</th><th>Status</th><th></th></tr></thead>
           <tbody>
             {jobCards.map(j => (
-              <tr key={j.id}>
+              <tr key={j.id} style={{ cursor:"pointer" }} onClick={()=>setOpenJobId(j.id)}>
                 <td className="mono">{j.id}</td>
                 <td style={{maxWidth:200}}>{j.service}</td>
                 <td>{j.priority}</td>
                 <td className="mono" style={{fontSize:12}}>{fmtDate(j.targetDate)}</td>
                 <td><Stamp tone={statusTone(j.status)}>{j.status}</Stamp></td>
+                <td><button className="btn btn-sm btn-ghost" onClick={(e)=>{ e.stopPropagation(); setOpenJobId(j.id); }}><FileText size={13}/> View</button></td>
               </tr>
             ))}
           </tbody>
@@ -3354,6 +3357,8 @@ function CustomerDashboard({ customer: c, state, dispatch, role, userId }) {
         const linkedQuotation = linkedSo?.quotationId ? state.quotations.find(q=>q.id===linkedSo.quotationId) : null;
         return <InvoicePdfModal invoice={pdfInvoice} items={linkedQuotation?.items || []} role={role} onClose={()=>setPdfInvoice(null)} />;
       })()}
+      {openJob && <JobDetailModal job={openJob} dispatch={dispatch} role={role} userId={userId} employees={state.employees} approvalTypes={state.approvalTypes}
+        onClose={()=>setOpenJobId(null)} onReassign={()=>setOpenJobId(null)} />}
     </div>
   );
 }

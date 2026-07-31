@@ -189,9 +189,19 @@ export const api = {
     updateEmployeeDoc: (id, empId, docId, payload) => patch(`/customers/${id}/employees/${empId}/docs/${docId}`, payload),
     removeEmployeeDoc: (id, empId, docId) => del(`/customers/${id}/employees/${empId}/docs/${docId}`),
     dashboard: (id) => get(`/customers/${id}/dashboard`),
-    getOnboarding: (id) => get(`/customers/${id}/onboarding`),
-    saveOnboarding: (id, payload) => patch(`/customers/${id}/onboarding`, payload),
-    generateOnboardingLink: (id) => post(`/customers/${id}/onboarding-link`),
+    listOnboarding: (id) => get(`/customers/${id}/onboarding`),
+    createOnboarding: (id) => post(`/customers/${id}/onboarding`),
+    saveOnboarding: (id, formId, payload) => patch(`/customers/${id}/onboarding/${formId}`, payload),
+    generateOnboardingLink: (id, formId) => post(`/customers/${id}/onboarding/${formId}/link`),
+    // Same reasoning as quotations.downloadPdf: needs the Bearer auth header a plain <a href>
+    // can't send, so fetch as a blob and let the caller turn it into a download.
+    downloadOnboardingPdf: async (id, formId) => {
+      const headers = {};
+      if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
+      const res = await fetch(`/api/customers/${id}/onboarding/${formId}/pdf`, { headers, cache: "no-store" });
+      if (!res.ok) throw new ApiError("Failed to generate PDF", res.status);
+      return res.blob();
+    },
   },
   jobCards: {
     list: () => get("/job-cards"),
