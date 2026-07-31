@@ -1473,7 +1473,7 @@ function LeadsPage({ state, dispatch, userId, role }) {
   };
 
   const [query, setQuery] = useState("");
-  const { period, setPeriod, customFrom, setCustomFrom, customTo, setCustomTo, range } = usePeriod("month");
+  const { period, setPeriod, customFrom, setCustomFrom, customTo, setCustomTo, range } = usePeriod("all");
   const [ownerFilter, setOwnerFilter] = useState("");
   const canFilterByOwner = role !== "sales_exec";
   const ownedByRole = ["sales_exec"].includes(role) ? state.leads.filter(l => l.owner === userId) : state.leads;
@@ -1713,7 +1713,7 @@ function DealsPage({ state, dispatch, setPage, onViewQuotation, role, userId }) 
   const [dragOverStage, setDragOverStage] = useState(null);
   const stages = ["Open","Quotation Sent","Won","Lost"];
   const [query, setQuery] = useState("");
-  const { period, setPeriod, customFrom, setCustomFrom, customTo, setCustomTo, range } = usePeriod("month");
+  const { period, setPeriod, customFrom, setCustomFrom, customTo, setCustomTo, range } = usePeriod("all");
   const [ownerFilter, setOwnerFilter] = useState("");
   const periodFiltered = state.deals.filter(d => inRange(d.createdAt, range));
   const salespeople = [...new Map(periodFiltered.map(d => d.owner).filter(Boolean).map(id => [id, state.employees.find(e => e.id === id)]).filter(([,e]) => e)).values()];
@@ -2157,7 +2157,7 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, onHighligh
   const [favoritesOnly, setFavoritesOnly] = useState(false);
 
   const [query, setQuery] = useState("");
-  const { period, setPeriod, customFrom, setCustomFrom, customTo, setCustomTo, range } = usePeriod("month");
+  const { period, setPeriod, customFrom, setCustomFrom, customTo, setCustomTo, range } = usePeriod("all");
   const [ownerFilter, setOwnerFilter] = useState("");
   const owned = role === "sales_exec" ? state.quotations.filter(q => q.owner === userId || !q.owner) : state.quotations;
   const periodFiltered = owned.filter(q => inRange(q.createdAt, range));
@@ -4396,7 +4396,7 @@ function JobsPage({ state, dispatch, role, userId }) {
   const canCreateDirect = ["sales_manager","sales_exec","ops_manager"].includes(role) || ADMIN_LIKE.includes(role);
 
   const [query, setQuery] = useState("");
-  const { period, setPeriod, customFrom, setCustomFrom, customTo, setCustomTo, range } = usePeriod("month");
+  const { period, setPeriod, customFrom, setCustomFrom, customTo, setCustomTo, range } = usePeriod("all");
   const [leadByFilter, setLeadByFilter] = useState("");
   const visibleByRole = role === "ops_member" ? state.jobCards.filter(j => j.assignees.includes(userId)) : state.jobCards;
   const periodFiltered = visibleByRole.filter(j => inRange(j.createdAt, range));
