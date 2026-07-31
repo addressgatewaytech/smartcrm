@@ -2214,7 +2214,7 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, onHighligh
       <div className="agw-card" style={{ padding: 0 }}>
         {rows.length === 0 ? <Empty icon={favoritesOnly ? Star : FileText} text={favoritesOnly ? "No favorite quotations yet — star a quotation to use it as a go-to format." : "No quotations yet. Create one from a deal, or start a new one."} /> : (
         <table className="agw-table">
-          <thead><tr><th></th><th>Quotation</th><th>Created</th><th>Customer</th><th>Fee type</th><th>Amount (QAR)</th><th>Valid till</th><th>Status</th><th></th><th></th></tr></thead>
+          <thead><tr><th></th><th>Quotation</th><th>Created</th><th>Customer</th><th>Service</th><th>Amount (QAR)</th><th>Valid till</th><th>Status</th><th></th><th></th></tr></thead>
           <tbody>
             {pg.pageRows.map(q => (
               <tr key={q.id} id={`quote-row-${q.id}`}
@@ -2229,7 +2229,7 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, onHighligh
                 <td className="mono">{q.id}</td>
                 <td className="mono" style={{fontSize:12}}>{fmtDate(q.createdAt)}</td>
                 <td>{q.customer}</td>
-                <td><Stamp tone={quotationFeeTypeTone(q)}>{quotationFeeTypeLabel(q)}</Stamp></td>
+                <td style={{maxWidth:180}}>{q.items[0]?.service || "—"}</td>
                 <td className="mono">{money(total(q))}</td>
                 <td className="mono" style={{fontSize:12}}>{fmtDate(q.validTill)}</td>
                 <td><Stamp tone={statusTone(q.status)}>{quotationStatusLabel(q.status, role)}</Stamp></td>
@@ -3281,12 +3281,12 @@ function CustomerDashboard({ customer: c, state, dispatch, role, userId }) {
       <div className="agw-card" style={{ padding:0, marginBottom:18 }}>
         {quotations.length === 0 ? <Empty icon={FileText} text="No quotations for this customer yet." /> : (
         <table className="agw-table">
-          <thead><tr><th>Quotation</th><th>Fee type</th><th>Amount</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>Quotation</th><th>Service</th><th>Amount</th><th>Status</th><th></th></tr></thead>
           <tbody>
             {quotations.map(q => (
               <tr key={q.id} style={{ cursor:"pointer" }} onClick={()=>setOpenQuoteId(q.id)}>
                 <td className="mono">{q.id}</td>
-                <td><Stamp tone={quotationFeeTypeTone(q)}>{quotationFeeTypeLabel(q)}</Stamp></td>
+                <td style={{maxWidth:160}}>{q.items[0]?.service || "—"}</td>
                 <td className="mono">{money(quoteTotal(q))}</td>
                 <td><Stamp tone={statusTone(q.status)}>{q.status}</Stamp></td>
                 <td><button className="btn btn-sm btn-ghost" onClick={(e)=>{ e.stopPropagation(); setOpenQuoteId(q.id); }}><FileText size={13}/> View</button></td>
