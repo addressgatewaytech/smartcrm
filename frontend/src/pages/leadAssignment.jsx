@@ -8,7 +8,7 @@
 import { useState } from "react";
 import { Search, UserCog, Plus } from "lucide-react";
 import { ApiError } from "../api";
-import { Modal, Stamp, Empty, BarChart, fmtDate } from "../ui.jsx";
+import { Modal, Stamp, Empty, BarChart, fmtDate, ConfirmModal, RowActions } from "../ui.jsx";
 
 const ADMIN_LIKE = ["super_admin", "admin", "admin_exec"];
 // Matches the backend's canDistributeLeads exactly — only Lead Manager (or admin-tier, as
@@ -30,6 +30,8 @@ export function LeadAssignmentManagerPage({ state, dispatch, role }) {
   const [query, setQuery] = useState("");
   const [assignFor, setAssignFor] = useState(null);
   const [newLead, setNewLead] = useState(false);
+  const [editLead, setEditLead] = useState(null);
+  const [removeLead, setRemoveLead] = useState(null);
   const manage = canDistributeLeads(role);
 
   // A lead belongs in this queue only if it's actually part of the central-distribution flow:
@@ -98,7 +100,10 @@ export function LeadAssignmentManagerPage({ state, dispatch, role }) {
                       <td className="mono" style={{ fontSize: 12 }}>{l.assignedAt ? fmtDate(l.assignedAt) : "—"}</td>
                       <td className="mono" style={{ fontSize: 12 }}>{l.slaDueAt ? fmtDate(l.slaDueAt) : "—"}</td>
                       <td><Stamp tone={sla.tone}>{sla.label}</Stamp></td>
-                      <td>{manage && <button className="btn btn-sm" onClick={() => setAssignFor(l)}>{l.owner ? "Reassign" : "Assign"}</button>}</td>
+                      <td style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                        {manage && <button className="btn btn-sm" onClick={() => setAssignFor(l)}>{l.owner ? "Reassign" : "Assign"}</button>}
+                        {manage && <RowActions onEdit={() => setEditLead(l)} onRemove={() => setRemoveLead(l)} />}
+                      </td>
                     </tr>
                   );
                 })}
@@ -110,7 +115,68 @@ export function LeadAssignmentManagerPage({ state, dispatch, role }) {
 
       {assignFor && <AssignLeadModal lead={assignFor} employees={state.employees} dispatch={dispatch} onClose={() => setAssignFor(null)} />}
       {newLead && <NewDistributedLeadModal state={state} dispatch={dispatch} onClose={() => setNewLead(false)} />}
+      {editLead && <EditLeadModal lead={editLead} state={state} dispatch={dispatch} onClose={() => setEditLead(null)} />}
+      {removeLead && (
+        <ConfirmModal
+          title={`Remove lead ${removeLead.id}?`}
+          body={`${removeLead.company} — ${removeLead.name}. This can't be undone.`}
+          onConfirm={() => dispatch({ type: "DELETE_LEAD", id: removeLead.id })}
+          onClose={() => setRemoveLead(null)}
+        />
+      )}
     </div>
+  );
+}
+
+// Same field set as NewDistributedLeadModal — deliberately excludes owner/assignment, which stay
+// under the Assign/Reassign action so the SLA clock is only ever restarted through that one path.
+function EditLeadModal({ lead, state, dispatch, onClose }) {
+  const [form, setForm] = useState({
+    name: lead.name || "", company: lead.company || "", phone: lead.phone || "",
+    email: lead.email || "", reference: lead.reference || "",
+    source: lead.source || "Referral", service: lead.service || state.services[0] || "",
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
+
+  const submit = async () => {
+    setSaving(true); setError("");
+    try {
+      await dispatch({ type: "UPDATE_LEAD", id: lead.id, payload: form });
+      onClose();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't save — please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal title={`Edit ${lead.id}`} sub={`${lead.name} — ${lead.company}`} onClose={onClose} width={520}>
+      <div className="row2">
+        <div className="field"><label>Name</label><input value={form.name} onChange={set("name")} /></div>
+        <div className="field"><label>Company</label><input value={form.company} onChange={set("company")} /></div>
+      </div>
+      <div className="row2">
+        <div className="field"><label>Phone</label><input value={form.phone} onChange={set("phone")} /></div>
+        <div className="field"><label>Email</label><input value={form.email} onChange={set("email")} /></div>
+      </div>
+      <div className="row2">
+        <div className="field"><label>Source</label>
+          <select value={form.source} onChange={set("source")}>{SOURCES.map((s) => <option key={s}>{s}</option>)}</select>
+        </div>
+        <div className="field"><label>Reference</label><input value={form.reference} onChange={set("reference")} placeholder="e.g. referred by..." /></div>
+      </div>
+      <div className="field"><label>Service</label>
+        <select value={form.service} onChange={set("service")}>{state.services.map((s) => <option key={s}>{s}</option>)}</select>
+      </div>
+      {error && <div className="side-note" style={{ borderColor: "#EFC3BC", background: "var(--danger-tint)" }}>{error}</div>}
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+        <button className="btn" onClick={onClose}>Cancel</button>
+        <button className="btn btn-primary" disabled={!form.name.trim() || !form.company.trim() || saving} onClick={submit}>Save changes</button>
+      </div>
+    </Modal>
   );
 }
 

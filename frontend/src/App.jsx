@@ -1072,6 +1072,21 @@ function Dashboard({ state, role, userId, setPage }) {
   const periodLeads = state.leads.filter(l => inRange(l.createdAt, range)).length;
   const periodJobsCompleted = state.jobCards.filter(j => j.status==="Completed" && j.statusLog?.some(s=>s.status==="Completed" && inRange(s.at, range))).length;
 
+  // Leads handed to this user by the Lead Manager vs. ones they brought in themselves. assignedAt
+  // is only ever stamped on a central-distribution hand-off (see leads.routes.js), so it's exactly
+  // what separates the two — a rep's self-added lead is owned from creation and never gets one.
+  const myAssignedLeads = state.leads.filter(l => l.owner === userId && l.assignedAt).length;
+  const myOwnLeads = state.leads.filter(l => l.owner === userId && !l.assignedAt).length;
+
+  // Total value quoted in the period, regardless of outcome — the top of the funnel, where
+  // "Business volume" above counts only the Approved ones.
+  const periodQuotationsValue = state.quotations.filter(q => inRange(q.createdAt, range)).reduce((a,q) => a + quoteAmount(q), 0);
+  // won_at was added to deals long after the table itself, so deals closed before that column
+  // existed have none — fall back to createdAt, otherwise every historical win drops out entirely.
+  const closedDealValue = state.deals
+    .filter(d => d.stage === "Won" && inRange(d.wonAt || d.createdAt, range))
+    .reduce((a,d) => a + d.value, 0);
+
   const jobsInProgress = state.jobCards.filter(j => ["Assigned","In Progress","On Hold"].includes(j.status)).length;
   const jobsCompleted = state.jobCards.filter(j => j.status === "Completed").length;
   const jobsCancelled = state.jobCards.filter(j => j.status === "Cancelled").length;
@@ -1165,6 +1180,21 @@ function Dashboard({ state, role, userId, setPage }) {
     state.invoices.reduce((a,inv) => a + inv.payments.filter(p=>(p.date||"").slice(0,7)===key).reduce((x,p)=>x+p.amount,0), 0)
   );
 
+  // Shown on every role's dashboard, whatever else that role sees — leads handed to you and leads
+  // you sourced yourself are tracked separately so neither hides inside a single combined count.
+  const myLeadKpis = [
+    { label: "Assigned leads", value: myAssignedLeads, page: "leads" },
+    { label: "My leads", value: myOwnLeads, page: "leads" },
+  ];
+  // The money funnel: quoted -> won -> collected -> still owed. Collected is period-scoped;
+  // pending is the live total owed across all invoices, since a balance isn't a period figure.
+  const valueKpis = [
+    { label: "Quotations value", value: money(periodQuotationsValue), page: "quotations" },
+    { label: "Closed deal value", value: money(closedDealValue), page: "deals" },
+    { label: "Payment collected", value: money(periodCollected), page: "invoices" },
+    { label: "Pending collection", value: money(outstanding), page: "invoices" },
+  ];
+
   // Every KPI links to the page it's counted from — clicking the number takes you straight there
   // instead of leaving you to find the right nav item yourself.
   const kpis = role === "ops_manager" || role === "ops_member" ? [
@@ -1172,23 +1202,30 @@ function Dashboard({ state, role, userId, setPage }) {
     { label: "Completed", value: jobsCompleted, page: "jobs" },
     { label: "Cancelled", value: jobsCancelled, page: "jobs" },
     { label: role === "ops_member" ? "Assigned to me" : "Unassigned jobs", value: role === "ops_member" ? myJobs.length : state.jobCards.filter(j=>j.assignees.length===0).length, page: "jobs" },
+    ...myLeadKpis,
   ] : role === "accounts" ? [
     { label: "Outstanding balance", value: money(outstanding), page: "invoices" },
     { label: "Invoiced this period", value: money(periodInvoiced), page: "invoices" },
     { label: "Collected this period", value: money(periodCollected), page: "invoices" },
     { label: "Paid in full", value: state.invoices.filter(i=>i.status==="Paid").length, page: "invoices" },
+    ...myLeadKpis,
   ] : role === "hr" ? [
     { label: "Employees", value: state.employees.length, page: "hr" },
     { label: "Documents expiring", value: state.employees.flatMap(e=>e.docs).filter(d=>docState(d.expiry).label!=="Valid").length, page: "hr" },
+    ...myLeadKpis,
   ] : role === "lead_manager" ? [
     { label: "Leads assigned", value: state.leads.filter(l=>l.assignedAt).length, page: "leadAssignment" },
     { label: "SLA overdue", value: state.leads.filter(l=>l.slaViolated || (l.slaDueAt && new Date(l.slaDueAt) < new Date() && !(l.followUps||[]).some(f=>f.at && new Date(f.at)>=new Date(l.assignedAt)))).length, page: "leadAssignment" },
     { label: "Unassigned leads", value: state.leads.filter(l=>!l.owner).length, page: "leadAssignment" },
+    ...myLeadKpis,
+    ...valueKpis,
   ] : [
     { label: "New leads this period", value: periodLeads, page: "leads" },
     { label: "Pipeline value", value: money(pipelineValue), page: "deals" },
     { label: "Business volume this period", value: money(businessVolume), page: "quotations" },
     { label: "Job cards completed", value: periodJobsCompleted, page: "jobs" },
+    ...myLeadKpis,
+    ...valueKpis,
   ];
 
   return (
@@ -1205,7 +1242,9 @@ function Dashboard({ state, role, userId, setPage }) {
         </div>
       )}
 
-      <div className="agw-grid" style={{ gridTemplateColumns: `repeat(${kpis.length}, 1fr)`, marginBottom: 20 }}>
+      {/* auto-fit rather than one column per KPI: with the lead + value cards there can be ten of
+          them, and a single forced row would squeeze each one down to an unreadable sliver. */}
+      <div className="agw-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", marginBottom: 20 }}>
         {kpis.map(k => (
           <div className="agw-card" key={k.label} onClick={k.page ? () => setPage(k.page) : undefined}
             style={k.page ? { cursor: "pointer" } : undefined}
