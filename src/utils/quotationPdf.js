@@ -141,7 +141,16 @@ function generateQuotationPdf(quotation, res) {
   doc.font("Inter").fontSize(9).fillColor(INK).text(fmtDate(quotation.created_at) || "-", MARGIN + 80, y);
   doc.font("Inter").fontSize(9).fillColor(GRAY).text("Bill To", MARGIN, y, { width: tableRight - MARGIN, align: "right" });
   const billToBottomY = drawBillTo(doc, quotation, tableRight, doc.y + 2);
-  y = Math.max(y + 14, billToBottomY) + 16;
+  // Sales person sits under the quote date on the left — tells the client who owns this quotation
+  // and who to reply to. Omitted entirely when the quotation has no owner, rather than printing a
+  // dangling empty label.
+  let leftBottomY = y + 14;
+  if (quotation.sales_person) {
+    doc.font("Inter").fontSize(9).fillColor(GRAY).text("Sales Person :", MARGIN, leftBottomY);
+    doc.font("Inter").fontSize(9).fillColor(INK).text(quotation.sales_person, MARGIN + 80, leftBottomY);
+    leftBottomY = doc.y;
+  }
+  y = Math.max(leftBottomY, billToBottomY) + 16;
 
   // --- Subject ---------------------------------------------------------------------------------
   doc.font("Inter").fontSize(9).fillColor(GRAY).text("Subject :", MARGIN, y);

@@ -374,6 +374,19 @@ const quotationFeeTypeTone = (q) => {
   const label = quotationFeeTypeLabel(q);
   return label === "Government Fee" ? "neutral" : label === "Professional + Government Fee" ? "info" : "success";
 };
+
+// Where a record originally came from. "Assigned" = the Lead Manager handed this lead to its owner
+// (assignedAt is only ever stamped on a central-distribution hand-off — see leads.routes.js);
+// "Self-sourced" = the owner brought it in themselves. Deals and quotations inherit the label by
+// tracing back lead <- deal <- quotation, so origin follows the whole chain rather than stopping at
+// the Leads page. Returns "—" when the chain can't be resolved (e.g. a directly-created quotation
+// with no deal, or a lead owned by someone else and therefore not in this user's scoped state).
+const ORIGIN_ASSIGNED = "Assigned";
+const ORIGIN_SELF = "Self-sourced";
+const leadOrigin = (lead) => (!lead ? "—" : lead.assignedAt ? ORIGIN_ASSIGNED : ORIGIN_SELF);
+const dealOrigin = (state, deal) => leadOrigin(deal?.leadId ? state.leads.find(l => l.id === deal.leadId) : null);
+const quotationOrigin = (state, q) => dealOrigin(state, q?.dealId ? state.deals.find(d => d.id === q.dealId) : null);
+const originTone = (origin) => (origin === ORIGIN_ASSIGNED ? "info" : "neutral");
 const daysFromNow = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0,10); };
 // Whole days elapsed since a date (0 = today) — used as a simple aging indicator, e.g. how long
 // a job card has been open.
@@ -1556,8 +1569,8 @@ function LeadsPage({ state, dispatch, userId, role }) {
               style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:8, padding:"7px 12px 7px 34px", fontSize:13, background:"var(--surface)" }} />
           </div>
           <button className="btn btn-sm" onClick={()=>exportCSV("leads.csv",
-            ["Lead ID","Created","Name","Company","Service","Source","Reference","Owner","Status","Next Follow-up"],
-            owned.map(l=>[l.id, l.createdAt, l.name, l.company, l.service, l.source, l.reference||"", state.employees.find(t=>t.id===l.owner)?.name||"", l.status, l.nextFollowUp||""]))}>
+            ["Lead ID","Created","Name","Company","Service","Lead Type","Source","Reference","Owner","Status","Next Follow-up"],
+            owned.map(l=>[l.id, l.createdAt, l.name, l.company, l.service, leadOrigin(l), l.source, l.reference||"", state.employees.find(t=>t.id===l.owner)?.name||"", l.status, l.nextFollowUp||""]))}>
             <Download size={13}/> Export
           </button>
           <button className="btn btn-primary" onClick={()=>{ setForm(blankForm); setShowAdd(true); }}><Plus size={15}/> New lead</button>
@@ -1569,7 +1582,7 @@ function LeadsPage({ state, dispatch, userId, role }) {
         {owned.length === 0 ? <Empty icon={Users} text="No leads yet. Add your first enquiry." /> : (
         <div style={{ overflowX: "auto" }}>
         <table className="agw-table" style={{ minWidth: 900 }}>
-          <thead><tr><th>Lead</th><th>Created</th><th>Company</th><th>Service</th><th>Source</th><th>Reference</th><th>Owner</th><th>Status</th><th>Next follow-up</th><th></th></tr></thead>
+          <thead><tr><th>Lead</th><th>Created</th><th>Company</th><th>Service</th><th>Lead type</th><th>Source</th><th>Reference</th><th>Owner</th><th>Status</th><th>Next follow-up</th><th></th></tr></thead>
           <tbody>
             {pg.pageRows.map(l => (
               <tr key={l.id}>
@@ -1580,6 +1593,7 @@ function LeadsPage({ state, dispatch, userId, role }) {
                 <td className="mono" style={{fontSize:12}}>{fmtDate(l.createdAt)}</td>
                 <td>{l.company}</td>
                 <td style={{maxWidth:180}}>{l.service}</td>
+                <td><Stamp tone={originTone(leadOrigin(l))}>{leadOrigin(l)}</Stamp></td>
                 <td><span className="pill">{l.source}</span></td>
                 <td style={{fontSize:12,color:"var(--ink-soft)",maxWidth:140}}>{l.reference || "—"}</td>
                 <td>{state.employees.find(t=>t.id===l.owner)?.name}</td>
@@ -1784,8 +1798,8 @@ function DealsPage({ state, dispatch, setPage, onViewQuotation, role, userId }) 
               style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:8, padding:"7px 12px 7px 34px", fontSize:13, background:"var(--surface)" }} />
           </div>
           <button className="btn btn-sm" onClick={()=>exportCSV("deals.csv",
-            ["Deal ID","Created","Customer","Service","Value","Owner","Stage","Expected Close"],
-            deals.map(d=>[d.id, d.createdAt, d.customer, d.service, d.value, state.employees.find(t=>t.id===d.owner)?.name||"", d.stage, d.expectedClose]))}>
+            ["Deal ID","Created","Customer","Service","Value","Lead Type","Owner","Stage","Expected Close"],
+            deals.map(d=>[d.id, d.createdAt, d.customer, d.service, d.value, dealOrigin(state, d), state.employees.find(t=>t.id===d.owner)?.name||"", d.stage, d.expectedClose]))}>
             <Download size={13}/> Export
           </button>
           <button className="btn btn-primary" onClick={()=>setNewDeal(true)}><Plus size={15}/> New deal</button>
@@ -1797,7 +1811,7 @@ function DealsPage({ state, dispatch, setPage, onViewQuotation, role, userId }) 
           {deals.length === 0 ? <Empty icon={Handshake} text="No deals yet. Convert a lead to get started." /> : (
           <div style={{ overflowX:"auto" }}>
           <table className="agw-table" style={{ minWidth: 720 }}>
-            <thead><tr><th>Customer</th><th>Created</th><th>Service</th><th>Value</th><th>Owner</th><th>Stage</th><th>Expected close</th><th></th></tr></thead>
+            <thead><tr><th>Customer</th><th>Created</th><th>Service</th><th>Value</th><th>Lead type</th><th>Owner</th><th>Stage</th><th>Expected close</th><th></th></tr></thead>
             <tbody>
               {pg.pageRows.map(d => (
                 <tr key={d.id}>
@@ -1805,6 +1819,7 @@ function DealsPage({ state, dispatch, setPage, onViewQuotation, role, userId }) 
                   <td className="mono" style={{fontSize:12}}>{fmtDate(d.createdAt)}</td>
                   <td style={{maxWidth:200}}>{d.service}</td>
                   <td className="mono">{money(d.value)}</td>
+                  <td><Stamp tone={originTone(dealOrigin(state, d))}>{dealOrigin(state, d)}</Stamp></td>
                   <td>{state.employees.find(t=>t.id===d.owner)?.name}</td>
                   <td onClick={e=>e.stopPropagation()}>
                     <select value={d.stage} onChange={e=>dispatch({type:"UPDATE_DEAL", id:d.id, payload:{stage:e.target.value}})}
@@ -2243,8 +2258,8 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, onHighligh
               style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:8, padding:"7px 12px 7px 34px", fontSize:13, background:"var(--surface)" }} />
           </div>
           <button className="btn btn-sm" onClick={()=>exportCSV("quotations.csv",
-            ["Quotation ID","Created","Customer","Fee Type","Amount (QAR)","Valid Till","Status"],
-            rows.map(q=>[q.id, q.createdAt, q.customer, quotationFeeTypeLabel(q), total(q), q.validTill, q.status]))}>
+            ["Quotation ID","Created","Customer","Service","Sales Person","Lead Type","Fee Type","Amount (QAR)","Valid Till","Status"],
+            rows.map(q=>[q.id, q.createdAt, q.customer, q.items[0]?.service||"", state.employees.find(t=>t.id===q.owner)?.name||"", quotationOrigin(state, q), quotationFeeTypeLabel(q), total(q), q.validTill, q.status]))}>
             <Download size={13}/> Export
           </button>
           <button className="btn btn-primary" onClick={()=>setNewQuote(true)}><Plus size={15}/> New quotation</button>
@@ -2253,7 +2268,7 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, onHighligh
       <div className="agw-card" style={{ padding: 0 }}>
         {rows.length === 0 ? <Empty icon={favoritesOnly ? Star : FileText} text={favoritesOnly ? "No favorite quotations yet — star a quotation to use it as a go-to format." : "No quotations yet. Create one from a deal, or start a new one."} /> : (
         <table className="agw-table">
-          <thead><tr><th></th><th>Quotation</th><th>Created</th><th>Customer</th><th>Service</th><th>Amount (QAR)</th><th>Valid till</th><th>Status</th><th></th><th></th></tr></thead>
+          <thead><tr><th></th><th>Quotation</th><th>Created</th><th>Customer</th><th>Service</th><th>Sales person</th><th>Lead type</th><th>Amount (QAR)</th><th>Valid till</th><th>Status</th><th></th><th></th></tr></thead>
           <tbody>
             {pg.pageRows.map(q => (
               <tr key={q.id} id={`quote-row-${q.id}`}
@@ -2269,6 +2284,8 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, onHighligh
                 <td className="mono" style={{fontSize:12}}>{fmtDate(q.createdAt)}</td>
                 <td>{q.customer}</td>
                 <td style={{maxWidth:180}}>{q.items[0]?.service || "—"}</td>
+                <td>{state.employees.find(t=>t.id===q.owner)?.name || "—"}</td>
+                <td><Stamp tone={originTone(quotationOrigin(state, q))}>{quotationOrigin(state, q)}</Stamp></td>
                 <td className="mono">{money(total(q))}</td>
                 <td className="mono" style={{fontSize:12}}>{fmtDate(q.validTill)}</td>
                 <td><Stamp tone={statusTone(q.status)}>{quotationStatusLabel(q.status, role)}</Stamp></td>
@@ -2575,6 +2592,14 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
               <div>
                 <div style={{ fontSize:12, color:"var(--ink-soft)" }}>Quote Date :</div>
                 <div style={{ fontSize:13, marginTop:2 }}>{fmtDate(q.createdAt || daysFromNow(0))}</div>
+                {/* Mirrors the generated PDF, which prints the same line here — the preview is
+                    labelled "exactly what the client receives", so it has to match. */}
+                {state.employees.find(t=>t.id===q.owner)?.name && (
+                  <>
+                    <div style={{ fontSize:12, color:"var(--ink-soft)", marginTop:8 }}>Sales Person :</div>
+                    <div style={{ fontSize:13, marginTop:2 }}>{state.employees.find(t=>t.id===q.owner).name}</div>
+                  </>
+                )}
               </div>
               <div style={{ textAlign:"right" }}>
                 <div style={{ fontSize:12, color:"var(--ink-soft)" }}>Bill To</div>
