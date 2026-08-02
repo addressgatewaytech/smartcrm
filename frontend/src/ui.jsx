@@ -275,18 +275,17 @@ export function RowActions({ onEdit, onRemove }) {
   );
 }
 
-// A pair of small floating "scroll" buttons that appear over any wide table once it's actually
-// overflowing horizontally — mounted once at the app shell root (see App.jsx) so every list page
-// gets it automatically, with zero per-page wiring. Exists because the native horizontal
-// scrollbar on a long list is easy to miss: nothing at the top of the table hints that a row's
-// action buttons sit off to the right, so people were scrolling all the way to the bottom of a
-// long list first, just to discover the scrollbar there. Both sides are covered — a right button
-// (shown while there's more to reveal) to scroll toward the action buttons, and a left button
-// (shown once scrolled away from the start) to jump straight back to the first column. Triggered
-// purely by whether a table is actually overflowing right now, at any window width — not gated to
-// small screens, since a desktop window narrow enough (or a table with enough columns) can
-// overflow too.
-// Deliberately imperative DOM (not React state) — it has to track every table on the page,
+// A pair of small floating "scroll" buttons that appear over any wide table or Kanban board once
+// it's actually overflowing horizontally — mounted once at the app shell root (see App.jsx) so
+// every list page gets it automatically, with zero per-page wiring. Exists because the native
+// horizontal scrollbar on a long list/board is easy to miss: nothing at the top hints that a
+// row's action buttons (or a board's later status columns) sit off to the right, so people were
+// scrolling all the way down first, just to discover the scrollbar there. Both sides are covered
+// — a right button (shown while there's more to reveal) and a left button (shown once scrolled
+// away from the start) to jump straight back. Triggered purely by whether something is actually
+// overflowing right now, at any window width — not gated to small screens, since a desktop window
+// narrow enough (or a table/board with enough columns) can overflow too.
+// Deliberately imperative DOM (not React state) — it has to track every table/board on the page,
 // including ones inside modals, without any of those call sites knowing this exists.
 export function TableScrollHint() {
   useEffect(() => {
@@ -360,7 +359,12 @@ export function TableScrollHint() {
     };
 
     const sync = () => {
-      const scrollables = [...new Set(Array.from(document.querySelectorAll("table.agw-table")).map(findScrollAncestor).filter(Boolean))];
+      // Tables find whichever ancestor is actually scrolling; a Kanban board (.board) is always
+      // its own scroll container (overflow-x: auto is unconditional on it), so it needs no walk.
+      const scrollables = [...new Set([
+        ...Array.from(document.querySelectorAll("table.agw-table")).map(findScrollAncestor).filter(Boolean),
+        ...Array.from(document.querySelectorAll(".board")).filter((el) => el.scrollWidth - el.clientWidth > 4),
+      ])];
 
       for (const [el, pair] of buttons) {
         if (!scrollables.includes(el) || !document.body.contains(el)) {
