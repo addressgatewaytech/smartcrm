@@ -39,6 +39,10 @@ CREATE TABLE IF NOT EXISTS users (
   date_of_birth DATE,
   nationality   VARCHAR(100),
   emp_code      VARCHAR(20),                        -- HR employee code, e.g. AGBS001 — from the HR spreadsheet, not the login id
+  qid_type      VARCHAR(100),                        -- QID sponsor/category from the HR spreadsheet, e.g. "Personal", "AGBS" — not a document, so it doesn't belong in staff_docs
+  mobile_n      VARCHAR(30),                        -- HR spreadsheet's "N Mobile" / "P Mobile" / "C Mobile" columns — kept under their
+  mobile_p      VARCHAR(30),                        -- source labels since which is home/personal/company isn't documented anywhere
+  mobile_c      VARCHAR(30),
   created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 

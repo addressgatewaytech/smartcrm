@@ -25,7 +25,7 @@ router.use(requireAuth);
 // HR ("roles: all" in the nav) needs every authenticated user to see the roster — only
 // create/edit/delete of Users & Roles itself stays restricted to super_admin/admin below.
 router.get("/", async (req, res) => {
-  const rows = await query("SELECT id, name, email, roles, dept, initials, designation, category, photo_url, leave_balance, active, joined_date, date_of_birth, nationality, emp_code FROM users ORDER BY name");
+  const rows = await query("SELECT id, name, email, roles, dept, initials, designation, category, photo_url, leave_balance, active, joined_date, date_of_birth, nationality, emp_code, qid_type, mobile_n, mobile_p, mobile_c FROM users ORDER BY name");
   const docs = await query("SELECT * FROM staff_docs");
   res.json(rows.map((r) => ({ ...r, docs: docs.filter((d) => d.user_id === r.id) })));
 });
@@ -52,7 +52,7 @@ router.post("/", requireRole(["super_admin", "admin"]), async (req, res) => {
 });
 
 router.patch("/:id", requireRole(["super_admin", "admin"]), async (req, res) => {
-  const { name, email, roles, dept, initials, joinedDate, dateOfBirth, designation, category, nationality, empCode } = req.body;
+  const { name, email, roles, dept, initials, joinedDate, dateOfBirth, designation, category, nationality, empCode, qidType, mobileN, mobileP, mobileC } = req.body;
   const fields = [];
   const params = [];
   if (name) { fields.push("name = ?"); params.push(name); }
@@ -72,6 +72,10 @@ router.patch("/:id", requireRole(["super_admin", "admin"]), async (req, res) => 
   if (dateOfBirth !== undefined) { fields.push("date_of_birth = ?"); params.push(dateOfBirth || null); }
   if (nationality !== undefined) { fields.push("nationality = ?"); params.push(nationality?.trim() || null); }
   if (empCode !== undefined) { fields.push("emp_code = ?"); params.push(empCode?.trim() || null); }
+  if (qidType !== undefined) { fields.push("qid_type = ?"); params.push(qidType?.trim() || null); }
+  if (mobileN !== undefined) { fields.push("mobile_n = ?"); params.push(mobileN?.trim() || null); }
+  if (mobileP !== undefined) { fields.push("mobile_p = ?"); params.push(mobileP?.trim() || null); }
+  if (mobileC !== undefined) { fields.push("mobile_c = ?"); params.push(mobileC?.trim() || null); }
   if (!fields.length) return res.status(400).json({ error: "Nothing to update" });
   params.push(req.params.id);
   await query(`UPDATE users SET ${fields.join(", ")} WHERE id = ?`, params);

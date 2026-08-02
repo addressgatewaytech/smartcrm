@@ -5317,6 +5317,7 @@ function EditHrDetailsModal({ employee: e, dispatch, onClose }) {
     designation: e.designation || "", dept: e.dept || "", category: e.category || "Staff",
     joinedDate: (e.joined || "").slice(0,10), dateOfBirth: (e.dateOfBirth || "").slice(0,10),
     nationality: e.nationality || "", empCode: e.empCode || "",
+    qidType: e.qidType || "", mobileN: e.mobileN || "", mobileP: e.mobileP || "", mobileC: e.mobileC || "",
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -5353,6 +5354,12 @@ function EditHrDetailsModal({ employee: e, dispatch, onClose }) {
       <div className="row2">
         <div className="field"><label>Nationality</label><input value={form.nationality} onChange={ev=>setForm({...form,nationality:ev.target.value})} /></div>
         <div className="field"><label>Employee ID</label><input value={form.empCode} onChange={ev=>setForm({...form,empCode:ev.target.value})} placeholder="e.g. AGBS021" /></div>
+      </div>
+      <div className="field"><label>QID type</label><input value={form.qidType} onChange={ev=>setForm({...form,qidType:ev.target.value})} placeholder="e.g. Personal, AGBS, ABM" /></div>
+      <div className="row3">
+        <div className="field"><label>N Mobile</label><input value={form.mobileN} onChange={ev=>setForm({...form,mobileN:ev.target.value})} /></div>
+        <div className="field"><label>P Mobile</label><input value={form.mobileP} onChange={ev=>setForm({...form,mobileP:ev.target.value})} /></div>
+        <div className="field"><label>C Mobile</label><input value={form.mobileC} onChange={ev=>setForm({...form,mobileC:ev.target.value})} /></div>
       </div>
       {error && <div className="side-note" style={{ color:"var(--danger)" }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{error}</div>}
       <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop: 16 }}>
@@ -5560,12 +5567,28 @@ function EmployeeHrCard({ e, state, dispatch, isAdmin, userId, onOpenDocs, onOpe
         </div>
       </div>
 
-      <div style={{ marginTop: 8 }}>
+      <div className="row2" style={{ marginTop: 8 }}>
         <div style={{ background:"var(--page)", borderRadius:8, padding:"8px 10px" }}>
           <div style={{ fontSize:10.5, color:"var(--ink-soft)", textTransform:"uppercase", letterSpacing:".03em" }}>Nationality</div>
           <div style={{ fontSize:13, fontWeight:500, marginTop:2 }}>{e.nationality || "—"}</div>
         </div>
+        <div style={{ background:"var(--page)", borderRadius:8, padding:"8px 10px" }}>
+          <div style={{ fontSize:10.5, color:"var(--ink-soft)", textTransform:"uppercase", letterSpacing:".03em" }}>QID type</div>
+          <div style={{ fontSize:13, fontWeight:500, marginTop:2 }}>{e.qidType || "—"}</div>
+        </div>
       </div>
+      {(e.mobileN || e.mobileP || e.mobileC) && (
+        <div style={{ marginTop: 8 }}>
+          <div style={{ background:"var(--page)", borderRadius:8, padding:"8px 10px" }}>
+            <div style={{ fontSize:10.5, color:"var(--ink-soft)", textTransform:"uppercase", letterSpacing:".03em" }}>Mobile numbers</div>
+            <div style={{ fontSize:12.5, marginTop:2, display:"flex", gap:14, flexWrap:"wrap" }}>
+              {e.mobileN && <span>N: <span className="mono">{e.mobileN}</span></span>}
+              {e.mobileP && <span>P: <span className="mono">{e.mobileP}</span></span>}
+              {e.mobileC && <span>C: <span className="mono">{e.mobileC}</span></span>}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div style={{ display:"flex", gap:8, marginTop:12, flexWrap:"wrap" }}>
         <button className="btn btn-sm" style={{ flex:1 }} onClick={onOpenDocs}>
