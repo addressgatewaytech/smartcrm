@@ -5313,19 +5313,45 @@ function HrPage({ state, dispatch, role, userId }) {
 }
 
 function EditHrDetailsModal({ employee: e, dispatch, onClose }) {
+  const passportDoc = e.docs.find(d => d.type === "Passport");
+  const qidDoc = e.docs.find(d => d.type === "QID");
+  const visaDoc = e.docs.find(d => d.type === "Visa");
   const [form, setForm] = useState({
     designation: e.designation || "", dept: e.dept || "", category: e.category || "Staff",
     joinedDate: (e.joined || "").slice(0,10), dateOfBirth: (e.dateOfBirth || "").slice(0,10),
     nationality: e.nationality || "", empCode: e.empCode || "",
     qidType: e.qidType || "", mobileN: e.mobileN || "", mobileP: e.mobileP || "", mobileC: e.mobileC || "",
+    passportNo: passportDoc?.number || "", passportExpiry: (passportDoc?.expiry || "").slice(0,10),
+    qidNo: qidDoc?.number || "", qidExpiry: (qidDoc?.expiry || "").slice(0,10),
+    visaNo: visaDoc?.number || "",
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
+  // Passport/QID/Visa live in staff_docs (type/number/expiry), not on the user row itself — same
+  // vault the "Documents" modal manages — so saving here upserts those rows instead of just
+  // PATCHing users. Left blank (both number and expiry), a doc type is skipped rather than
+  // creating an empty placeholder row.
+  const upsertDoc = async (type, existing, number, expiry) => {
+    const hasValue = (number && number.trim()) || (expiry && expiry.trim());
+    if (!hasValue) return;
+    if (existing) {
+      if (existing.number !== number || (existing.expiry || "").slice(0,10) !== expiry) {
+        await dispatch({ type:"UPDATE_EMPLOYEE_DOC", employeeId:e.id, docId:existing.id, payload:{ type, number, expiry, cloudLink: existing.cloudLink || "" } });
+      }
+    } else {
+      await dispatch({ type:"ADD_EMPLOYEE_DOC", employeeId:e.id, doc:{ type, number, expiry, cloudLink:"" } });
+    }
+  };
+
   const save = async () => {
     setSaving(true); setError("");
     try {
-      await dispatch({ type:"UPDATE_USER", id:e.id, payload:form });
+      const { passportNo, passportExpiry, qidNo, qidExpiry, visaNo, ...userFields } = form;
+      await dispatch({ type:"UPDATE_USER", id:e.id, payload:userFields });
+      await upsertDoc("Passport", passportDoc, passportNo, passportExpiry);
+      await upsertDoc("QID", qidDoc, qidNo, qidExpiry);
+      await upsertDoc("Visa", visaDoc, visaNo, "");
       onClose();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't save — please try again.");
@@ -5361,6 +5387,15 @@ function EditHrDetailsModal({ employee: e, dispatch, onClose }) {
         <div className="field"><label>P Mobile</label><input value={form.mobileP} onChange={ev=>setForm({...form,mobileP:ev.target.value})} /></div>
         <div className="field"><label>C Mobile</label><input value={form.mobileC} onChange={ev=>setForm({...form,mobileC:ev.target.value})} /></div>
       </div>
+      <div className="row2">
+        <div className="field"><label>Passport number</label><input value={form.passportNo} onChange={ev=>setForm({...form,passportNo:ev.target.value})} /></div>
+        <div className="field"><label>Passport expiry</label><input type="date" value={form.passportExpiry} onChange={ev=>setForm({...form,passportExpiry:ev.target.value})} /></div>
+      </div>
+      <div className="row2">
+        <div className="field"><label>QID number</label><input value={form.qidNo} onChange={ev=>setForm({...form,qidNo:ev.target.value})} /></div>
+        <div className="field"><label>QID expiry</label><input type="date" value={form.qidExpiry} onChange={ev=>setForm({...form,qidExpiry:ev.target.value})} /></div>
+      </div>
+      <div className="field"><label>Visa number</label><input value={form.visaNo} onChange={ev=>setForm({...form,visaNo:ev.target.value})} /></div>
       {error && <div className="side-note" style={{ color:"var(--danger)" }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{error}</div>}
       <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop: 16 }}>
         <button className="btn" onClick={onClose}>Cancel</button>
