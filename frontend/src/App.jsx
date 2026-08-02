@@ -1503,7 +1503,7 @@ function Dashboard({ state, role, userId, setPage }) {
 const LEAD_STATUSES = ["New","Contacted","Follow-up Scheduled","Interested","Not Interested","Qualified","Unqualified","Converted"];
 
 function LeadsPage({ state, dispatch, userId, role }) {
-  const [view, setView] = useState("table");
+  const [view, setView] = useState("kanban");
   const [draggedLeadId, setDraggedLeadId] = useState(null);
   const [dragOverStatus, setDragOverStatus] = useState(null);
   const [expandedCols, setExpandedCols] = useState({});
@@ -1572,8 +1572,8 @@ function LeadsPage({ state, dispatch, userId, role }) {
     <div>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 14, flexWrap:"wrap", gap:10 }}>
         <div className="tabbar" style={{ marginBottom:0, borderBottom:"none" }}>
-          <button className={`tab ${view==="table"?"active":""}`} onClick={()=>setView("table")}>Table</button>
           <button className={`tab ${view==="kanban"?"active":""}`} onClick={()=>setView("kanban")}>Kanban</button>
+          <button className={`tab ${view==="table"?"active":""}`} onClick={()=>setView("table")}>Table</button>
         </div>
         <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
           <PeriodFilter period={period} setPeriod={setPeriod} customFrom={customFrom} setCustomFrom={setCustomFrom} customTo={customTo} setCustomTo={setCustomTo} />
@@ -1786,7 +1786,7 @@ function LeadsPage({ state, dispatch, userId, role }) {
 /* ---------------------------------------------------------------------- */
 
 function DealsPage({ state, dispatch, setPage, onViewQuotation, role, userId }) {
-  const [view, setView] = useState("table");
+  const [view, setView] = useState("kanban");
   const viewQuotationFor = (d) => { onViewQuotation(state.quotations.find(q=>q.dealId===d.id)?.id); setPage("quotations"); };
   const [quoteFor, setQuoteFor] = useState(null);
   const [editDeal, setEditDeal] = useState(null);
@@ -4532,7 +4532,7 @@ function PaymentHistoryModal({ invoice: inv, dispatch, onClose }) {
 /* ---------------------------------------------------------------------- */
 
 function JobsPage({ state, dispatch, role, userId }) {
-  const [view, setView] = useState("table");
+  const [view, setView] = useState("kanban");
   const [assignFor, setAssignFor] = useState(null);
   const [detailId, setDetailId] = useState(null);
   const [detailCancelOnOpen, setDetailCancelOnOpen] = useState(false);
