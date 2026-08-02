@@ -2524,6 +2524,17 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
             <button className="btn btn-sm" onClick={()=>setEmailing(true)}>
               {q.emailedToClient ? <><BadgeCheck size={13}/> Emailed {fmtDate(q.emailedAt)}</> : <><Mail size={13}/> Email to customer</>}
             </button>
+            {/* Unconditional on status — available from Draft (right by Submit for approval,
+                below) straight through Approved, not just from the separate PDF preview tab. */}
+            <button className="btn btn-sm" disabled={downloading} onClick={async ()=>{
+              setDownloading(true);
+              try {
+                const blob = await api.quotations.downloadPdf(q.id);
+                downloadBlob(`Quotation-${q.id}.pdf`, blob);
+              } finally {
+                setDownloading(false);
+              }
+            }}><Download size={13}/> {downloading ? "Generating…" : "Download PDF"}</button>
           </div>
           {cloning && <CloneQuoteModal quotation={q} customerOptions={customerOptions} dispatch={dispatch} onClose={()=>setCloning(false)} onCloned={onClose} />}
           {removing && <ConfirmModal title={`Remove ${q.id}?`} body={`${q.customer} — this draft quotation can't be recovered once removed.`} onConfirm={()=>{ dispatch({type:"DELETE_QUOTATION", id:q.id}); onClose(); }} onClose={()=>setRemoving(false)} />}
@@ -2606,6 +2617,12 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
         });
         const pdfSubtotal = src.items.reduce((a,it)=>a+it.qty*it.price*(1-(it.discountPct||0)/100),0);
         const pdfTotal = Math.max(0, pdfSubtotal - (src.orderDiscount||0));
+        // Pre-discount split by fee type — mirrors quotationFeeTypeLabel's per-item classification
+        // (own feeType if tagged, else the quotation's whole-document one) so the two lines always
+        // add up to exactly Sub Total, with the order discount still applied only once, below.
+        const isGovFeeItem = (it) => (it.feeType || q.feeType || "Professional Fee") === "Government Fee";
+        const pdfGovFeeTotal = src.items.filter(isGovFeeItem).reduce((a,it)=>a+it.qty*it.price*(1-(it.discountPct||0)/100),0);
+        const pdfProfFeeTotal = pdfSubtotal - pdfGovFeeTotal;
         const termLines = (src.terms || "").split("\n").map(t=>t.trim()).filter(Boolean);
         const noteLines = (src.notes || "").split("\n").map(t=>t.trim()).filter(Boolean);
 
@@ -2724,6 +2741,12 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
             <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:24 }}>
               <table style={{ fontSize:13 }}>
                 <tbody>
+                  {pdfGovFeeTotal > 0 && (
+                    <tr><td style={{ padding:"4px 16px 4px 0", color:"var(--ink-soft)" }}>Government Fee Total</td><td className="mono" style={{ padding:"4px 0", textAlign:"right" }}>{pdfGovFeeTotal.toFixed(2)}</td></tr>
+                  )}
+                  {pdfProfFeeTotal > 0 && (
+                    <tr><td style={{ padding:"4px 16px 4px 0", color:"var(--ink-soft)" }}>Professional Fee Total</td><td className="mono" style={{ padding:"4px 0", textAlign:"right" }}>{pdfProfFeeTotal.toFixed(2)}</td></tr>
+                  )}
                   <tr><td style={{ padding:"4px 16px 4px 0", color:"var(--ink-soft)" }}>Sub Total</td><td className="mono" style={{ padding:"4px 0", textAlign:"right" }}>{pdfSubtotal.toFixed(2)}</td></tr>
                   {(editingNow || (src.orderDiscount||0) > 0) && (
                     <tr><td style={{ padding:"4px 16px 4px 0", color:"var(--ink-soft)" }}>Discount</td>
@@ -2733,7 +2756,7 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
                       </td>
                     </tr>
                   )}
-                  <tr style={{ background:themeColors.totalBg }}><td style={{ padding:"7px 16px 7px 0", fontWeight:600, color:themeColors.totalText }}>Total</td><td className="mono" style={{ padding:"7px 0", textAlign:"right", fontWeight:600, color:themeColors.totalText }}>QAR{pdfTotal.toFixed(2)}</td></tr>
+                  <tr style={{ background:themeColors.totalBg }}><td style={{ padding:"7px 16px 7px 0", fontWeight:600, color:themeColors.totalText }}>Total</td><td className="mono" style={{ padding:"7px 0", textAlign:"right", fontWeight:600, color:themeColors.totalText }}>QAR {pdfTotal.toFixed(2)}</td></tr>
                 </tbody>
               </table>
             </div>

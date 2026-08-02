@@ -199,10 +199,26 @@ function generateQuotationPdf(quotation, res) {
   });
   y += 12;
 
-  // --- Sub Total / Discount / Total (right-aligned mini table, Total row shaded) ---------------
-  ensureRoom(70);
+  // --- Government Fee Total / Professional Fee Total / Sub Total / Discount / Total -------------
+  // Pre-discount split by fee type — a line's own feeType if tagged, else the quotation's
+  // whole-document one (same rule as professionalFeeTotal in helpers.js) — so the two lines
+  // always add up to exactly Sub Total, with the order discount still applied only once, below.
+  const isGovFeeItem = (it) => (it.feeType || quotation.fee_type || quotation.feeType || "Professional Fee") === "Government Fee";
+  const govFeeTotal = items.filter(isGovFeeItem).reduce((a, it) => a + (Number(it.qty) || 0) * (Number(it.price) || 0) * (1 - (Number(it.discountPct) || 0) / 100), 0);
+  const profFeeTotal = subtotal - govFeeTotal;
+  ensureRoom(102);
   const totalsWidth = 220;
   const totalsX = tableRight - totalsWidth;
+  if (govFeeTotal > 0) {
+    doc.font("Inter").fontSize(9.5).fillColor(GRAY).text("Government Fee Total", totalsX, y, { width: 110 });
+    doc.font("Inter").fontSize(9.5).fillColor(INK).text(money2(govFeeTotal), totalsX + 110, y, { width: totalsWidth - 110, align: "right" });
+    y += 16;
+  }
+  if (profFeeTotal > 0) {
+    doc.font("Inter").fontSize(9.5).fillColor(GRAY).text("Professional Fee Total", totalsX, y, { width: 110 });
+    doc.font("Inter").fontSize(9.5).fillColor(INK).text(money2(profFeeTotal), totalsX + 110, y, { width: totalsWidth - 110, align: "right" });
+    y += 16;
+  }
   doc.font("Inter").fontSize(9.5).fillColor(GRAY).text("Sub Total", totalsX, y, { width: 110 });
   doc.font("Inter").fontSize(9.5).fillColor(INK).text(money2(subtotal), totalsX + 110, y, { width: totalsWidth - 110, align: "right" });
   y += 16;
