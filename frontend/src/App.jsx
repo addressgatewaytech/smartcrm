@@ -5625,6 +5625,36 @@ function EmployeeHrCard({ e, state, dispatch, isAdmin, userId, onOpenDocs, onOpe
         </div>
       )}
 
+      {(() => {
+        const passportDoc = e.docs.find(d => d.type === "Passport");
+        const qidDoc = e.docs.find(d => d.type === "QID");
+        const visaDoc = e.docs.find(d => d.type === "Visa");
+        if (!passportDoc && !qidDoc && !visaDoc) return null;
+        const row = (label, doc) => doc && (
+          <div style={{ background:"var(--page)", borderRadius:8, padding:"8px 10px" }}>
+            <div style={{ fontSize:10.5, color:"var(--ink-soft)", textTransform:"uppercase", letterSpacing:".03em" }}>{label}</div>
+            <div style={{ fontSize:13, fontWeight:500, marginTop:2 }}>{doc.number || "—"}</div>
+            {doc.expiry && (
+              <div style={{ fontSize:11, marginTop:2, display:"flex", alignItems:"center", gap:5 }}>
+                <span style={{ color:"var(--ink-soft)" }}>Exp {fmtDate(doc.expiry)}</span>
+                <Stamp tone={docState(doc.expiry).cls.replace("stamp-","")}>{docState(doc.expiry).label}</Stamp>
+              </div>
+            )}
+          </div>
+        );
+        return (
+          <div style={{ marginTop: 8, display:"flex", flexDirection:"column", gap:8 }}>
+            {(passportDoc || qidDoc) && (
+              <div className="row2">
+                {row("Passport", passportDoc)}
+                {row("QID", qidDoc)}
+              </div>
+            )}
+            {visaDoc && row("Visa", visaDoc)}
+          </div>
+        );
+      })()}
+
       <div style={{ display:"flex", gap:8, marginTop:12, flexWrap:"wrap" }}>
         <button className="btn btn-sm" style={{ flex:1 }} onClick={onOpenDocs}>
           Documents ({e.docs.length}{flagged.length>0 && <span style={{color:"var(--warning)"}}> · {flagged.length} flagged</span>})
