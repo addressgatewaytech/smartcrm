@@ -32,7 +32,13 @@ CREATE TABLE IF NOT EXISTS users (
   -- from assignee pickers (Job Cards, Tasks, Lead Assignment) since they oversee/approve work
   -- rather than being handed it directly. No other access difference between the two.
   category      ENUM('Management','Staff') NOT NULL DEFAULT 'Staff',
+  -- Photo bytes live in the DB, not on disk under uploads/ — this app's host redeploys on every
+  -- git push and doesn't preserve files written outside of git, so anything saved to uploads/
+  -- in production gets wiped on the next deploy. photo_url just holds the serving URL
+  -- (/api/users/:id/photo?v=...) for cache-busting after a re-upload.
   photo_url     VARCHAR(500),
+  photo_data    LONGBLOB,
+  photo_mime    VARCHAR(50),
   leave_balance INT DEFAULT 21,
   active        TINYINT(1) DEFAULT 1,
   joined_date   DATE,

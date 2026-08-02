@@ -1,23 +1,28 @@
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const multer = require("multer");
-const path = require("path");
-const crypto = require("crypto");
 const { query } = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
 const { requireRole, ROLE_LABEL } = require("../middleware/roles");
 const { nextId, today } = require("../utils/helpers");
 
 const router = express.Router();
-// Custom storage (not multer's `dest` shortcut): the shortcut writes files with no extension,
-// which would break the URL this route hands back to the frontend.
-const storage = multer.diskStorage({
-  destination: process.env.UPLOAD_DIR || "./uploads",
-  filename: (req, file, cb) => cb(null, `${Date.now()}-${crypto.randomBytes(6).toString("hex")}${path.extname(file.originalname)}`),
-});
-const upload = multer({
-  storage,
+// Kept in memory, not written to disk (see photo_data below) — this host wipes anything under
+// uploads/ on every deploy since it isn't tracked in git.
+const photoUpload = multer({
+  storage: multer.memoryStorage(),
   limits: { fileSize: (Number(process.env.MAX_UPLOAD_MB) || 10) * 1024 * 1024 },
+});
+
+// Unauthenticated on purpose, same as the old static /uploads route it replaces — a plain <img
+// src> can't attach a Bearer token, so this has to stay open rather than sit behind requireAuth
+// like everything else in this file.
+router.get("/:id/photo", async (req, res) => {
+  const [row] = await query("SELECT photo_data, photo_mime FROM users WHERE id = ?", [req.params.id]);
+  if (!row?.photo_data) return res.status(404).end();
+  res.setHeader("Content-Type", row.photo_mime || "image/jpeg");
+  res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+  res.send(row.photo_data);
 });
 
 router.use(requireAuth);
@@ -103,14 +108,17 @@ router.delete("/:id", requireRole(["super_admin", "admin"]), async (req, res) =>
 });
 
 // Profile photo upload — own photo, or any user's photo if Admin-tier.
-router.post("/:id/photo", upload.single("photo"), async (req, res) => {
+router.post("/:id/photo", photoUpload.single("photo"), async (req, res) => {
   const isSelf = req.user.id === req.params.id;
   const isAdmin = ["super_admin", "admin", "admin_exec"].some((r) => req.user.roles.includes(r));
   if (!isSelf && !isAdmin) return res.status(403).json({ error: "You can only update your own photo" });
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
-  const url = `/uploads/${req.file.filename}`;
-  await query("UPDATE users SET photo_url = ? WHERE id = ?", [url, req.params.id]);
+  // The version query param busts the browser's cache for this user's photo URL, which is
+  // otherwise identical before and after a re-upload.
+  const url = `/api/users/${req.params.id}/photo?v=${Date.now()}`;
+  await query("UPDATE users SET photo_url = ?, photo_data = ?, photo_mime = ? WHERE id = ?",
+    [url, req.file.buffer, req.file.mimetype, req.params.id]);
   res.json({ photoUrl: url });
 });
 
