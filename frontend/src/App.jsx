@@ -11,7 +11,7 @@ import {
   Database, Upload, MessageCircle, Recycle, ArchiveX, ShieldAlert, Settings as SettingsIcon,
   Sun, Moon, BookOpen
 } from "lucide-react";
-import { money, fmtDate, Stamp, statusTone, Rail, DonutChart, LineChart, BarChart, SalesPersonBars, Modal, Empty, ConfirmModal, RowActions, exportCSV, usePagination, PaginationBar } from "./ui.jsx";
+import { money, fmtDate, Stamp, statusTone, Rail, DonutChart, LineChart, BarChart, SalesPersonBars, Modal, Empty, ConfirmModal, RowActions, exportCSV, usePagination, PaginationBar, TableScrollHint } from "./ui.jsx";
 import { TasksPage } from "./pages/tasks.jsx";
 import { AttendanceWidget, AttendancePage } from "./pages/attendance.jsx";
 import { LeadAssignmentManagerPage } from "./pages/leadAssignment.jsx";
@@ -196,6 +196,21 @@ const CSS = `
      width on a narrow screen. */
   .modal div:has(> table) { overflow-x: auto; }
   .doc-paper { border: 1px solid var(--hair); border-radius: 8px; padding: 32px 36px; background: #fff; overflow-x: auto; }
+
+  /* Floating "more to see" affordance injected by TableScrollHint (ui.jsx) over any wide table
+     that's actually overflowing on a small screen — pulses so it's not just another static icon
+     lost in the corner. Positioned via inline top/left set in JS, not CSS. Colors are hardcoded
+     (not var(--brand)) because the button is appended straight to <body>, outside the .agw root
+     that custom property is scoped to. */
+  .table-scroll-hint { position: fixed; width: 32px; height: 32px; border-radius: 50%;
+    background: #1391AC; color: #fff; border: none; align-items: center; justify-content: center;
+    font-size: 17px; line-height: 1; box-shadow: 0 2px 10px rgba(0,0,0,.28); z-index: 60;
+    animation: table-scroll-hint-pulse 1.8s ease-in-out infinite; }
+  .table-scroll-hint:active { transform: scale(0.92); }
+  @keyframes table-scroll-hint-pulse {
+    0%, 100% { box-shadow: 0 2px 10px rgba(0,0,0,.28); }
+    50% { box-shadow: 0 2px 14px 3px rgba(19,145,172,.6); }
+  }
   .modal h3 { font-family:'Space Grotesk', sans-serif; font-size: 16.5px; margin: 0 0 4px; font-weight: 500; }
   .modal-sub { font-size: 12.5px; color: var(--ink-soft); margin-bottom: 18px; }
   .field { margin-bottom: 12px; }
@@ -994,6 +1009,7 @@ export default function App() {
           </div>
         </main>
       </div>
+      <TableScrollHint />
 
       <nav className="agw-bottom-nav">
         <button className={`agw-bottom-item ${page==="dashboard"?"active":""}`} onClick={()=>setPage("dashboard")}>

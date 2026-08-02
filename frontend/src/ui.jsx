@@ -1,6 +1,6 @@
 // Shared UI primitives used across App.jsx and the page-level modules under ./pages/*.
 // Extracted from App.jsx so new pages don't duplicate this code inline.
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { X, Pencil, Trash2 } from "lucide-react";
 
 // Client-side pagination for a list page's already-filtered `rows` array. Callers slice their
@@ -273,6 +273,110 @@ export function RowActions({ onEdit, onRemove }) {
       {onRemove && <button className="btn btn-sm btn-ghost" title="Remove" style={{ color:"var(--danger)" }} onClick={onRemove}><Trash2 size={13}/></button>}
     </span>
   );
+}
+
+// A small floating "scroll right" button that appears over any wide table once it's actually
+// overflowing horizontally on a small screen — mounted once at the app shell root (see App.jsx)
+// so every list page gets it automatically, with zero per-page wiring. Exists because the native
+// horizontal scrollbar on a long list is easy to miss on a phone: nothing at the top of the table
+// hints that a row's action buttons sit off to the right, so people were scrolling all the way to
+// the bottom of a long list first, just to discover the scrollbar there.
+// Deliberately imperative DOM (not React state) — it has to track every table on the page,
+// including ones inside modals, without any of those call sites knowing this exists.
+export function TableScrollHint() {
+  useEffect(() => {
+    const SMALL_SCREEN = 860; // matches the .agw-card overflow-x breakpoint in App.jsx's CSS
+    const buttons = new Map(); // scrollable element -> its floating button
+    let raf = null;
+
+    // Most tables wrap themselves in an explicit `<div style={{overflowX:"auto"}}>` that becomes
+    // the actual scroll container long before `.agw-card` itself ever needs to overflow — a few
+    // rely on `.agw-card`'s own overflow-x (from the small-screen CSS) instead. Rather than assume
+    // which, walk up from the table to whichever ancestor is actually scrolling right now.
+    const findScrollAncestor = (table) => {
+      let el = table.parentElement;
+      while (el && el !== document.body) {
+        if (el.scrollWidth - el.clientWidth > 4) return el;
+        el = el.parentElement;
+      }
+      return null;
+    };
+
+    // A plain viewport-bounds check isn't enough — the table stays in the DOM (and "on screen" by
+    // that measure) even while something unrelated is drawn over it, like the mobile nav's "More"
+    // sheet or a modal opened from a different part of the page. Sampling what's actually drawn at
+    // the button's anchor point catches that: if it's not this element (or a descendant), something
+    // else owns that pixel right now.
+    const isActuallyVisible = (el, x, y) => {
+      const topEl = document.elementFromPoint(x, y);
+      return !!topEl && el.contains(topEl);
+    };
+
+    const positionButton = (el, btn) => {
+      const rect = el.getBoundingClientRect();
+      btn.style.top = `${Math.max(8, rect.top + 8)}px`;
+      btn.style.left = `${rect.right - 38}px`;
+      const atEnd = el.scrollLeft >= el.scrollWidth - el.clientWidth - 4;
+      const inBounds = rect.bottom > 0 && rect.top < window.innerHeight && rect.right > 0 && rect.left < window.innerWidth;
+      // Sampled near the top-left of the visible portion, deliberately far from where the button
+      // itself sits (top-right) — otherwise the button would be the topmost element at the sample
+      // point and immediately hide itself as "occluded" on the very next sync.
+      const visLeft = Math.max(rect.left, 0);
+      const visRight = Math.min(rect.right, window.innerWidth);
+      const x = Math.min(visLeft + 20, Math.max(visRight - 60, visLeft + 1));
+      const y = Math.max(rect.top, 0) + 8;
+      btn.style.display = !atEnd && inBounds && isActuallyVisible(el, x, y) ? "flex" : "none";
+    };
+
+    const sync = () => {
+      const small = window.innerWidth <= SMALL_SCREEN;
+      const scrollables = small
+        ? [...new Set(Array.from(document.querySelectorAll("table.agw-table")).map(findScrollAncestor).filter(Boolean))]
+        : [];
+
+      for (const [el, btn] of buttons) {
+        if (!scrollables.includes(el) || !document.body.contains(el)) {
+          btn.remove();
+          buttons.delete(el);
+        }
+      }
+      for (const el of scrollables) {
+        if (buttons.has(el)) { positionButton(el, buttons.get(el)); continue; }
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "table-scroll-hint";
+        btn.setAttribute("aria-label", "Scroll right for more");
+        btn.textContent = "›"; // ›
+        btn.addEventListener("click", () => {
+          el.scrollBy({ left: Math.min(el.clientWidth * 0.7, 240), behavior: "smooth" });
+        });
+        document.body.appendChild(btn);
+        buttons.set(el, btn);
+        positionButton(el, btn);
+        el.addEventListener("scroll", () => positionButton(el, btn), { passive: true });
+      }
+    };
+
+    const scheduleSync = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => { raf = null; sync(); });
+    };
+
+    scheduleSync();
+    const mo = new MutationObserver(scheduleSync);
+    mo.observe(document.body, { childList: true, subtree: true });
+    window.addEventListener("resize", scheduleSync);
+    window.addEventListener("scroll", scheduleSync, true);
+
+    return () => {
+      mo.disconnect();
+      window.removeEventListener("resize", scheduleSync);
+      window.removeEventListener("scroll", scheduleSync, true);
+      if (raf) cancelAnimationFrame(raf);
+      for (const btn of buttons.values()) btn.remove();
+    };
+  }, []);
+  return null;
 }
 
 export function exportCSV(filename, headers, rows) {
