@@ -75,7 +75,7 @@ function generateInvoicePdf(invoice, res) {
   y += 16;
   doc.rect(totalsX, y - 2, totalsWidth, 22).fill(LIGHT_BG);
   doc.font("Inter-SemiBold").fontSize(11).fillColor(INK).text("Balance Due", totalsX + 6, y + 4, { width: 144 });
-  doc.font("Inter-Bold").fontSize(11).text(`QAR${money2(balance)}`, totalsX + 150, y + 4, { width: totalsWidth - 156, align: "right" });
+  doc.font("Inter-Bold").fontSize(11).text(`QAR ${money2(balance)}`, totalsX + 150, y + 4, { width: totalsWidth - 156, align: "right" });
   y += 36;
 
   if (isMixed) {

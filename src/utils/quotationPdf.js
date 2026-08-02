@@ -213,7 +213,7 @@ function generateQuotationPdf(quotation, res) {
   }
   doc.rect(totalsX, y - 2, totalsWidth, 20).fill(theme.totalBg);
   doc.font("Inter-SemiBold").fontSize(10.5).fillColor(theme.totalText).text("Total", totalsX + 6, y + 3, { width: 104 });
-  doc.font("Inter-Bold").fontSize(10.5).text(`QAR${money2(total)}`, totalsX + 110, y + 3, { width: totalsWidth - 116, align: "right" });
+  doc.font("Inter-Bold").fontSize(10.5).text(`QAR ${money2(total)}`, totalsX + 110, y + 3, { width: totalsWidth - 116, align: "right" });
   y += 30;
 
   // --- Notes / Terms & Conditions / Bank Account Details ----------------------------------------

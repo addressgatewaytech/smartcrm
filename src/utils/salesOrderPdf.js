@@ -67,7 +67,7 @@ function generateSalesOrderPdf(salesOrder, res) {
   }
   doc.rect(totalsX, y - 2, totalsWidth, 22).fill(LIGHT_BG);
   doc.font("Inter-SemiBold").fontSize(11).fillColor(INK).text("Total Amount", totalsX + 6, y + 4, { width: 144 });
-  doc.font("Inter-Bold").fontSize(11).text(`QAR${money2(amount)}`, totalsX + 150, y + 4, { width: totalsWidth - 156, align: "right" });
+  doc.font("Inter-Bold").fontSize(11).text(`QAR ${money2(amount)}`, totalsX + 150, y + 4, { width: totalsWidth - 156, align: "right" });
   y += 36;
 
   if (isMixed) {
