@@ -1542,6 +1542,10 @@ function LeadsPage({ state, dispatch, userId, role }) {
     return haystack.includes(query.trim().toLowerCase());
   });
   const pg = usePagination(owned);
+  const isAdmin = ADMIN_LIKE.includes(role);
+  // Same pool AssignLeadModal (Lead Assignment Manager) draws from — any active, non-management
+  // employee is a valid lead owner, not just sales-tagged roles.
+  const assignableEmployees = state.employees.filter(e => e.active !== false && e.category !== "Management");
 
   const openFollowUp = (l) => { setFollowFor(l); setFuNote(""); setFuStatus(l.status); setFuNext(l.nextFollowUp || daysFromNow(3)); };
   const openEdit = (l) => { setEditLead(l); setForm({ name:l.name, company:l.company, phone:l.phone||"", email:l.email||"", reference:l.reference||"", source:l.source, service:l.service }); };
@@ -1596,7 +1600,15 @@ function LeadsPage({ state, dispatch, userId, role }) {
                 <td><Stamp tone={originTone(leadOrigin(l))}>{leadOrigin(l)}</Stamp></td>
                 <td><span className="pill">{l.source}</span></td>
                 <td style={{fontSize:12,color:"var(--ink-soft)",maxWidth:140}}>{l.reference || "—"}</td>
-                <td>{state.employees.find(t=>t.id===l.owner)?.name}</td>
+                <td onClick={e=>e.stopPropagation()}>
+                  {isAdmin ? (
+                    <select value={l.owner || ""} onChange={e=>dispatch({type:"ASSIGN_LEAD", id:l.id, userId:e.target.value})}
+                      style={{ fontSize:12, border:"1px solid var(--hair)", borderRadius:8, padding:"4px 8px", background:"var(--page)" }}>
+                      {!l.owner && <option value="">— Unassigned —</option>}
+                      {assignableEmployees.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}
+                    </select>
+                  ) : (state.employees.find(t=>t.id===l.owner)?.name || "—")}
+                </td>
                 <td onClick={e=>e.stopPropagation()}>
                   <select value={l.status} onChange={e=>dispatch({type:"SET_LEAD_STATUS", id:l.id, status:e.target.value})}
                     style={{ fontSize:12, border:"1px solid var(--hair)", borderRadius:20, padding:"4px 8px", background:"var(--page)" }}>
@@ -1776,6 +1788,8 @@ function DealsPage({ state, dispatch, setPage, onViewQuotation, role, userId }) 
     return haystack.includes(query.trim().toLowerCase());
   });
   const pg = usePagination(deals);
+  const isAdmin = ADMIN_LIKE.includes(role);
+  const assignableEmployees = state.employees.filter(e => e.active !== false && e.category !== "Management");
 
   return (
     <div>
@@ -1820,7 +1834,15 @@ function DealsPage({ state, dispatch, setPage, onViewQuotation, role, userId }) 
                   <td style={{maxWidth:200}}>{d.service}</td>
                   <td className="mono">{money(d.value)}</td>
                   <td><Stamp tone={originTone(dealOrigin(state, d))}>{dealOrigin(state, d)}</Stamp></td>
-                  <td>{state.employees.find(t=>t.id===d.owner)?.name}</td>
+                  <td onClick={e=>e.stopPropagation()}>
+                    {isAdmin ? (
+                      <select value={d.owner || ""} onChange={e=>dispatch({type:"UPDATE_DEAL", id:d.id, payload:{owner:e.target.value}})}
+                        style={{ fontSize:12, border:"1px solid var(--hair)", borderRadius:8, padding:"4px 8px", background:"var(--page)" }}>
+                        {!d.owner && <option value="">— Unassigned —</option>}
+                        {assignableEmployees.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}
+                      </select>
+                    ) : (state.employees.find(t=>t.id===d.owner)?.name || "—")}
+                  </td>
                   <td onClick={e=>e.stopPropagation()}>
                     <select value={d.stage} onChange={e=>dispatch({type:"UPDATE_DEAL", id:d.id, payload:{stage:e.target.value}})}
                       style={{ fontSize:12, border:"1px solid var(--hair)", borderRadius:20, padding:"4px 8px", background:"var(--page)" }}>

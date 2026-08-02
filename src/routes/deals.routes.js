@@ -60,6 +60,9 @@ router.patch("/:id", async (req, res) => {
   for (const [col, key] of [["customer", "customer"], ["service", "service"], ["value", "value"], ["stage", "stage"], ["expected_close", "expectedClose"]]) {
     if (b[key] !== undefined) { fields.push(`${col} = ?`); params.push(b[key]); }
   }
+  // Reassigning ownership is an admin-only correction — a sales_exec editing their own deal must
+  // never be able to hand it to someone else through this same endpoint.
+  if (b.owner !== undefined && isAdminLike(req.user.roles)) { fields.push("owner = ?"); params.push(b.owner); }
   // Editing the customer name means it may now belong to a different (or new) Customer profile.
   if (b.customer !== undefined) {
     const { customerId } = await findOrCreateCustomer(query, { name: b.customer });
