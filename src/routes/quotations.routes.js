@@ -59,8 +59,7 @@ router.get("/:id/pdf", async (req, res) => {
   // Quotations only store the customer's name, not their id, so the address is looked up by
   // name at PDF-generation time rather than duplicated onto every quotation row.
   const [customer] = await query("SELECT address FROM customers WHERE name = ?", [row.customer]);
-  const [owner] = row.owner ? await query("SELECT name FROM users WHERE id = ?", [row.owner]) : [];
-  generateQuotationPdf({ ...parseRow(row), customer_address: customer?.address || "", sales_person: owner?.name || "" }, res);
+  generateQuotationPdf({ ...parseRow(row), customer_address: customer?.address || "" }, res);
 });
 
 router.post("/", async (req, res) => {
@@ -209,6 +208,18 @@ router.post("/:id/status", async (req, res) => {
 
 router.post("/:id/favorite", async (req, res) => {
   await query("UPDATE quotations SET favorite = 1 - favorite WHERE id = ?", [req.params.id]);
+  res.json({ ok: true });
+});
+
+// Reassigns which salesperson this quotation is attributed to. An administrative correction, not
+// a content edit — so unlike PATCH, it's allowed regardless of status (Sent/Approved quotations
+// can still have their attribution fixed).
+router.post("/:id/owner", requireRole(["admin_like"]), async (req, res) => {
+  const { owner } = req.body;
+  if (!owner) return res.status(400).json({ error: "owner is required" });
+  const [row] = await query("SELECT id FROM quotations WHERE id = ?", [req.params.id]);
+  if (!row) return res.status(404).json({ error: "Not found" });
+  await query("UPDATE quotations SET owner = ? WHERE id = ?", [owner, req.params.id]);
   res.json({ ok: true });
 });
 

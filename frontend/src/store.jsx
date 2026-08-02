@@ -147,6 +147,7 @@ export function useApiStore(enabled) {
       case "CLONE_QUOTATION": await api.quotations.clone(action.id, action.customer); return refresh(["quotations"]);
       case "REVISE_QUOTATION": await api.quotations.revise(action.id); return refresh(["quotations", "deals"]);
       case "TOGGLE_QUOTATION_FAVORITE": await api.quotations.toggleFavorite(action.id); return refresh(["quotations"]);
+      case "SET_QUOTATION_OWNER": await api.quotations.setOwner(action.id, action.owner); return refresh(["quotations"]);
       case "UPDATE_QUOTATION": await api.quotations.update(action.id, action.payload); return refresh(["quotations"]);
       case "DELETE_QUOTATION": await api.quotations.remove(action.id); return refresh(["quotations"]);
       case "UPDATE_QUOTATION_TEMPLATE": await api.quotationTemplates.update(action.service, action); return refresh(["quotationTemplates"]);

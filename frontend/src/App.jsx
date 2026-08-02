@@ -1878,7 +1878,7 @@ function DealsPage({ state, dispatch, setPage, onViewQuotation, role, userId }) 
       </div>
       )}
 
-      {quoteFor && <QuoteBuilderModal dealId={quoteFor.id} customerName={quoteFor.customer} defaultService={quoteFor.service} services={state.services} dispatch={dispatch} templates={state.quotationTemplates} onClose={()=>setQuoteFor(null)} />}
+      {quoteFor && <QuoteBuilderModal dealId={quoteFor.id} customerName={quoteFor.customer} defaultService={quoteFor.service} services={state.services} dispatch={dispatch} templates={state.quotationTemplates} role={role} employees={state.employees} defaultOwner={quoteFor.owner} onClose={()=>setQuoteFor(null)} />}
       {editDeal && <EditDealModal deal={editDeal} state={state} dispatch={dispatch} onClose={()=>setEditDeal(null)} />}
       {removeDeal && <ConfirmModal title={`Remove deal ${removeDeal.id}?`} body={`${removeDeal.customer} — ${money(removeDeal.value)}. This can't be undone.`} onConfirm={()=>dispatch({type:"DELETE_DEAL", id:removeDeal.id})} onClose={()=>setRemoveDeal(null)} />}
       {newDeal && <NewDealModal state={state} dispatch={dispatch} userId={userId} onClose={()=>setNewDeal(false)} />}
@@ -1959,9 +1959,15 @@ function EditDealModal({ deal: d, state, dispatch, onClose }) {
   );
 }
 
-function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVICES[0], editableCustomer=false, customerOptions=[], services=SERVICES, dispatch, templates, onClose }) {
+function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVICES[0], editableCustomer=false, customerOptions=[], services=SERVICES, dispatch, templates, role=null, employees=[], defaultOwner="", onClose }) {
   const [showNewService, setShowNewService] = useState(false);
   const [customer, setCustomer] = useState(customerName);
+  // Admin-only: lets whoever is building the quotation attribute it to a different salesperson
+  // than themselves (e.g. entering a quotation on a rep's behalf). Left blank, the backend falls
+  // back to the linked deal's owner or the creator, exactly as before this existed.
+  const isAdmin = ADMIN_LIKE.includes(role);
+  const salesPeople = employees.filter(e => e.roles.includes("sales_exec") || e.roles.includes("sales_manager"));
+  const [owner, setOwner] = useState(defaultOwner || "");
   const [showNewCustomer, setShowNewCustomer] = useState(false);
   const [templateService, setTemplateService] = useState(defaultService);
   const [theme, setTheme] = useState("teal");
@@ -2054,7 +2060,7 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
     setSaving(true);
     setSaveError("");
     try {
-      const payload = { dealId, customer, items, terms, notes, subject, theme, orderDiscount, bank, footerNote };
+      const payload = { dealId, customer, items, terms, notes, subject, theme, orderDiscount, bank, footerNote, owner: owner || undefined };
       await dispatch({ type:"CREATE_QUOTATION", payload });
       onClose();
     } catch (err) {
@@ -2122,6 +2128,15 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
             <button className="btn btn-primary" onClick={confirmActivities}>Continue</button>
           </div>
         </Modal>
+      )}
+      {isAdmin && salesPeople.length > 0 && (
+        <div className="field">
+          <label>Sales person</label>
+          <select value={owner} onChange={e=>setOwner(e.target.value)}>
+            <option value="">{dealId ? "Deal owner (default)" : "Myself (default)"}</option>
+            {salesPeople.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}
+          </select>
+        </div>
       )}
       <div className="field"><label>Subject</label><input value={subject} onChange={e=>setSubject(e.target.value)} placeholder="e.g. 100% FOREIGN OWNERSHIP COMPANY FORMATION - Government Fees" /></div>
 
@@ -2300,7 +2315,7 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, onHighligh
         <PaginationBar {...pg} />
       </div>
       {open && <QuoteDetailModal quotation={open} state={state} dispatch={dispatch} role={role} userId={userId} customerOptions={customerOptions} templates={state.quotationTemplates} onClose={()=>setOpenId(null)} />}
-      {newQuote && <QuoteBuilderModal editableCustomer customerOptions={customerOptions} defaultService={state.services[0]} services={state.services} dispatch={dispatch} templates={state.quotationTemplates} onClose={()=>setNewQuote(false)} />}
+      {newQuote && <QuoteBuilderModal editableCustomer customerOptions={customerOptions} defaultService={state.services[0]} services={state.services} dispatch={dispatch} templates={state.quotationTemplates} role={role} employees={state.employees} onClose={()=>setNewQuote(false)} />}
       {cloneFor && <CloneQuoteModal quotation={cloneFor} customerOptions={customerOptions} dispatch={dispatch} onClose={()=>setCloneFor(null)} />}
       {removeQuote && <ConfirmModal title={`Remove ${removeQuote.id}?`} body={`${removeQuote.customer} — this draft quotation can't be recovered once removed.`} onConfirm={()=>dispatch({type:"DELETE_QUOTATION", id:removeQuote.id})} onClose={()=>setRemoveQuote(null)} />}
     </div>
@@ -2383,6 +2398,13 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
   const myDesignation = state?.employees.find(e=>e.id===userId)?.designation;
   const assignedApproverDesignations = (state?.approvalTypes||[]).find(t=>t.key==="quotation_approval")?.approverDesignations || [];
   const canApprove = role === "sales_manager" || ADMIN_LIKE.includes(role) || (myDesignation && assignedApproverDesignations.includes(myDesignation));
+  // Sales person is attribution metadata, not something the client's document shows — kept here,
+  // in the admin-facing detail view (and the list table), and reassignable regardless of status
+  // since it's a correction, not a content edit.
+  const salesPeople = (state?.employees || []).filter(e => e.roles.includes("sales_exec") || e.roles.includes("sales_manager"));
+  const salesPeopleOptions = q.owner && !salesPeople.some(e=>e.id===q.owner)
+    ? [...salesPeople, state?.employees.find(e=>e.id===q.owner)].filter(Boolean)
+    : salesPeople;
 
   const [savingVisual, setSavingVisual] = useState(false);
   const [visualSaveError, setVisualSaveError] = useState("");
@@ -2429,6 +2451,18 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
 
       {view === "details" && (
         <>
+          <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:10, fontSize:12.5, color:"var(--ink-soft)" }}>
+            <span>Sales person:</span>
+            {isAdmin ? (
+              <select value={q.owner || ""} onChange={e=>dispatch({type:"SET_QUOTATION_OWNER", id:q.id, owner:e.target.value})}
+                style={{ fontSize:12.5, border:"1px solid var(--hair)", borderRadius:6, padding:"3px 8px", background:"var(--surface)", color:"var(--ink)" }}>
+                {!q.owner && <option value="">—</option>}
+                {salesPeopleOptions.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}
+              </select>
+            ) : (
+              <strong style={{ color:"var(--ink)", fontWeight:500 }}>{state?.employees.find(e=>e.id===q.owner)?.name || "—"}</strong>
+            )}
+          </div>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
             <Rail steps={["Draft","Pending Manager Approval","Sent",quotationStatusLabel("Client Accepted", role),"Approved"]}
               current={q.status === "Rejected" || q.status === "Expired" ? "Sent" : quotationStatusLabel(q.status, role)} />
@@ -2592,14 +2626,6 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
               <div>
                 <div style={{ fontSize:12, color:"var(--ink-soft)" }}>Quote Date :</div>
                 <div style={{ fontSize:13, marginTop:2 }}>{fmtDate(q.createdAt || daysFromNow(0))}</div>
-                {/* Mirrors the generated PDF, which prints the same line here — the preview is
-                    labelled "exactly what the client receives", so it has to match. */}
-                {state.employees.find(t=>t.id===q.owner)?.name && (
-                  <>
-                    <div style={{ fontSize:12, color:"var(--ink-soft)", marginTop:8 }}>Sales Person :</div>
-                    <div style={{ fontSize:13, marginTop:2 }}>{state.employees.find(t=>t.id===q.owner).name}</div>
-                  </>
-                )}
               </div>
               <div style={{ textAlign:"right" }}>
                 <div style={{ fontSize:12, color:"var(--ink-soft)" }}>Bill To</div>

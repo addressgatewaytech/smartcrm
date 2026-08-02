@@ -130,6 +130,7 @@ export const api = {
     submitForApproval: (id) => post(`/quotations/${id}/submit-for-approval`),
     setStatus: (id, status) => post(`/quotations/${id}/status`, { status }),
     toggleFavorite: (id) => post(`/quotations/${id}/favorite`),
+    setOwner: (id, owner) => post(`/quotations/${id}/owner`, { owner }),
     markEmailed: (id, cc) => post(`/quotations/${id}/emailed`, { cc }),
     clone: (id, customer) => post(`/quotations/${id}/clone`, { customer }),
     revise: (id) => post(`/quotations/${id}/revise`),
