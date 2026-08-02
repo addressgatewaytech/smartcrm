@@ -275,19 +275,22 @@ export function RowActions({ onEdit, onRemove }) {
   );
 }
 
-// A small floating "scroll right" button that appears over any wide table once it's actually
+// A pair of small floating "scroll" buttons that appear over any wide table once it's actually
 // overflowing horizontally — mounted once at the app shell root (see App.jsx) so every list page
 // gets it automatically, with zero per-page wiring. Exists because the native horizontal
 // scrollbar on a long list is easy to miss: nothing at the top of the table hints that a row's
 // action buttons sit off to the right, so people were scrolling all the way to the bottom of a
-// long list first, just to discover the scrollbar there. Triggered purely by whether a table is
-// actually overflowing right now, at any window width — not gated to small screens, since a
-// desktop window narrow enough (or a table with enough columns) can overflow too.
+// long list first, just to discover the scrollbar there. Both sides are covered — a right button
+// (shown while there's more to reveal) to scroll toward the action buttons, and a left button
+// (shown once scrolled away from the start) to jump straight back to the first column. Triggered
+// purely by whether a table is actually overflowing right now, at any window width — not gated to
+// small screens, since a desktop window narrow enough (or a table with enough columns) can
+// overflow too.
 // Deliberately imperative DOM (not React state) — it has to track every table on the page,
 // including ones inside modals, without any of those call sites knowing this exists.
 export function TableScrollHint() {
   useEffect(() => {
-    const buttons = new Map(); // scrollable element -> its floating button
+    const buttons = new Map(); // scrollable element -> { left, right } floating buttons
     let raf = null;
 
     // Most tables wrap themselves in an explicit `<div style={{overflowX:"auto"}}>` that becomes
@@ -306,52 +309,72 @@ export function TableScrollHint() {
     // A plain viewport-bounds check isn't enough — the table stays in the DOM (and "on screen" by
     // that measure) even while something unrelated is drawn over it, like the mobile nav's "More"
     // sheet or a modal opened from a different part of the page. Sampling what's actually drawn at
-    // the button's anchor point catches that: if it's not this element (or a descendant), something
-    // else owns that pixel right now.
-    const isActuallyVisible = (el, x, y) => {
+    // the middle of the table's visible top edge catches that (deliberately clear of both corner
+    // buttons, so neither one ever hides itself by sampling its own pixel).
+    const isActuallyVisible = (el, rect) => {
+      const inBounds = rect.bottom > 0 && rect.top < window.innerHeight && rect.right > 0 && rect.left < window.innerWidth;
+      if (!inBounds) return false;
+      const visLeft = Math.max(rect.left, 0);
+      const visRight = Math.min(rect.right, window.innerWidth);
+      const x = (visLeft + visRight) / 2;
+      const y = Math.max(rect.top, 0) + 8;
       const topEl = document.elementFromPoint(x, y);
       return !!topEl && el.contains(topEl);
     };
 
-    const positionButton = (el, btn) => {
+    const positionButtons = (el, pair) => {
       const rect = el.getBoundingClientRect();
-      btn.style.top = `${Math.max(8, rect.top + 8)}px`;
-      btn.style.left = `${rect.right - 38}px`;
+      const visible = isActuallyVisible(el, rect);
+      const top = `${Math.max(8, rect.top + 8)}px`;
+
+      pair.right.style.top = top;
+      pair.right.style.left = `${rect.right - 38}px`;
       const atEnd = el.scrollLeft >= el.scrollWidth - el.clientWidth - 4;
-      const inBounds = rect.bottom > 0 && rect.top < window.innerHeight && rect.right > 0 && rect.left < window.innerWidth;
-      // Sampled near the top-left of the visible portion, deliberately far from where the button
-      // itself sits (top-right) — otherwise the button would be the topmost element at the sample
-      // point and immediately hide itself as "occluded" on the very next sync.
-      const visLeft = Math.max(rect.left, 0);
-      const visRight = Math.min(rect.right, window.innerWidth);
-      const x = Math.min(visLeft + 20, Math.max(visRight - 60, visLeft + 1));
-      const y = Math.max(rect.top, 0) + 8;
-      btn.style.display = !atEnd && inBounds && isActuallyVisible(el, x, y) ? "flex" : "none";
+      pair.right.style.display = visible && !atEnd ? "flex" : "none";
+
+      pair.left.style.top = top;
+      pair.left.style.left = `${rect.left + 6}px`;
+      const atStart = el.scrollLeft <= 4;
+      pair.left.style.display = visible && !atStart ? "flex" : "none";
+    };
+
+    const makeButton = (el, direction) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "table-scroll-hint";
+      if (direction === "right") {
+        btn.setAttribute("aria-label", "Scroll right for more");
+        btn.textContent = "›";
+        btn.addEventListener("click", () => {
+          el.scrollBy({ left: Math.min(el.clientWidth * 0.7, 240), behavior: "smooth" });
+        });
+      } else {
+        btn.setAttribute("aria-label", "Scroll back to the start");
+        btn.textContent = "‹";
+        btn.addEventListener("click", () => {
+          el.scrollTo({ left: 0, behavior: "smooth" });
+        });
+      }
+      document.body.appendChild(btn);
+      return btn;
     };
 
     const sync = () => {
       const scrollables = [...new Set(Array.from(document.querySelectorAll("table.agw-table")).map(findScrollAncestor).filter(Boolean))];
 
-      for (const [el, btn] of buttons) {
+      for (const [el, pair] of buttons) {
         if (!scrollables.includes(el) || !document.body.contains(el)) {
-          btn.remove();
+          pair.left.remove();
+          pair.right.remove();
           buttons.delete(el);
         }
       }
       for (const el of scrollables) {
-        if (buttons.has(el)) { positionButton(el, buttons.get(el)); continue; }
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "table-scroll-hint";
-        btn.setAttribute("aria-label", "Scroll right for more");
-        btn.textContent = "›"; // ›
-        btn.addEventListener("click", () => {
-          el.scrollBy({ left: Math.min(el.clientWidth * 0.7, 240), behavior: "smooth" });
-        });
-        document.body.appendChild(btn);
-        buttons.set(el, btn);
-        positionButton(el, btn);
-        el.addEventListener("scroll", () => positionButton(el, btn), { passive: true });
+        if (buttons.has(el)) { positionButtons(el, buttons.get(el)); continue; }
+        const pair = { left: makeButton(el, "left"), right: makeButton(el, "right") };
+        buttons.set(el, pair);
+        positionButtons(el, pair);
+        el.addEventListener("scroll", () => positionButtons(el, pair), { passive: true });
       }
     };
 
@@ -371,7 +394,7 @@ export function TableScrollHint() {
       window.removeEventListener("resize", scheduleSync);
       window.removeEventListener("scroll", scheduleSync, true);
       if (raf) cancelAnimationFrame(raf);
-      for (const btn of buttons.values()) btn.remove();
+      for (const pair of buttons.values()) { pair.left.remove(); pair.right.remove(); }
     };
   }, []);
   return null;
