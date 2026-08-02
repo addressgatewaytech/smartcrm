@@ -276,16 +276,17 @@ export function RowActions({ onEdit, onRemove }) {
 }
 
 // A small floating "scroll right" button that appears over any wide table once it's actually
-// overflowing horizontally on a small screen — mounted once at the app shell root (see App.jsx)
-// so every list page gets it automatically, with zero per-page wiring. Exists because the native
-// horizontal scrollbar on a long list is easy to miss on a phone: nothing at the top of the table
-// hints that a row's action buttons sit off to the right, so people were scrolling all the way to
-// the bottom of a long list first, just to discover the scrollbar there.
+// overflowing horizontally — mounted once at the app shell root (see App.jsx) so every list page
+// gets it automatically, with zero per-page wiring. Exists because the native horizontal
+// scrollbar on a long list is easy to miss: nothing at the top of the table hints that a row's
+// action buttons sit off to the right, so people were scrolling all the way to the bottom of a
+// long list first, just to discover the scrollbar there. Triggered purely by whether a table is
+// actually overflowing right now, at any window width — not gated to small screens, since a
+// desktop window narrow enough (or a table with enough columns) can overflow too.
 // Deliberately imperative DOM (not React state) — it has to track every table on the page,
 // including ones inside modals, without any of those call sites knowing this exists.
 export function TableScrollHint() {
   useEffect(() => {
-    const SMALL_SCREEN = 860; // matches the .agw-card overflow-x breakpoint in App.jsx's CSS
     const buttons = new Map(); // scrollable element -> its floating button
     let raf = null;
 
@@ -329,10 +330,7 @@ export function TableScrollHint() {
     };
 
     const sync = () => {
-      const small = window.innerWidth <= SMALL_SCREEN;
-      const scrollables = small
-        ? [...new Set(Array.from(document.querySelectorAll("table.agw-table")).map(findScrollAncestor).filter(Boolean))]
-        : [];
+      const scrollables = [...new Set(Array.from(document.querySelectorAll("table.agw-table")).map(findScrollAncestor).filter(Boolean))];
 
       for (const [el, btn] of buttons) {
         if (!scrollables.includes(el) || !document.body.contains(el)) {

@@ -112,7 +112,6 @@ const CSS = `
     .agw-grid { grid-template-columns: 1fr !important; }
     .board { grid-template-columns: 1fr !important; }
     .row2, .row3 { grid-template-columns: 1fr !important; }
-    .agw-card { overflow-x: auto; }
     .agw-table { min-width: 560px; }
     .modal-backdrop { padding: 14px 10px; align-items: center; }
     .modal { padding: 16px 14px 18px; max-height: calc(100vh - 28px); }
@@ -138,7 +137,10 @@ const CSS = `
     background: rgba(255,255,255,.14); display: flex; align-items: center; justify-content: center; color: #fff; }
   .agw-bell .dot { position: absolute; top: 6px; right: 7px; width: 8px; height: 8px; border-radius: 50%; background: #fff; border: 1.5px solid var(--gold); }
 
-  .agw-card { background: var(--surface); border: 1px solid var(--hair); border-radius: 12px; padding: 16px 18px; }
+  /* overflow-x here (not just below 860px) so a table with enough columns scrolls horizontally
+     within its card at any window width, instead of bleeding past the card's edge — this is also
+     what TableScrollHint (ui.jsx) needs to find as the scrollable ancestor on desktop. */
+  .agw-card { background: var(--surface); border: 1px solid var(--hair); border-radius: 12px; padding: 16px 18px; overflow-x: auto; }
   .agw-grid { display: grid; gap: 14px; }
 
   .kpi-label { font-size: 12px; color: var(--ink-soft); margin-bottom: 6px; }
