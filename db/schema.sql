@@ -567,10 +567,13 @@ CREATE TABLE IF NOT EXISTS data_records (
   last_contact_date DATE,
   email_sent_at     TIMESTAMP NULL,
   whatsapp_sent_at  TIMESTAMP NULL,
+  call_completed_at TIMESTAMP NULL,
+  dataset_name      VARCHAR(150) NULL,      -- named batch from Add Data/Import, e.g. "August Trade Fair List"
   created_date      DATE DEFAULT (CURRENT_DATE),
   INDEX idx_mobile_norm (mobile_normalized),
   INDEX idx_email_norm (email_normalized),
   INDEX idx_company_name (company_name),
+  INDEX idx_dataset_name (dataset_name),
   FOREIGN KEY (data_owner) REFERENCES users(id) ON DELETE SET NULL,
   FOREIGN KEY (assigned_user) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
@@ -593,8 +596,9 @@ CREATE TABLE IF NOT EXISTS app_settings (
 -- Singleton settings row (id always = 1)
 CREATE TABLE IF NOT EXISTS data_settings (
   id                      INT PRIMARY KEY DEFAULT 1,
-  daily_email_target      INT DEFAULT 25,
-  daily_whatsapp_target   INT DEFAULT 25,
+  daily_email_target      INT DEFAULT 10,
+  daily_whatsapp_target   INT DEFAULT 10,
+  daily_call_target       INT DEFAULT 10,
   email_interval_minutes  INT DEFAULT 5,
   whatsapp_interval_minutes INT DEFAULT 10,
   recycling_enabled       TINYINT(1) DEFAULT 1,
@@ -610,8 +614,10 @@ CREATE TABLE IF NOT EXISTS data_user_activity (
   activity_date   DATE NOT NULL,
   emails_sent     INT DEFAULT 0,
   whatsapps_sent  INT DEFAULT 0,
+  calls_completed INT DEFAULT 0,
   last_email_at   TIMESTAMP NULL,
   last_whatsapp_at TIMESTAMP NULL,
+  last_call_at    TIMESTAMP NULL,
   PRIMARY KEY (user_id, activity_date),
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;

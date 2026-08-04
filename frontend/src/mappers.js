@@ -103,10 +103,11 @@ export const mapDataRecord = (d) => ({
   dataCategory: d.data_category, dataOwner: d.data_owner, assignedUser: d.assigned_user, status: d.status,
   remarks: d.remarks, archivedReason: d.archived_reason, createdDate: d.created_date, createdBy: d.created_by,
   lastContactDate: d.last_contact_date, leadId: d.lead_id, emailSentAt: d.email_sent_at, whatsappSentAt: d.whatsapp_sent_at,
+  callCompletedAt: d.call_completed_at, datasetName: d.dataset_name,
 });
 
 export const mapDataSettings = (s) => ({
-  dailyEmailTarget: s.daily_email_target, dailyWhatsappTarget: s.daily_whatsapp_target,
+  dailyEmailTarget: s.daily_email_target, dailyWhatsappTarget: s.daily_whatsapp_target, dailyCallTarget: s.daily_call_target,
   emailIntervalMinutes: s.email_interval_minutes, whatsappIntervalMinutes: s.whatsapp_interval_minutes,
   recyclingEnabled: !!s.recycling_enabled, recyclingDays: s.recycling_days,
   emailTemplate: { subject: s.email_subject, body: s.email_body },
@@ -114,6 +115,11 @@ export const mapDataSettings = (s) => ({
 });
 
 export const mapExportHistoryEntry = (e) => ({ id: e.id, exportedBy: e.exported_by, exportDate: e.export_date, count: e.record_count, purpose: e.purpose, format: e.format });
+
+export const mapDataActivity = (a) => ({
+  userId: a.user_id, emailsSent: a.emails_sent, whatsappsSent: a.whatsapps_sent, callsCompleted: a.calls_completed,
+  lastEmailAt: a.last_email_at, lastWhatsappAt: a.last_whatsapp_at, lastCallAt: a.last_call_at,
+});
 
 export const mapAppSettings = (s) => ({ emailNotificationsEnabled: !!s.email_notifications_enabled });
 

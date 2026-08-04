@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { api } from "./api";
 import {
   mapUser, mapLead, mapDeal, mapQuotation, mapCustomer, mapSalesOrder, mapInvoice, mapJobCard,
-  mapNotification, mapDataRecord, mapDataSettings, mapExportHistoryEntry, mapSubscriptionPlans,
+  mapNotification, mapDataRecord, mapDataSettings, mapDataActivity, mapExportHistoryEntry, mapSubscriptionPlans,
   mapSubscription, mapQuotationTemplates, mapIncentiveRule, mapLeaveRequest, mapPunchRequest, mapAttendance,
   mapAppSettings, mapTask, mapTodo,
 } from "./mappers";
@@ -11,8 +11,8 @@ const emptyState = () => ({
   services: [], employees: [], leads: [], deals: [], quotations: [], customers: [],
   salesOrders: [], invoices: [], jobCards: [], tasks: [], todos: [], notifications: [], quotationTemplates: {},
   checklistTemplates: {}, incentiveRules: [], leaveRequests: [], punchRequests: [],
-  subscriptionPlans: {}, subscriptions: [], dataRecords: [], dataExportHistory: [],
-  dataSettings: { dailyEmailTarget: 25, dailyWhatsappTarget: 25, emailIntervalMinutes: 5, whatsappIntervalMinutes: 10, recyclingEnabled: true, recyclingDays: 30, emailTemplate: { subject: "", body: "" }, whatsappTemplate: { body: "" } },
+  subscriptionPlans: {}, subscriptions: [], dataRecords: [], dataExportHistory: [], dataUserActivity: [],
+  dataSettings: { dailyEmailTarget: 10, dailyWhatsappTarget: 10, dailyCallTarget: 10, emailIntervalMinutes: 5, whatsappIntervalMinutes: 10, recyclingEnabled: true, recyclingDays: 30, emailTemplate: { subject: "", body: "" }, whatsappTemplate: { body: "" } },
   appSettings: { emailNotificationsEnabled: true },
   approvalTypes: [],
   activity: [],
@@ -55,6 +55,7 @@ export function useApiStore(enabled) {
       dataRecords: async () => ({ dataRecords: (await api.dataManager.list()).map(mapDataRecord) }),
       dataExportHistory: async () => ({ dataExportHistory: (await api.dataManager.exportHistory()).map(mapExportHistoryEntry) }),
       dataSettings: async () => ({ dataSettings: mapDataSettings(await api.dataManager.settings()) }),
+      dataUserActivity: async () => ({ dataUserActivity: (await api.dataManager.activity()).map(mapDataActivity) }),
       appSettings: async () => ({ appSettings: mapAppSettings(await api.settings.get()) }),
       approvalTypes: async () => ({ approvalTypes: await api.approvalWorkflow.types() }),
     };
@@ -109,7 +110,7 @@ export function useApiStore(enabled) {
       // --- Data Manager --------------------------------------------------------------------
       case "ADD_DATA_RECORD": await api.dataManager.create(action.payload); return refresh(["dataRecords"]);
       case "IMPORT_DATA_RECORDS": {
-        const result = await api.dataManager.import(action.file, action.dataCategory);
+        const result = await api.dataManager.import(action.file, action.dataCategory, action.datasetName, action.assignTo);
         await refresh(["dataRecords"]);
         return result;
       }
@@ -117,8 +118,9 @@ export function useApiStore(enabled) {
       case "DELETE_DATA_RECORD": return; // archiving (MARK_DATA_INVALID) is the supported "remove" path, matching the spec
       case "ASSIGN_DATA_RECORD": await api.dataManager.assign(action.id, action.userId); return refresh(["dataRecords"]);
       case "AUTO_ASSIGN_DAILY": { const r = await api.dataManager.autoAssign(); await refresh(["dataRecords"]); pushLocalActivity(setState, `Daily auto-assignment run — ${r.assigned} record(s) distributed`); return; }
-      case "SEND_DATA_EMAIL": await api.dataManager.sendEmail(action.id); return refresh(["dataRecords", "employees"]);
-      case "SEND_DATA_WHATSAPP": await api.dataManager.sendWhatsapp(action.id); return refresh(["dataRecords", "employees"]);
+      case "SEND_DATA_EMAIL": await api.dataManager.sendEmail(action.id); return refresh(["dataRecords", "dataUserActivity"]);
+      case "SEND_DATA_WHATSAPP": await api.dataManager.sendWhatsapp(action.id); return refresh(["dataRecords", "dataUserActivity"]);
+      case "COMPLETE_DATA_CALL": await api.dataManager.completeCall(action.id); return refresh(["dataRecords", "dataUserActivity"]);
       case "MARK_DATA_INVALID": await api.dataManager.archive(action.id, action.reason); return refresh(["dataRecords"]);
       case "CONVERT_DATA_TO_LEAD": await api.dataManager.convertToLead(action.id); return refresh(["dataRecords", "leads"]);
       case "RUN_DATA_RECYCLING": { const r = await api.dataManager.recycle(); await refresh(["dataRecords"]); pushLocalActivity(setState, `Data recycling run — ${r.recycled} record(s) recycled`); return; }

@@ -7125,10 +7125,12 @@ function findDuplicateDataRecord(records, { mobile, email, companyName }, exclud
     (c && normCompany(d.companyName) === c)
   ));
 }
-function todayDataActivity(emp) {
-  const today = daysFromNow(0);
-  if (emp.dataActivity && emp.dataActivity.date === today) return emp.dataActivity;
-  return { date: today, emailsSent: 0, whatsappsSent: 0, lastEmailAt: null, lastWhatsappAt: null };
+// state.dataUserActivity only ever holds today's rows (GET /data-manager/activity filters server-
+// side by activity_date) — a user with no row yet today just hasn't sent/called anything, not an
+// error, so the zero default below is the normal case for most of the team most mornings.
+function todayDataActivity(emp, state) {
+  const row = (state?.dataUserActivity || []).find(a => a.userId === emp.id);
+  return row || { emailsSent: 0, whatsappsSent: 0, callsCompleted: 0, lastEmailAt: null, lastWhatsappAt: null, lastCallAt: null };
 }
 const minutesSince = (iso) => iso ? (Date.now() - new Date(iso).getTime()) / 60000 : Infinity;
 
@@ -7139,7 +7141,7 @@ function DataManagerPage({ state, dispatch, role, userId }) {
   const [tab, setTab] = useState(canManage ? "pool" : "my");
 
   const tabs = canManage
-    ? [{key:"pool",label:"Company Data Pool"},{key:"my",label:"My Data"},{key:"add",label:"Add Data"},{key:"archived",label:"Archived Data"},{key:"templates",label:"Templates"},{key:"settings",label:"Settings"},{key:"reports",label:"Reports"}]
+    ? [{key:"pool",label:"Company Data Pool"},{key:"my",label:"My Data"},{key:"byUser",label:"By User"},{key:"datasets",label:"Data Sets"},{key:"add",label:"Add Data"},{key:"archived",label:"Archived Data"},{key:"templates",label:"Templates"},{key:"settings",label:"Settings"},{key:"reports",label:"Reports"}]
     : [{key:"my",label:"My Data"},{key:"add",label:"Add Data"}];
 
   return (
@@ -7149,6 +7151,8 @@ function DataManagerPage({ state, dispatch, role, userId }) {
       </div>
       {tab === "my" && <MyDataTab state={state} dispatch={dispatch} role={role} userId={userId} />}
       {tab === "pool" && canManage && <DataPoolTab state={state} dispatch={dispatch} role={role} userId={userId} />}
+      {tab === "byUser" && canManage && <DataByUserTab state={state} />}
+      {tab === "datasets" && canManage && <DataSetsTab state={state} dispatch={dispatch} />}
       {tab === "add" && <AddDataTab state={state} dispatch={dispatch} role={role} userId={userId} />}
       {tab === "archived" && canManage && <ArchivedDataTab state={state} dispatch={dispatch} />}
       {tab === "templates" && canManage && <DataTemplatesTab state={state} dispatch={dispatch} />}
@@ -7161,7 +7165,7 @@ function DataManagerPage({ state, dispatch, role, userId }) {
 function MyDataTab({ state, dispatch, role, userId }) {
   const me = state.employees.find(e => e.id === userId);
   const settings = state.dataSettings;
-  const act = todayDataActivity(me);
+  const act = todayDataActivity(me, state);
   const myRecords = state.dataRecords.filter(d =>
     d.status !== "Archived" && d.status !== "Converted to Lead" &&
     ((d.dataCategory === "Own" && d.dataOwner === userId) || (d.dataCategory === "Company" && d.assignedUser === userId))
@@ -7204,6 +7208,13 @@ function MyDataTab({ state, dispatch, role, userId }) {
     if (mins < settings.whatsappIntervalMinutes) return `Wait ${Math.ceil(settings.whatsappIntervalMinutes - mins)}m`;
     return null;
   };
+  const callBlockedReason = (d) => {
+    if (!d.mobile) return "No mobile";
+    const recontact = recontactBlockedReason(d.callCompletedAt);
+    if (recontact) return recontact;
+    if (act.callsCompleted >= settings.dailyCallTarget) return "Daily limit reached";
+    return null;
+  };
 
   const confirmSendEmail = (d, subject, body) => {
     const a = document.createElement("a");
@@ -7218,26 +7229,28 @@ function MyDataTab({ state, dispatch, role, userId }) {
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     dispatch({ type:"SEND_DATA_WHATSAPP", id:d.id, userId });
   };
+  const markCallCompleted = (d) => dispatch({ type:"COMPLETE_DATA_CALL", id:d.id, userId });
 
   return (
     <div>
-      <div className="agw-grid" style={{ gridTemplateColumns: "repeat(5,1fr)", marginBottom: 12 }}>
+      <div className="agw-grid" style={{ gridTemplateColumns: "repeat(6,1fr)", marginBottom: 12 }}>
         <div className="agw-card"><div className="kpi-label">Today's available data</div><div className="kpi-value disp">{myRecords.length}</div></div>
         <div className="agw-card"><div className="kpi-label">Own data</div><div className="kpi-value disp">{ownCount}</div></div>
         <div className="agw-card"><div className="kpi-label">Company assigned</div><div className="kpi-value disp">{companyCount}</div></div>
         <div className="agw-card"><div className="kpi-label">Email progress</div><div className="kpi-value disp">{act.emailsSent}/{settings.dailyEmailTarget}</div></div>
         <div className="agw-card"><div className="kpi-label">WhatsApp progress</div><div className="kpi-value disp">{act.whatsappsSent}/{settings.dailyWhatsappTarget}</div></div>
+        <div className="agw-card"><div className="kpi-label">Call progress</div><div className="kpi-value disp">{act.callsCompleted}/{settings.dailyCallTarget}</div></div>
       </div>
       <div className="side-note" style={{ marginBottom: 16 }}>{pendingFollowups} record{pendingFollowups!==1?"s":""} pending first contact.</div>
 
       <div className="agw-card" style={{ padding: 0 }}>
         {myRecords.length === 0 ? <Empty icon={Database} text="No data assigned yet — check Add Data or wait for the daily auto-assignment." /> : (
         <div style={{ overflowX:"auto" }}>
-        <table className="agw-table" style={{ minWidth: 980 }}>
-          <thead><tr><th>Company</th><th>Contact</th><th>Mobile</th><th>Email</th><th>Category</th><th>Status</th><th></th><th></th><th></th></tr></thead>
+        <table className="agw-table" style={{ minWidth: 1080 }}>
+          <thead><tr><th>Company</th><th>Contact</th><th>Mobile</th><th>Email</th><th>Category</th><th>Status</th><th>Email</th><th>WhatsApp</th><th>Call</th><th></th></tr></thead>
           <tbody>
             {pg.pageRows.map(d => {
-              const eDis = emailBlockedReason(d), wDis = whatsappBlockedReason(d);
+              const eDis = emailBlockedReason(d), wDis = whatsappBlockedReason(d), cDis = callBlockedReason(d);
               return (
                 <tr key={d.id}>
                   <td>{d.companyName}<div className="mono" style={{fontSize:11,color:"var(--ink-soft)"}}>{d.id}</div></td>
@@ -7246,8 +7259,9 @@ function MyDataTab({ state, dispatch, role, userId }) {
                   <td style={{fontSize:12}}>{d.email}</td>
                   <td><span className="pill">{d.dataCategory}</span></td>
                   <td><Stamp tone={statusTone(d.status)}>{d.status}</Stamp></td>
-                  <td><button className="btn btn-sm" disabled={!!eDis} title={eDis||"Send email"} onClick={()=>setEmailFor(d)}><Mail size={12}/> {eDis || "Email"}</button></td>
-                  <td><button className="btn btn-sm" disabled={!!wDis} title={wDis||"Send WhatsApp"} onClick={()=>setWhatsappFor(d)}><MessageCircle size={12}/> {wDis || "WhatsApp"}</button></td>
+                  <td>{d.emailSentAt ? <Stamp tone="success">Sent</Stamp> : <button className="btn btn-sm" disabled={!!eDis} title={eDis||"Send email"} onClick={()=>setEmailFor(d)}><Mail size={12}/> Email</button>}</td>
+                  <td>{d.whatsappSentAt ? <Stamp tone="success">Delivered</Stamp> : <button className="btn btn-sm" disabled={!!wDis} title={wDis||"Send WhatsApp"} onClick={()=>setWhatsappFor(d)}><MessageCircle size={12}/> WhatsApp</button>}</td>
+                  <td>{d.callCompletedAt ? <Stamp tone="success">Completed</Stamp> : <button className="btn btn-sm" disabled={!!cDis} title={cDis||"Mark call completed"} onClick={()=>markCallCompleted(d)}><Phone size={12}/> Call</button>}</td>
                   <td style={{ display:"flex", gap:6 }}>
                     <button className="btn btn-sm btn-ghost" onClick={()=>setConvertFor(d)}>Convert</button>
                     <button className="btn btn-sm btn-ghost" style={{color:"var(--danger)"}} onClick={()=>setArchiveFor(d)}>Invalid</button>
@@ -7391,12 +7405,140 @@ function AssignDataModal({ record, salesUsers, dispatch, onClose }) {
   );
 }
 
+// Read-only per-record status columns shared by DataByUserTab and DataSetsTab — a simple Stamp
+// once done, since these are just for viewing another user's progress, not acting on it (sending/
+// calling stays on that user's own My Data tab).
+function DataChannelStatus({ done, doneLabel }) {
+  return done ? <Stamp tone="success">{doneLabel}</Stamp> : <span style={{ color:"var(--ink-soft)", fontSize:12 }}>—</span>;
+}
+
+// "data manager can see each user's list" — pick any sales user and view everything assigned to
+// or owned by them, same shape as their own My Data tab but read-only (sending/calling stays with
+// the owning user).
+function DataByUserTab({ state }) {
+  const salesUsers = state.employees.filter(e => e.roles.some(r => ["sales_exec","sales_manager"].includes(r)));
+  const [uid, setUid] = useState(salesUsers[0]?.id || "");
+  const rows = state.dataRecords.filter(d =>
+    (d.dataCategory === "Own" && d.dataOwner === uid) || (d.dataCategory === "Company" && d.assignedUser === uid)
+  );
+  const pg = usePagination(rows);
+
+  return (
+    <div>
+      <div className="field" style={{ maxWidth: 320, marginBottom: 16 }}>
+        <label>Salesperson</label>
+        <select value={uid} onChange={e=>setUid(e.target.value)}>
+          {salesUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+        </select>
+      </div>
+      <ReportTableCard title={`${state.employees.find(e=>e.id===uid)?.name || "—"}'s data`} empty={rows.length===0 ? "No data assigned to this user." : null} emptyIcon={Database}>
+        <table className="agw-table">
+          <thead><tr><th>Company</th><th>Contact</th><th>Mobile</th><th>Email</th><th>Category</th><th>Status</th><th>Email</th><th>WhatsApp</th><th>Call</th></tr></thead>
+          <tbody>
+            {pg.pageRows.map(d => (
+              <tr key={d.id}>
+                <td>{d.companyName}<div className="mono" style={{fontSize:11,color:"var(--ink-soft)"}}>{d.id}</div></td>
+                <td>{d.contactName}</td>
+                <td className="mono" style={{fontSize:12}}>{d.mobile}</td>
+                <td style={{fontSize:12}}>{d.email}</td>
+                <td><span className="pill">{d.dataCategory}</span></td>
+                <td><Stamp tone={statusTone(d.status)}>{d.status}</Stamp></td>
+                <td><DataChannelStatus done={!!d.emailSentAt} doneLabel="Sent" /></td>
+                <td><DataChannelStatus done={!!d.whatsappSentAt} doneLabel="Delivered" /></td>
+                <td><DataChannelStatus done={!!d.callCompletedAt} doneLabel="Completed" /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <PaginationBar {...pg} />
+      </ReportTableCard>
+    </div>
+  );
+}
+
+// "each set data can select and see report — final curated data — we can export." Data Set Name
+// is just a free-text label set at Add Data/Import time (AddDataTab), so the set list here is
+// derived from whatever distinct values actually show up on records, not a separately managed
+// entity — deliberately simple, per how this was asked for.
+function DataSetsTab({ state, dispatch }) {
+  const datasetNames = [...new Set(state.dataRecords.map(d => d.datasetName).filter(Boolean))].sort();
+  const [selected, setSelected] = useState(datasetNames[0] || "");
+  const rows = selected ? state.dataRecords.filter(d => d.datasetName === selected) : [];
+  const pg = usePagination(rows);
+
+  const stats = {
+    total: rows.length,
+    emailSent: rows.filter(d=>d.emailSentAt).length,
+    whatsappDelivered: rows.filter(d=>d.whatsappSentAt).length,
+    callCompleted: rows.filter(d=>d.callCompletedAt).length,
+    converted: rows.filter(d=>d.status==="Converted to Lead").length,
+    archived: rows.filter(d=>d.status==="Archived").length,
+  };
+
+  const runExport = () => {
+    const headers = ["ID","Company Name","Contact Person","Mobile","Email","Data Category","Status","Email Sent","WhatsApp Delivered","Call Completed","Assigned To"];
+    const dataRows = rows.map(d=>[d.id, d.companyName, d.contactName, d.mobile, d.email, d.dataCategory, d.status,
+      d.emailSentAt ? "Yes" : "No", d.whatsappSentAt ? "Yes" : "No", d.callCompletedAt ? "Yes" : "No",
+      state.employees.find(e=>e.id===(d.assignedUser||d.dataOwner))?.name || ""]);
+    exportCSV(`data-set-${selected.replace(/\s+/g,"-").toLowerCase()}.csv`, headers, dataRows);
+    dispatch({ type:"LOG_DATA_EXPORT", exportedBy:"Data Manager", count: rows.length, purpose: `Data Set: ${selected}`, format: "CSV" });
+  };
+
+  if (datasetNames.length === 0) return <Empty icon={Database} text="No named data sets yet — give a data set a name in Add Data or Import to see it here." />;
+
+  return (
+    <div>
+      <div className="field" style={{ maxWidth: 360, marginBottom: 16 }}>
+        <label>Data set</label>
+        <select value={selected} onChange={e=>setSelected(e.target.value)}>
+          {datasetNames.map(n => <option key={n} value={n}>{n}</option>)}
+        </select>
+      </div>
+
+      <div className="agw-grid" style={{ gridTemplateColumns: "repeat(6,1fr)", marginBottom: 18 }}>
+        <div className="agw-card"><div className="kpi-label">Total</div><div className="kpi-value disp">{stats.total}</div></div>
+        <div className="agw-card"><div className="kpi-label">Email sent</div><div className="kpi-value disp">{stats.emailSent}</div></div>
+        <div className="agw-card"><div className="kpi-label">WhatsApp delivered</div><div className="kpi-value disp">{stats.whatsappDelivered}</div></div>
+        <div className="agw-card"><div className="kpi-label">Call completed</div><div className="kpi-value disp">{stats.callCompleted}</div></div>
+        <div className="agw-card"><div className="kpi-label">Converted to leads</div><div className="kpi-value disp">{stats.converted}</div></div>
+        <div className="agw-card"><div className="kpi-label">Archived</div><div className="kpi-value disp">{stats.archived}</div></div>
+      </div>
+
+      <ReportTableCard title={selected} onExport={rows.length ? runExport : null} empty={rows.length===0 ? "No records in this data set." : null} emptyIcon={Database}>
+        <table className="agw-table">
+          <thead><tr><th>Company</th><th>Contact</th><th>Mobile</th><th>Email</th><th>Category</th><th>Assigned to</th><th>Status</th><th>Email</th><th>WhatsApp</th><th>Call</th></tr></thead>
+          <tbody>
+            {pg.pageRows.map(d => (
+              <tr key={d.id}>
+                <td>{d.companyName}<div className="mono" style={{fontSize:11,color:"var(--ink-soft)"}}>{d.id}</div></td>
+                <td>{d.contactName}</td>
+                <td className="mono" style={{fontSize:12}}>{d.mobile}</td>
+                <td style={{fontSize:12}}>{d.email}</td>
+                <td><span className="pill">{d.dataCategory}</span></td>
+                <td>{state.employees.find(e=>e.id===(d.assignedUser||d.dataOwner))?.name || "—"}</td>
+                <td><Stamp tone={statusTone(d.status)}>{d.status}</Stamp></td>
+                <td><DataChannelStatus done={!!d.emailSentAt} doneLabel="Sent" /></td>
+                <td><DataChannelStatus done={!!d.whatsappSentAt} doneLabel="Delivered" /></td>
+                <td><DataChannelStatus done={!!d.callCompletedAt} doneLabel="Completed" /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <PaginationBar {...pg} />
+      </ReportTableCard>
+    </div>
+  );
+}
+
 function AddDataTab({ state, dispatch, role, userId }) {
   const canManage = role === "data_manager" || ADMIN_LIKE.includes(role);
-  const blank = { companyName:"", contactName:"", mobile:"", email:"", reference:"", source:"", businessCategory:"", location:"", dataCategory:"Own" };
+  const blank = { companyName:"", contactName:"", mobile:"", email:"", reference:"", source:"", businessCategory:"", location:"", dataCategory:"Own", datasetName:"", assignTo:"" };
   const [form, setForm] = useState(blank);
   const [dupError, setDupError] = useState(null);
   const [importResult, setImportResult] = useState(null);
+  // Same pool DataPoolTab's Assign draws from — a data set can be handed straight to a rep at
+  // upload time instead of always landing in the pool for a separate assign step afterward.
+  const assignableUsers = state.employees.filter(e => e.active !== false && e.roles.some(r => ["sales_exec","sales_manager"].includes(r)));
 
   const submit = () => {
     const dup = findDuplicateDataRecord(state.dataRecords, form);
@@ -7420,7 +7562,7 @@ function AddDataTab({ state, dispatch, role, userId }) {
     setImportError("");
     setImportResult(null);
     try {
-      const result = await dispatch({ type:"IMPORT_DATA_RECORDS", file, dataCategory: form.dataCategory });
+      const result = await dispatch({ type:"IMPORT_DATA_RECORDS", file, dataCategory: form.dataCategory, datasetName: form.datasetName, assignTo: form.assignTo });
       setImportResult(result);
     } catch (err) {
       setImportError(err instanceof ApiError ? err.message : "Import failed — please try again.");
@@ -7443,7 +7585,8 @@ function AddDataTab({ state, dispatch, role, userId }) {
       <div className="agw-card">
         <strong style={{ fontSize:14 }}>Add data manually</strong>
         {dupError && <div className="side-note" style={{ borderColor:"#EFC3BC", background:"var(--danger-tint)" }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{dupError}</div>}
-        <div className="row2" style={{ marginTop:10 }}>
+        <div className="field" style={{ marginTop:10 }}><label>Data Set Name (optional)</label><input value={form.datasetName} onChange={e=>setForm({...form,datasetName:e.target.value})} placeholder="e.g. August Trade Fair List" /></div>
+        <div className="row2">
           <div className="field"><label>Company Name</label><input value={form.companyName} onChange={e=>setForm({...form,companyName:e.target.value})} /></div>
           <div className="field"><label>Contact Person Name</label><input value={form.contactName} onChange={e=>setForm({...form,contactName:e.target.value})} /></div>
         </div>
@@ -7460,11 +7603,21 @@ function AddDataTab({ state, dispatch, role, userId }) {
           <div className="field"><label>Location (optional)</label><input value={form.location} onChange={e=>setForm({...form,location:e.target.value})} /></div>
         </div>
         {canManage && (
-          <div className="field"><label>Data Category</label>
-            <select value={form.dataCategory} onChange={e=>setForm({...form,dataCategory:e.target.value})}>
-              <option value="Own">Own Data</option>
-              <option value="Company">Company Provided Data</option>
-            </select>
+          <div className="row2">
+            <div className="field"><label>Data Category</label>
+              <select value={form.dataCategory} onChange={e=>setForm({...form,dataCategory:e.target.value})}>
+                <option value="Own">Own Data</option>
+                <option value="Company">Company Provided Data</option>
+              </select>
+            </div>
+            {form.dataCategory === "Company" && (
+              <div className="field"><label>Assign to (optional)</label>
+                <select value={form.assignTo} onChange={e=>setForm({...form,assignTo:e.target.value})}>
+                  <option value="">— Leave in pool —</option>
+                  {assignableUsers.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
+                </select>
+              </div>
+            )}
           </div>
         )}
         <button className="btn btn-primary" disabled={!form.companyName || (!form.mobile && !form.email)} onClick={submit}>Add data</button>
@@ -7476,12 +7629,23 @@ function AddDataTab({ state, dispatch, role, userId }) {
         <button className="btn btn-sm btn-ghost" onClick={downloadSampleTemplate} style={{ marginBottom:10 }}>
           <Download size={13} /> Download sample template
         </button>
+        <div className="field"><label>Data Set Name (optional)</label><input value={form.datasetName} onChange={e=>setForm({...form,datasetName:e.target.value})} placeholder="e.g. August Trade Fair List" /></div>
         {canManage && (
-          <div className="field"><label>Import as</label>
-            <select value={form.dataCategory} onChange={e=>setForm({...form,dataCategory:e.target.value})}>
-              <option value="Own">Own Data</option>
-              <option value="Company">Company Provided Data</option>
-            </select>
+          <div className="row2">
+            <div className="field"><label>Import as</label>
+              <select value={form.dataCategory} onChange={e=>setForm({...form,dataCategory:e.target.value})}>
+                <option value="Own">Own Data</option>
+                <option value="Company">Company Provided Data</option>
+              </select>
+            </div>
+            {form.dataCategory === "Company" && (
+              <div className="field"><label>Assign to (optional)</label>
+                <select value={form.assignTo} onChange={e=>setForm({...form,assignTo:e.target.value})}>
+                  <option value="">— Leave in pool —</option>
+                  {assignableUsers.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
+                </select>
+              </div>
+            )}
           </div>
         )}
         <input type="file" accept=".xlsx,.xls,.csv" onChange={handleFile} disabled={importing} />
@@ -7545,15 +7709,16 @@ function DataTemplatesTab({ state, dispatch }) {
 
 function DataSettingsTab({ state, dispatch }) {
   const s = state.dataSettings;
-  const [form, setForm] = useState({ dailyEmailTarget:s.dailyEmailTarget, dailyWhatsappTarget:s.dailyWhatsappTarget,
+  const [form, setForm] = useState({ dailyEmailTarget:s.dailyEmailTarget, dailyWhatsappTarget:s.dailyWhatsappTarget, dailyCallTarget:s.dailyCallTarget,
     emailIntervalMinutes:s.emailIntervalMinutes, whatsappIntervalMinutes:s.whatsappIntervalMinutes,
     recyclingEnabled:s.recyclingEnabled, recyclingDays:s.recyclingDays });
   return (
     <div className="agw-card" style={{ maxWidth: 560 }}>
       <strong style={{ fontSize:14 }}>Daily outreach targets</strong>
-      <div className="row2" style={{ marginTop:10 }}>
+      <div className="row3" style={{ marginTop:10 }}>
         <div className="field"><label>Daily email target</label><input type="number" value={form.dailyEmailTarget} onChange={e=>setForm({...form,dailyEmailTarget:(e.target.value === "" ? "" : Number(e.target.value))})} /></div>
         <div className="field"><label>Daily WhatsApp target</label><input type="number" value={form.dailyWhatsappTarget} onChange={e=>setForm({...form,dailyWhatsappTarget:(e.target.value === "" ? "" : Number(e.target.value))})} /></div>
+        <div className="field"><label>Daily call target</label><input type="number" value={form.dailyCallTarget} onChange={e=>setForm({...form,dailyCallTarget:(e.target.value === "" ? "" : Number(e.target.value))})} /></div>
       </div>
       <div className="row2">
         <div className="field"><label>Email interval (minutes)</label><input type="number" value={form.emailIntervalMinutes} onChange={e=>setForm({...form,emailIntervalMinutes:(e.target.value === "" ? "" : Number(e.target.value))})} /></div>
@@ -7584,10 +7749,10 @@ function DataReportsTab({ state, dispatch }) {
   const whatsappSent = records.filter(d=>d.whatsappSentAt).length;
 
   const userRows = state.employees.filter(e=>e.roles.some(r=>["sales_exec","sales_manager"].includes(r))).map(e => {
-    const act = todayDataActivity(e);
+    const act = todayDataActivity(e, state);
     return { e, own: records.filter(d=>d.dataCategory==="Own" && d.dataOwner===e.id).length,
       assigned: records.filter(d=>d.dataCategory==="Company" && d.assignedUser===e.id).length,
-      emailsToday: act.emailsSent, whatsappsToday: act.whatsappsSent };
+      emailsToday: act.emailsSent, whatsappsToday: act.whatsappsSent, callsToday: act.callsCompleted };
   });
 
   const [exportScope, setExportScope] = useState("All Data");
@@ -7633,12 +7798,12 @@ function DataReportsTab({ state, dispatch }) {
 
       <ReportTableCard title="User activity">
         <table className="agw-table">
-          <thead><tr><th>User</th><th>Own data</th><th>Company assigned</th><th>Emails today</th><th>WhatsApp today</th></tr></thead>
+          <thead><tr><th>User</th><th>Own data</th><th>Company assigned</th><th>Emails today</th><th>WhatsApp today</th><th>Calls today</th></tr></thead>
           <tbody>
             {userRows.map(r => (
               <tr key={r.e.id}>
                 <td style={{display:"flex",alignItems:"center",gap:8}}><span className="avatar">{r.e.initials}</span>{r.e.name}</td>
-                <td>{r.own}</td><td>{r.assigned}</td><td>{r.emailsToday}</td><td>{r.whatsappsToday}</td>
+                <td>{r.own}</td><td>{r.assigned}</td><td>{r.emailsToday}</td><td>{r.whatsappsToday}</td><td>{r.callsToday}</td>
               </tr>
             ))}
           </tbody>

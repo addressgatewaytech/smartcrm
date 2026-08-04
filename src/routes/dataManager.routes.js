@@ -54,12 +54,15 @@ router.post("/", async (req, res) => {
   const dup = await findDuplicate(b);
   if (dup) return res.status(409).json({ error: "Duplicate Data Already Exists", matchId: dup.id });
 
+  // Company Data can be handed straight to a rep at creation time instead of landing in the pool
+  // and waiting for a separate assign step — Own Data ignores this (it's always self-owned).
+  const assignedUser = b.dataCategory === "Company" ? (b.assignTo || null) : null;
   const id = nextId("DR");
   await query(
-    `INSERT INTO data_records (id, company_name, contact_name, mobile, mobile_normalized, email, email_normalized, reference, source, business_category, location, data_category, data_owner, assigned_user, created_by)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    `INSERT INTO data_records (id, company_name, contact_name, mobile, mobile_normalized, email, email_normalized, reference, source, business_category, location, data_category, data_owner, assigned_user, created_by, dataset_name)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [id, b.companyName, b.contactName || null, b.mobile || null, normPhone(b.mobile), b.email || null, normEmail(b.email), b.reference || null, b.source || null,
-      b.businessCategory || null, b.location || null, b.dataCategory, b.dataCategory === "Own" ? req.user.id : null, null, req.user.id]
+      b.businessCategory || null, b.location || null, b.dataCategory, b.dataCategory === "Own" ? req.user.id : null, assignedUser, req.user.id, b.datasetName || null]
   );
   res.status(201).json({ id });
 });
@@ -68,6 +71,10 @@ router.post("/", async (req, res) => {
 router.post("/import", upload.single("file"), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
   const dataCategory = req.body.dataCategory || "Own";
+  const datasetName = req.body.datasetName || null;
+  // The whole batch goes straight to one rep instead of landing unassigned in the pool — keeps a
+  // named upload ("August Trade Fair List") together with whoever's actually working it.
+  const assignedUser = dataCategory === "Company" ? (req.body.assignTo || null) : null;
 
   const wb = XLSX.read(req.file.buffer, { type: "buffer" });
   const sheet = wb.Sheets[wb.SheetNames[0]];
@@ -94,9 +101,9 @@ router.post("/import", upload.single("file"), async (req, res) => {
     if (dupExisting || dupBatch) { dupCount++; continue; }
     seenBatch.push(r);
     await query(
-      `INSERT INTO data_records (id, company_name, contact_name, mobile, mobile_normalized, email, email_normalized, reference, source, business_category, location, data_category, data_owner, created_by)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [nextId("DR"), r.companyName, r.contactName, r.mobile, normPhone(r.mobile), r.email, normEmail(r.email), r.reference, r.source, r.businessCategory, r.location, dataCategory, dataCategory === "Own" ? req.user.id : null, req.user.id]
+      `INSERT INTO data_records (id, company_name, contact_name, mobile, mobile_normalized, email, email_normalized, reference, source, business_category, location, data_category, data_owner, assigned_user, created_by, dataset_name)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [nextId("DR"), r.companyName, r.contactName, r.mobile, normPhone(r.mobile), r.email, normEmail(r.email), r.reference, r.source, r.businessCategory, r.location, dataCategory, dataCategory === "Own" ? req.user.id : null, assignedUser, req.user.id, datasetName]
     );
     importedCount++;
   }
@@ -193,6 +200,34 @@ router.post("/:id/send-whatsapp", async (req, res) => {
   res.json({ ok: true }); // actual WhatsApp send happens client-side via wa.me deep link, or wire the WhatsApp Business API here
 });
 
+// Same cap/cooldown/status-bump shape as send-email and send-whatsapp, but there's no outbound
+// link to trigger first — the call already happened off-app, so this just logs it.
+router.post("/:id/complete-call", async (req, res) => {
+  const [record] = await query("SELECT * FROM data_records WHERE id = ?", [req.params.id]);
+  if (!record) return res.status(404).json({ error: "Not found" });
+  const recontactReason = recontactBlockedReason(record.call_completed_at);
+  if (recontactReason) return res.status(400).json({ error: recontactReason });
+
+  const [settings] = await query("SELECT * FROM data_settings WHERE id = 1");
+  const activity = await getActivity(req.user.id);
+  if (activity.calls_completed >= settings.daily_call_target) return res.status(400).json({ error: "Daily call limit reached" });
+
+  await query("UPDATE data_records SET call_completed_at = NOW(), last_contact_date = CURDATE(), status = IF(status='New','Contacted',status) WHERE id = ?", [req.params.id]);
+  await query(
+    `INSERT INTO data_user_activity (user_id, activity_date, calls_completed, last_call_at) VALUES (?,?,1,NOW())
+     ON DUPLICATE KEY UPDATE calls_completed = calls_completed + 1, last_call_at = NOW()`,
+    [req.user.id, today()]
+  );
+  res.json({ ok: true });
+});
+
+// Today's per-user counters, for the daily-cap progress shown in My Data / Reports — every field
+// in data_user_activity resets to a fresh row at midnight (the PK is user_id + activity_date), so
+// "today" is simply whichever row exists for today(), same as getActivity above.
+router.get("/activity", async (req, res) => {
+  res.json(await query("SELECT * FROM data_user_activity WHERE activity_date = ?", [today()]));
+});
+
 router.post("/:id/archive", async (req, res) => {
   await query("UPDATE data_records SET status='Archived', archived_reason=?, assigned_user=NULL WHERE id=?", [req.body.reason, req.params.id]);
   res.json({ ok: true });
@@ -220,7 +255,7 @@ router.patch("/settings", requireRole(["admin_like", "data_manager"]), async (re
   const fields = [];
   const params = [];
   for (const [col, key] of [
-    ["daily_email_target", "dailyEmailTarget"], ["daily_whatsapp_target", "dailyWhatsappTarget"],
+    ["daily_email_target", "dailyEmailTarget"], ["daily_whatsapp_target", "dailyWhatsappTarget"], ["daily_call_target", "dailyCallTarget"],
     ["email_interval_minutes", "emailIntervalMinutes"], ["whatsapp_interval_minutes", "whatsappIntervalMinutes"],
     ["recycling_enabled", "recyclingEnabled"], ["recycling_days", "recyclingDays"],
     ["email_subject", "emailSubject"], ["email_body", "emailBody"], ["whatsapp_body", "whatsappBody"],
