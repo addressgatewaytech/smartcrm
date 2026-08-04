@@ -2415,6 +2415,11 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
 
 function QuotationsPage({ state, dispatch, role, userId, highlightId, onHighlightHandled }) {
   const [openId, setOpenId] = useState(null);
+  // Set alongside openId when opened via the Edit action, so the modal jumps straight into Visual
+  // edit instead of landing on Current view first — Draft/Pending Manager Approval quotations are
+  // editable regardless of role, but that was only reachable by opening the row, switching to the
+  // PDF preview tab, then clicking Visual edit, which wasn't an obvious path for most users.
+  const [openInEdit, setOpenInEdit] = useState(false);
   // Derived, not a frozen snapshot — so in-modal actions (favorite toggle, etc.) that refresh
   // state.quotations are reflected immediately instead of only after closing and reopening.
   const open = openId ? state.quotations.find(q => q.id === openId) : null;
@@ -2503,8 +2508,10 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, onHighligh
                 <td className="mono" style={{fontSize:12}}>{fmtDate(q.validTill)}</td>
                 <td><Stamp tone={statusTone(q.status)}>{quotationStatusLabel(q.status, role)}</Stamp></td>
                 <td><button className="btn btn-sm btn-ghost" title="Clone" onClick={(e)=>{ e.stopPropagation(); setCloneFor(q); }}><Copy size={13}/></button></td>
-                <td>
-                  <RowActions onRemove={q.status==="Draft" && isAdmin ? ()=>setRemoveQuote(q) : null} />
+                <td onClick={e=>e.stopPropagation()}>
+                  <RowActions
+                    onEdit={["Draft","Pending Manager Approval"].includes(q.status) ? ()=>{ setOpenId(q.id); setOpenInEdit(true); if (highlightId) onHighlightHandled(); } : null}
+                    onRemove={q.status==="Draft" && isAdmin ? ()=>setRemoveQuote(q) : null} />
                 </td>
               </tr>
             ))}
@@ -2512,7 +2519,7 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, onHighligh
         </table>)}
         <PaginationBar {...pg} />
       </div>
-      {open && <QuoteDetailModal quotation={open} state={state} dispatch={dispatch} role={role} userId={userId} customerOptions={customerOptions} templates={state.quotationTemplates} onClose={()=>setOpenId(null)} />}
+      {open && <QuoteDetailModal quotation={open} state={state} dispatch={dispatch} role={role} userId={userId} customerOptions={customerOptions} templates={state.quotationTemplates} startInEdit={openInEdit} onClose={()=>{ setOpenId(null); setOpenInEdit(false); }} />}
       {newQuote && <QuoteBuilderModal editableCustomer customerOptions={customerOptions} defaultService={state.services[0]} services={state.services} dispatch={dispatch} templates={state.quotationTemplates} role={role} employees={state.employees} onClose={()=>setNewQuote(false)} />}
       {cloneFor && <CloneQuoteModal quotation={cloneFor} customerOptions={customerOptions} dispatch={dispatch} onClose={()=>setCloneFor(null)} />}
       {removeQuote && <ConfirmModal title={`Remove ${removeQuote.id}?`} body={`${removeQuote.customer} — this draft quotation can't be recovered once removed.`} onConfirm={()=>dispatch({type:"DELETE_QUOTATION", id:removeQuote.id})} onClose={()=>setRemoveQuote(null)} />}
@@ -2548,8 +2555,8 @@ function CloneQuoteModal({ quotation: q, customerOptions, dispatch, onClose, onC
   );
 }
 
-function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, customerOptions=[], templates={}, onClose }) {
-  const [view, setView] = useState("details");
+function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, customerOptions=[], templates={}, onClose, startInEdit=false }) {
+  const [view, setView] = useState(startInEdit ? "pdf" : "details");
   const [cloning, setCloning] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [emailing, setEmailing] = useState(false);
@@ -2566,8 +2573,8 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
     terms: q.terms || "", orderDiscount: q.orderDiscount || 0, bank: q.bank || "", footerNote: q.footerNote || "",
     theme: q.theme || "charcoal",
   }));
-  const [visualEdit, setVisualEdit] = useState(false);
-  const [draft, setDraft] = useState(null);
+  const [visualEdit, setVisualEdit] = useState(startInEdit);
+  const [draft, setDraft] = useState(() => startInEdit ? { ...content, items: content.items.map(it=>({...it})) } : null);
   const [downloading, setDownloading] = useState(false);
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState("");
