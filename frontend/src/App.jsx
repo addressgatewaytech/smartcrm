@@ -1761,6 +1761,17 @@ function LeadsPage({ state, dispatch, userId, role }) {
 
                 {l.nextFollowUp && <div style={{ fontSize:12, color:"var(--ink-soft)", marginTop:10 }}>Next follow-up: <span className="mono">{fmtDate(l.nextFollowUp)}</span></div>}
 
+                {(() => {
+                  // Most recent follow-up's comment, shown right on the card — otherwise the only
+                  // way to see what was actually said on the last call is to open the modal first.
+                  const latest = (l.followUps || []).slice().sort((a,b)=>new Date(b.at)-new Date(a.at))[0];
+                  return latest?.note && (
+                    <div style={{ fontSize:12, marginTop:8, padding:"6px 8px", background:"var(--page)", borderRadius:6 }}>
+                      <span style={{ color:"var(--ink-soft)" }}>Last comment: </span>{latest.note}
+                    </div>
+                  );
+                })()}
+
                 <div style={{ display:"flex", gap:8, marginTop:10 }} onClick={e=>e.stopPropagation()}>
                   <button className="btn btn-sm" style={{ flex:1 }} onClick={()=>openFollowUp(l)}>Log follow-up</button>
                   {l.status !== "Unqualified" && !state.deals.find(d=>d.leadId===l.id) &&
@@ -1796,7 +1807,7 @@ function LeadsPage({ state, dispatch, userId, role }) {
               {LEAD_STATUSES.map(s=><option key={s}>{s}</option>)}
             </select>
           </div>
-          <div className="field"><label>Note</label><textarea rows={3} value={fuNote} onChange={e=>setFuNote(e.target.value)} placeholder="What happened on this call or visit..." /></div>
+          <div className="field"><label>Comments</label><textarea rows={3} value={fuNote} onChange={e=>setFuNote(e.target.value)} placeholder="What happened on this call or visit..." /></div>
           <div className="field"><label>Next follow-up date</label><input type="date" value={fuNext} onChange={e=>setFuNext(e.target.value)} /></div>
           <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop: 16 }}>
             <button className="btn" onClick={()=>setFollowFor(null)}>Cancel</button>
