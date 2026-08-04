@@ -5629,8 +5629,23 @@ const WORKFLOW_STAGES = [
   { icon: ClipboardList, label: "Job Card", desc: "Operations picks up the work and tracks it through to completion." },
 ];
 
-/** Basic "how it works" guide for HR — a graphical Lead-to-Job-Card workflow so new
- * staff can understand the pipeline at a glance. More sections/articles get added here later. */
+// Step-by-step guides shown as a numbered list under "Tutorials" — plain data so a new one is
+// just another entry here, not a new component.
+const QUOTATION_TUTORIAL_STEPS = [
+  { title: "Start the quotation", desc: "From an open Deal, click \"Create quotation\" — customer and service come pre-filled from the deal. Or, on the Quotations page, click \"New quotation\" and pick the customer yourself." },
+  { title: "Pick the primary service", desc: "Choosing a service auto-loads that service's saved template (Quotation Templates), with its usual line items, terms, notes and bank details already filled in — edit anything that doesn't fit this particular job." },
+  { title: "Check the line items", desc: "Each item has a Category/stage, a Qty, Rate and Discount %. Group items under the category label they belong to (e.g. everything under \"Government Fee\") — the quotation totals Government Fee and Professional Fee separately based on that grouping, so a line sitting in the wrong category throws the split off even though the grand total stays correct." },
+  { title: "Assign the sales person (Admin only)", desc: "Admins see a \"Sales person\" dropdown when building a quotation, letting them attribute it to a different rep instead of always themselves or the deal's owner." },
+  { title: "Fill in the rest", desc: "Subject, Notes, Terms & Conditions, an overall discount if one applies, and a bank details or footer note override if this quotation needs something non-standard." },
+  { title: "Save it", desc: "Adding any discount (a line's or the overall one) routes the quotation to Pending Manager Approval automatically. No discount at all saves it as a plain Draft." },
+  { title: "Edit it later if needed", desc: "Draft and Pending Manager Approval quotations stay editable — use the Edit (pencil) action in the Quotations list, or open the quotation and use Visual edit under its PDF preview tab." },
+  { title: "Send it", desc: "Open the quotation and click \"Submit for approval\" or \"Send to client\" (whichever applies to your role and whether it has a discount), or \"Download PDF\" any time to see exactly what the client will receive." },
+  { title: "Track what happens next", desc: "Status moves Draft → Sent → Client Accepted → Approved (or Rejected / Under Negotiation along the way). Once accepted, Accounts converts it into a Sales Order." },
+];
+
+/** Basic "how it works" guide for HR — a graphical Lead-to-Job-Card workflow, plus step-by-step
+ * tutorials, so new staff can understand the pipeline and specific tasks at a glance. More
+ * sections/articles get added here later. */
 function KnowledgeBasePage() {
   return (
     <div>
@@ -5645,7 +5660,7 @@ function KnowledgeBasePage() {
         </div>
       </div>
 
-      <div className="agw-card">
+      <div className="agw-card" style={{ marginBottom: 18 }}>
         <strong style={{ fontSize:14 }}>The core workflow: Lead → Job Card</strong>
         <div style={{ display:"flex", alignItems:"stretch", flexWrap:"wrap", gap:0, marginTop:16 }}>
           {WORKFLOW_STAGES.map((s, i) => (
@@ -5665,6 +5680,33 @@ function KnowledgeBasePage() {
               )}
             </React.Fragment>
           ))}
+        </div>
+      </div>
+
+      <div className="agw-card">
+        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14 }}>
+          <ListChecks size={17} />
+          <strong style={{ fontSize:14 }}>Tutorial: How to make a quotation</strong>
+        </div>
+        <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+          {QUOTATION_TUTORIAL_STEPS.map((s, i) => (
+            <div key={s.title} style={{ display:"flex", gap:12 }}>
+              <div style={{ width:26, height:26, borderRadius:"50%", background:"var(--brand)", color:"#fff",
+                display:"flex", alignItems:"center", justifyContent:"center", fontSize:12.5, fontWeight:600, flexShrink:0 }}>
+                {i + 1}
+              </div>
+              <div>
+                <div style={{ fontWeight:600, fontSize:13 }}>{s.title}</div>
+                <div style={{ fontSize:12.5, color:"var(--ink-soft)", marginTop:2, lineHeight:1.5 }}>{s.desc}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="side-note" style={{ marginTop:16 }}>
+          <AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>
+          Government Fee quotations (the whole document, not just a line item) are for viewing and sharing as a
+          PDF only — they're excluded from business volume/incentive calculations and never create a Sales
+          Order, Invoice or Job Card.
         </div>
       </div>
     </div>
