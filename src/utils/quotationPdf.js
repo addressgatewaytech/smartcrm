@@ -200,10 +200,19 @@ function generateQuotationPdf(quotation, res) {
   y += 12;
 
   // --- Government Fee Total / Professional Fee Total / Sub Total / Discount / Total -------------
-  // Pre-discount split by fee type — a line's own feeType if tagged, else the quotation's
-  // whole-document one (same rule as professionalFeeTotal in helpers.js) — so the two lines
-  // always add up to exactly Sub Total, with the order discount still applied only once, below.
-  const isGovFeeItem = (it) => (it.feeType || quotation.fee_type || quotation.feeType || "Professional Fee") === "Government Fee";
+  // Pre-discount split, classified from the item's own category text (what's actually grouped on
+  // the document) rather than the separate per-item feeType field — that field is only ever set
+  // via Quotation Templates, so a manually built or hand-edited quotation has it blank on every
+  // item and it silently falls back to whatever the template happened to tag, which doesn't
+  // necessarily match how the items are actually grouped here. A blank category (no per-item
+  // grouping at all, typical of a standalone single-type quotation) falls back to the quotation's
+  // whole-document fee type.
+  const isGovFeeItem = (it) => {
+    const cat = (it.category || "").toLowerCase();
+    if (cat.includes("government")) return true;
+    if (cat.includes("professional")) return false;
+    return (quotation.fee_type || quotation.feeType || "Professional Fee") === "Government Fee";
+  };
   const govFeeTotal = items.filter(isGovFeeItem).reduce((a, it) => a + (Number(it.qty) || 0) * (Number(it.price) || 0) * (1 - (Number(it.discountPct) || 0) / 100), 0);
   const profFeeTotal = subtotal - govFeeTotal;
   ensureRoom(102);

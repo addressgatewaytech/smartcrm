@@ -2800,10 +2800,19 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
         });
         const pdfSubtotal = src.items.reduce((a,it)=>a+it.qty*it.price*(1-(it.discountPct||0)/100),0);
         const pdfTotal = Math.max(0, pdfSubtotal - (src.orderDiscount||0));
-        // Pre-discount split by fee type — mirrors quotationFeeTypeLabel's per-item classification
-        // (own feeType if tagged, else the quotation's whole-document one) so the two lines always
-        // add up to exactly Sub Total, with the order discount still applied only once, below.
-        const isGovFeeItem = (it) => (it.feeType || q.feeType || "Professional Fee") === "Government Fee";
+        // Pre-discount split by fee type. Classified from the item's own category text (what a
+        // salesperson actually types and sees grouped on the document), not the separate per-item
+        // feeType field — that field is only ever set via Quotation Templates, so a manually built
+        // or hand-edited quotation has it blank on every item and it silently falls back to
+        // whatever the template happened to tag, which doesn't necessarily match how the items are
+        // actually grouped here. A category left blank (no per-item grouping at all, typical of a
+        // standalone single-type quotation) falls back to the quotation's whole-document fee type.
+        const isGovFeeItem = (it) => {
+          const cat = (it.category || "").toLowerCase();
+          if (cat.includes("government")) return true;
+          if (cat.includes("professional")) return false;
+          return (q.feeType || "Professional Fee") === "Government Fee";
+        };
         const pdfGovFeeTotal = src.items.filter(isGovFeeItem).reduce((a,it)=>a+it.qty*it.price*(1-(it.discountPct||0)/100),0);
         const pdfProfFeeTotal = pdfSubtotal - pdfGovFeeTotal;
         const termLines = (src.terms || "").split("\n").map(t=>t.trim()).filter(Boolean);
