@@ -11,7 +11,7 @@ import {
   Database, Upload, MessageCircle, Recycle, ArchiveX, ShieldAlert, Settings as SettingsIcon,
   Sun, Moon, BookOpen
 } from "lucide-react";
-import { money, fmtDate, Stamp, statusTone, Rail, DonutChart, LineChart, BarChart, SalesPersonBars, Modal, Empty, ConfirmModal, RowActions, exportCSV, usePagination, PaginationBar, TableScrollHint } from "./ui.jsx";
+import { money, fmtDate, fmtDateDMY, Stamp, statusTone, Rail, DonutChart, LineChart, BarChart, SalesPersonBars, Modal, Empty, ConfirmModal, RowActions, exportCSV, usePagination, PaginationBar, TableScrollHint } from "./ui.jsx";
 import { TasksPage } from "./pages/tasks.jsx";
 import { AttendanceWidget, AttendancePage } from "./pages/attendance.jsx";
 import { LeadAssignmentManagerPage } from "./pages/leadAssignment.jsx";
@@ -1634,7 +1634,7 @@ function LeadsPage({ state, dispatch, userId, role }) {
                     {LEAD_STATUSES.map(s=><option key={s}>{s}</option>)}
                   </select>
                 </td>
-                <td className="mono" style={{fontSize:12}}>{l.nextFollowUp ? fmtDate(l.nextFollowUp) : "—"}</td>
+                <td className="mono" style={{fontSize:12}}>{fmtDateDMY(l.nextFollowUp)}</td>
                 <td style={{ display:"flex", gap:6, alignItems:"center", flexWrap:"wrap", minWidth:200 }}>
                   <button className="btn btn-sm" onClick={()=>openFollowUp(l)}>Log follow-up</button>
                   {l.status !== "Unqualified" && !state.deals.find(d=>d.leadId===l.id) &&
@@ -1677,7 +1677,7 @@ function LeadsPage({ state, dispatch, userId, role }) {
                     <span className="pill">{l.source}</span>
                     <span className="pill">{state.employees.find(t=>t.id===l.owner)?.initials}</span>
                   </div>
-                  {l.nextFollowUp && <div style={{ fontSize:11, color:"var(--ink-soft)", marginTop:6 }}>Next follow-up: <span className="mono">{fmtDate(l.nextFollowUp)}</span></div>}
+                  {l.nextFollowUp && <div style={{ fontSize:11, color:"var(--ink-soft)", marginTop:6 }}>Next follow-up: <span className="mono">{fmtDateDMY(l.nextFollowUp)}</span></div>}
                   <select value={l.status} onChange={e=>dispatch({type:"SET_LEAD_STATUS", id:l.id, status:e.target.value})}
                     style={{ width:"100%", marginTop:8, fontSize:12, border:"1px solid var(--hair)", borderRadius:8, padding:"5px 8px", background:"var(--surface)" }}>
                     {LEAD_STATUSES.map(s=><option key={s}>{s}</option>)}
@@ -1759,7 +1759,7 @@ function LeadsPage({ state, dispatch, userId, role }) {
                   </div>
                 </div>
 
-                {l.nextFollowUp && <div style={{ fontSize:12, color:"var(--ink-soft)", marginTop:10 }}>Next follow-up: <span className="mono">{fmtDate(l.nextFollowUp)}</span></div>}
+                {l.nextFollowUp && <div style={{ fontSize:12, color:"var(--ink-soft)", marginTop:10 }}>Next follow-up: <span className="mono">{fmtDateDMY(l.nextFollowUp)}</span></div>}
 
                 {(() => {
                   // Most recent follow-up's comment, shown right on the card — otherwise the only
@@ -1795,7 +1795,7 @@ function LeadsPage({ state, dispatch, userId, role }) {
                 <div key={f.id} style={{ fontSize:12.5, padding:"8px 0", borderBottom:"1px dashed var(--hair)" }}>
                   <div style={{ display:"flex", gap:8, alignItems:"center" }}>
                     <span className="pill">{f.outcome}</span>
-                    <span style={{ color:"var(--ink-soft)", fontSize:11.5 }}>{fmtDate(f.at)}</span>
+                    <span style={{ color:"var(--ink-soft)", fontSize:11.5 }}>{fmtDateDMY(f.at)}</span>
                   </div>
                   {f.note && <div style={{ marginTop:4 }}>{f.note}</div>}
                 </div>

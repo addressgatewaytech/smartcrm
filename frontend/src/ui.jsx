@@ -50,6 +50,14 @@ export const money = (n) => "QAR " + Number(n || 0).toLocaleString("en-US", { ma
 // the app assumed a date field would always be set, so this silently printed "01 Jan 1970" the
 // first time a genuinely-null one showed up (imported historical job cards with no target date).
 export const fmtDate = (s) => s ? new Date(s).toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"numeric" }) : "—";
+// Numeric dd/mm/yyyy variant — used for lead follow-up dates specifically, not a replacement for
+// fmtDate's "04 Aug 2026" style used everywhere else in the app.
+export const fmtDateDMY = (s) => {
+  if (!s) return "—";
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return "—";
+  return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`;
+};
 
 export function Stamp({ children, tone = "neutral" }) {
   return <span className={`stamp stamp-${tone}`}><span className="ring" />{children}</span>;
