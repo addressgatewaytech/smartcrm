@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Users, Handshake, FileText, UserCheck, ShoppingCart,
   Receipt, ClipboardList, Bell, Coins, UserCog, ListChecks, Building2,
   Plus, X, Check, ChevronRight, AlertTriangle, CircleDollarSign,
-  UserPlus, ShieldCheck, Ban, Clock, ArrowRight, Search, Mail,
+  UserPlus, ShieldCheck, Ban, Clock, ArrowRight, Search, Mail, Phone,
   BadgeCheck, CalendarClock, Briefcase, Copy, Files, Link2, Pencil, Trash2, Repeat, BarChart3, Download, MoreHorizontal, ChevronsLeft, ChevronsRight, Camera, Star,
   Database, Upload, MessageCircle, Recycle, ArchiveX, ShieldAlert, Settings as SettingsIcon,
   Sun, Moon, BookOpen
@@ -1574,6 +1574,7 @@ function LeadsPage({ state, dispatch, userId, role }) {
         <div className="tabbar" style={{ marginBottom:0, borderBottom:"none" }}>
           <button className={`tab ${view==="kanban"?"active":""}`} onClick={()=>setView("kanban")}>Kanban</button>
           <button className={`tab ${view==="table"?"active":""}`} onClick={()=>setView("table")}>Table</button>
+          <button className={`tab ${view==="card"?"active":""}`} onClick={()=>setView("card")}>Card</button>
         </div>
         <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
           <PeriodFilter period={period} setPeriod={setPeriod} customFrom={customFrom} setCustomFrom={setCustomFrom} customTo={customTo} setCustomTo={setCustomTo} />
@@ -1701,6 +1702,77 @@ function LeadsPage({ state, dispatch, userId, role }) {
         </div>
       )}
 
+      {view === "card" && (
+        <div>
+          {owned.length === 0 ? <Empty icon={Users} text="No leads yet. Add your first enquiry." /> : (
+          <div className="agw-grid" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
+            {pg.pageRows.map(l => (
+              // The whole card opens the follow-up log (with its full history) — the fastest path
+              // to "what's the story on this lead" — while every interactive control inside stops
+              // propagation so picking an owner/status or hitting a button doesn't also open it.
+              <div className="agw-card" key={l.id} style={{ cursor:"pointer" }} onClick={()=>openFollowUp(l)}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                  <div>
+                    <strong style={{ fontSize:14.5 }}>{l.name}</strong>
+                    <span className="mono" style={{ fontSize:11, color:"var(--ink-soft)", marginLeft:6 }}>{l.id}</span>
+                    <div style={{ fontSize:12.5, color:"var(--ink-soft)", marginTop:2 }}>{l.company}</div>
+                  </div>
+                  <RowActions onEdit={()=>openEdit(l)} onRemove={()=>setRemoveLead(l)} />
+                </div>
+
+                <div style={{ marginTop:10, display:"flex", flexDirection:"column", gap:5 }}>
+                  <div style={{ fontSize:13, display:"flex", alignItems:"center", gap:7 }}>
+                    <Mail size={13} style={{ color:"var(--ink-soft)", flexShrink:0 }}/> {l.email || "—"}
+                  </div>
+                  <div style={{ fontSize:13, display:"flex", alignItems:"center", gap:7 }}>
+                    <Phone size={13} style={{ color:"var(--ink-soft)", flexShrink:0 }}/> {l.phone || "—"}
+                  </div>
+                </div>
+
+                <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginTop:10 }}>
+                  <Stamp tone={originTone(leadOrigin(l))}>{leadOrigin(l)}</Stamp>
+                  <span className="pill">{l.source}</span>
+                  <span className="pill">{l.service}</span>
+                </div>
+
+                <div className="row2" style={{ marginTop:10 }}>
+                  <div>
+                    <div style={{ fontSize:10.5, color:"var(--ink-soft)", textTransform:"uppercase", letterSpacing:".03em" }}>Owner</div>
+                    <div style={{ marginTop:3 }} onClick={e=>e.stopPropagation()}>
+                      {isAdmin ? (
+                        <select value={l.owner || ""} onChange={e=>dispatch({type:"ASSIGN_LEAD", id:l.id, userId:e.target.value})}
+                          style={{ width:"100%", fontSize:12, border:"1px solid var(--hair)", borderRadius:8, padding:"4px 8px", background:"var(--page)" }}>
+                          {!l.owner && <option value="">— Unassigned —</option>}
+                          {assignableEmployees.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}
+                        </select>
+                      ) : <span style={{ fontSize:13 }}>{state.employees.find(t=>t.id===l.owner)?.name || "—"}</span>}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize:10.5, color:"var(--ink-soft)", textTransform:"uppercase", letterSpacing:".03em" }}>Status</div>
+                    <div style={{ marginTop:3 }} onClick={e=>e.stopPropagation()}>
+                      <select value={l.status} onChange={e=>dispatch({type:"SET_LEAD_STATUS", id:l.id, status:e.target.value})}
+                        style={{ width:"100%", fontSize:12, border:"1px solid var(--hair)", borderRadius:20, padding:"4px 8px", background:"var(--page)" }}>
+                        {LEAD_STATUSES.map(s=><option key={s}>{s}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {l.nextFollowUp && <div style={{ fontSize:12, color:"var(--ink-soft)", marginTop:10 }}>Next follow-up: <span className="mono">{fmtDate(l.nextFollowUp)}</span></div>}
+
+                <div style={{ display:"flex", gap:8, marginTop:10 }} onClick={e=>e.stopPropagation()}>
+                  <button className="btn btn-sm" style={{ flex:1 }} onClick={()=>openFollowUp(l)}>Log follow-up</button>
+                  {l.status !== "Unqualified" && !state.deals.find(d=>d.leadId===l.id) &&
+                    <button className="btn btn-sm" style={{ flex:1 }} onClick={()=>{ setConvert(l); setDealValue(15000); }}>Convert</button>}
+                </div>
+              </div>
+            ))}
+          </div>)}
+          <PaginationBar {...pg} />
+        </div>
+      )}
+
       {removeLead && <ConfirmModal title={`Remove lead ${removeLead.id}?`} body={`${removeLead.company} — ${removeLead.name}. This can't be undone.`} onConfirm={()=>dispatch({type:"DELETE_LEAD", id:removeLead.id})} onClose={()=>setRemoveLead(null)} />}
 
       {followFor && (
@@ -1815,6 +1887,7 @@ function DealsPage({ state, dispatch, setPage, onViewQuotation, role, userId }) 
         <div className="tabbar" style={{ marginBottom:0, borderBottom:"none" }}>
           <button className={`tab ${view==="kanban"?"active":""}`} onClick={()=>setView("kanban")}>Kanban</button>
           <button className={`tab ${view==="table"?"active":""}`} onClick={()=>setView("table")}>Table</button>
+          <button className={`tab ${view==="card"?"active":""}`} onClick={()=>setView("card")}>Card</button>
         </div>
         <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
           <PeriodFilter period={period} setPeriod={setPeriod} customFrom={customFrom} setCustomFrom={setCustomFrom} customTo={customTo} setCustomTo={setCustomTo} />
@@ -1916,6 +1989,80 @@ function DealsPage({ state, dispatch, setPage, onViewQuotation, role, userId }) 
           </div>
         ))}
       </div>
+      )}
+
+      {view === "card" && (
+        <div>
+          {deals.length === 0 ? <Empty icon={Handshake} text="No deals yet. Convert a lead to get started." /> : (
+          <div className="agw-grid" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
+            {pg.pageRows.map(d => {
+              // Deals only store the customer's name, not their contact details — those live on
+              // the linked Customer profile, looked up by id (or by name for older deals from
+              // before customer_id existed).
+              const customer = (d.customerId ? state.customers.find(c=>c.id===d.customerId) : null) || state.customers.find(c=>c.name===d.customer);
+              return (
+              <div className="agw-card" key={d.id}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                  <div>
+                    <strong style={{ fontSize:14.5 }}>{d.customer}</strong>
+                    <span className="mono" style={{ fontSize:11, color:"var(--ink-soft)", marginLeft:6 }}>{d.id}</span>
+                    <div style={{ fontSize:12.5, color:"var(--ink-soft)", marginTop:2 }}>{d.service}</div>
+                  </div>
+                  <RowActions onEdit={()=>setEditDeal(d)} onRemove={()=>setRemoveDeal(d)} />
+                </div>
+
+                <div style={{ marginTop:10, display:"flex", flexDirection:"column", gap:5 }}>
+                  <div style={{ fontSize:13, display:"flex", alignItems:"center", gap:7 }}>
+                    <Mail size={13} style={{ color:"var(--ink-soft)", flexShrink:0 }}/> {customer?.email || "—"}
+                  </div>
+                  <div style={{ fontSize:13, display:"flex", alignItems:"center", gap:7 }}>
+                    <Phone size={13} style={{ color:"var(--ink-soft)", flexShrink:0 }}/> {customer?.phone || "—"}
+                  </div>
+                </div>
+
+                <div style={{ display:"flex", gap:6, flexWrap:"wrap", alignItems:"center", marginTop:10 }}>
+                  <Stamp tone={originTone(dealOrigin(state, d))}>{dealOrigin(state, d)}</Stamp>
+                  <strong className="mono" style={{fontSize:13.5}}>{money(d.value)}</strong>
+                </div>
+
+                <div className="row2" style={{ marginTop:10 }}>
+                  <div>
+                    <div style={{ fontSize:10.5, color:"var(--ink-soft)", textTransform:"uppercase", letterSpacing:".03em" }}>Owner</div>
+                    <div style={{ marginTop:3 }}>
+                      {isAdmin ? (
+                        <select value={d.owner || ""} onChange={e=>dispatch({type:"UPDATE_DEAL", id:d.id, payload:{owner:e.target.value}})}
+                          style={{ width:"100%", fontSize:12, border:"1px solid var(--hair)", borderRadius:8, padding:"4px 8px", background:"var(--page)" }}>
+                          {!d.owner && <option value="">— Unassigned —</option>}
+                          {assignableEmployees.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}
+                        </select>
+                      ) : <span style={{ fontSize:13 }}>{state.employees.find(t=>t.id===d.owner)?.name || "—"}</span>}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize:10.5, color:"var(--ink-soft)", textTransform:"uppercase", letterSpacing:".03em" }}>Stage</div>
+                    <div style={{ marginTop:3 }}>
+                      <select value={d.stage} onChange={e=>dispatch({type:"UPDATE_DEAL", id:d.id, payload:{stage:e.target.value}})}
+                        style={{ width:"100%", fontSize:12, border:"1px solid var(--hair)", borderRadius:20, padding:"4px 8px", background:"var(--page)" }}>
+                        {stages.map(s=><option key={s}>{s}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ fontSize:12, color:"var(--ink-soft)", marginTop:10 }}>Expected close: <span className="mono">{fmtDate(d.expectedClose)}</span></div>
+
+                <div style={{ display:"flex", gap:8, marginTop:10 }}>
+                  {d.stage === "Open" && !state.quotations.find(q=>q.dealId===d.id) &&
+                    <button className="btn btn-sm" style={{ flex:1 }} onClick={()=>setQuoteFor(d)}>Create quotation</button>}
+                  {state.quotations.find(q=>q.dealId===d.id) &&
+                    <button className="btn btn-sm btn-ghost" style={{ flex:1 }} onClick={()=>viewQuotationFor(d)}>View quotation</button>}
+                </div>
+              </div>
+              );
+            })}
+          </div>)}
+          <PaginationBar {...pg} />
+        </div>
       )}
 
       {quoteFor && <QuoteBuilderModal dealId={quoteFor.id} customerName={quoteFor.customer} defaultService={quoteFor.service} services={state.services} dispatch={dispatch} templates={state.quotationTemplates} role={role} employees={state.employees} defaultOwner={quoteFor.owner} onClose={()=>setQuoteFor(null)} />}

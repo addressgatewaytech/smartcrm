@@ -290,7 +290,7 @@ export function RowActions({ onEdit, onRemove }) {
 export function TableScrollHint() {
   useEffect(() => {
     const buttons = new Map(); // scrollable element -> { left, right } floating buttons
-    let raf = null;
+    let syncTimer = null;
 
     // Most tables wrap themselves in an explicit `<div style={{overflowX:"auto"}}>` that becomes
     // the actual scroll container long before `.agw-card` itself ever needs to overflow — a few
@@ -305,26 +305,33 @@ export function TableScrollHint() {
       return null;
     };
 
+    // The fixed topbar (~60px) sits above .agw-content, which is what actually scrolls vertically
+    // — so as a long list scrolls down and the table's own top edge rises above the topbar's
+    // bottom edge, 8px-from-window-top would place the button (and the visibility sample point)
+    // underneath the topbar instead of over the table. Clamping to the topbar's bottom edge is
+    // what makes the button follow the list down the page instead of getting stuck there, hidden.
+    const minVisibleTop = () => (document.querySelector(".agw-topbar")?.getBoundingClientRect().bottom ?? 0) + 8;
+
     // A plain viewport-bounds check isn't enough — the table stays in the DOM (and "on screen" by
     // that measure) even while something unrelated is drawn over it, like the mobile nav's "More"
     // sheet or a modal opened from a different part of the page. Sampling what's actually drawn at
     // the middle of the table's visible top edge catches that (deliberately clear of both corner
     // buttons, so neither one ever hides itself by sampling its own pixel).
-    const isActuallyVisible = (el, rect) => {
-      const inBounds = rect.bottom > 0 && rect.top < window.innerHeight && rect.right > 0 && rect.left < window.innerWidth;
+    const isActuallyVisible = (el, rect, sampleY) => {
+      const inBounds = rect.bottom > sampleY - 8 && rect.top < window.innerHeight && rect.right > 0 && rect.left < window.innerWidth;
       if (!inBounds) return false;
       const visLeft = Math.max(rect.left, 0);
       const visRight = Math.min(rect.right, window.innerWidth);
       const x = (visLeft + visRight) / 2;
-      const y = Math.max(rect.top, 0) + 8;
-      const topEl = document.elementFromPoint(x, y);
+      const topEl = document.elementFromPoint(x, sampleY);
       return !!topEl && el.contains(topEl);
     };
 
     const positionButtons = (el, pair) => {
       const rect = el.getBoundingClientRect();
-      const visible = isActuallyVisible(el, rect);
-      const top = `${Math.max(8, rect.top + 8)}px`;
+      const sampleY = Math.max(rect.top, minVisibleTop() - 8) + 8;
+      const visible = isActuallyVisible(el, rect, sampleY);
+      const top = `${sampleY}px`;
 
       pair.right.style.top = top;
       pair.right.style.left = `${rect.right - 38}px`;
@@ -382,9 +389,12 @@ export function TableScrollHint() {
       }
     };
 
+    // A timer (not requestAnimationFrame) — rAF is fully suspended by the browser while the tab is
+    // backgrounded/hidden, which would silently stop every re-sync (including the very first one)
+    // until the tab regains focus. A short timeout still fires either way.
     const scheduleSync = () => {
-      if (raf) return;
-      raf = requestAnimationFrame(() => { raf = null; sync(); });
+      if (syncTimer) return;
+      syncTimer = setTimeout(() => { syncTimer = null; sync(); }, 16);
     };
 
     scheduleSync();
@@ -397,7 +407,7 @@ export function TableScrollHint() {
       mo.disconnect();
       window.removeEventListener("resize", scheduleSync);
       window.removeEventListener("scroll", scheduleSync, true);
-      if (raf) cancelAnimationFrame(raf);
+      if (syncTimer) clearTimeout(syncTimer);
       for (const pair of buttons.values()) { pair.left.remove(); pair.right.remove(); }
     };
   }, []);
