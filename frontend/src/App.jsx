@@ -1678,7 +1678,7 @@ function LeadsPage({ state, dispatch, userId, role }) {
           <thead><tr><th>Lead</th><th>Created</th><th>Company</th><th>Service</th><th>Lead type</th><th>Source</th><th>Reference</th><th>Owner</th><th>Status</th><th>Next follow-up</th><th></th></tr></thead>
           <tbody>
             {pg.pageRows.map(l => (
-              <tr key={l.id}>
+              <tr key={l.id} style={l.status === "Converted" ? { background: "var(--success-tint)" } : undefined}>
                 <td>{l.name}
                   <div className="mono" style={{fontSize:11,color:"var(--ink-soft)"}}>{l.id}</div>
                   {l.email && <div style={{fontSize:11,color:"var(--ink-soft)"}}>{l.email}</div>}
@@ -2000,7 +2000,7 @@ function DealsPage({ state, dispatch, setPage, onViewQuotation, role, userId }) 
             <thead><tr><th>Customer</th><th>Created</th><th>Service</th><th>Value</th><th>Lead type</th><th>Owner</th><th>Stage</th><th>Expected close</th><th></th></tr></thead>
             <tbody>
               {pg.pageRows.map(d => (
-                <tr key={d.id}>
+                <tr key={d.id} style={d.stage === "Won" ? { background: "var(--success-tint)" } : undefined}>
                   <td>{d.customer}<div className="mono" style={{fontSize:11,color:"var(--ink-soft)"}}>{d.id}</div></td>
                   <td className="mono" style={{fontSize:12}}>{fmtDate(d.createdAt)}</td>
                   <td style={{maxWidth:200}}>{d.service}</td>

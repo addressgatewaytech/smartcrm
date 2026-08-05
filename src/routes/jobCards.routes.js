@@ -11,7 +11,10 @@ router.use(requireAuth);
 
 router.get("/", async (req, res) => {
   const isOpsMember = req.user.roles.includes("ops_member") && !isAdminLike(req.user.roles) && !req.user.roles.includes("ops_manager");
-  const isSalesExecOnly = req.user.roles.includes("sales_exec") && !isAdminLike(req.user.roles) && !req.user.roles.includes("sales_manager");
+  // Excludes ops_manager too — someone tagged both ops_manager and sales_exec (an Operations
+  // Manager who also carries a sales role) still needs to see every job card, not just the ones
+  // tied to their own quotations.
+  const isSalesExecOnly = req.user.roles.includes("sales_exec") && !isAdminLike(req.user.roles) && !req.user.roles.includes("sales_manager") && !req.user.roles.includes("ops_manager");
   // Traces each job card back through its sales order -> quotation -> deal -> lead to find who
   // originally brought in the business — distinct from job_cards.created_by, which is whoever
   // triggered onboarding/direct-creation, not necessarily the original lead owner. Job cards
