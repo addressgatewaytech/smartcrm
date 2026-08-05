@@ -34,6 +34,11 @@ const INK = "#151A1F";
 const DARK_BG = "#2A2E33";
 const HAIR = "#E1E6E8";
 const LIGHT_BG = "#F5F6F6";
+// Light background bands so a Government Fee section and a Professional Fee section are visually
+// obvious at a glance — must match the hex values in App.jsx's GOV_FEE_BG/PROF_FEE_BG exactly, so
+// the PDF preview ("exactly what the client receives") isn't lying about what the client gets.
+const GOV_FEE_BG = "#E7F0FB";
+const PROF_FEE_BG = "#EAF7EF";
 
 // Quotation color themes — selectable per quotation (quotations.theme). Each controls the table
 // header band, the shaded Total row, and the section headings (Terms & Conditions, Bank Account
@@ -166,14 +171,31 @@ function generateQuotationPdf(quotation, res) {
     }
   };
 
+  // Classification for both the light background band behind each line and the Government Fee
+  // Total / Professional Fee Total split below. Trusts a line's own feeType when it's actually
+  // set; only when it's blank does it fall back to matching "government"/"professional" in the
+  // line's category text, and finally to the quotation's whole-document fee type for a line with
+  // neither — covers older quotations/templates whose items were never individually tagged.
+  const isGovFeeItem = (it) => {
+    if (it.feeType) return it.feeType === "Government Fee";
+    const cat = (it.category || "").toLowerCase();
+    if (cat.includes("government")) return true;
+    if (cat.includes("professional")) return false;
+    return (quotation.fee_type || quotation.feeType || "Professional Fee") === "Government Fee";
+  };
+  const bandColor = (it) => (isGovFeeItem(it) ? GOV_FEE_BG : PROF_FEE_BG);
+
   y = drawTableHeader(doc, y, colX, tableRight, theme.headerBg);
   let lastCategory = null;
   let rowNumber = 0;
   items.forEach((it) => {
     if ((it.category || "") && it.category !== lastCategory) {
       ensureTableRoom(20);
+      const headerTop = y;
       doc.font("Inter-SemiBold").fontSize(9.5).fillColor(INK).text(it.category, MARGIN, y + 6, { width: tableRight - MARGIN });
       y = doc.y + 4;
+      doc.rect(MARGIN, headerTop, tableRight - MARGIN, y - headerTop).fill(bandColor(it));
+      doc.font("Inter-SemiBold").fontSize(9.5).fillColor(INK).text(it.category, MARGIN, headerTop + 6, { width: tableRight - MARGIN });
       doc.moveTo(MARGIN, y).lineTo(tableRight, y).strokeColor(HAIR).stroke();
       y += 4;
       lastCategory = it.category;
@@ -186,6 +208,7 @@ function generateQuotationPdf(quotation, res) {
     const rowHeight = Math.max(18, descHeight + noteHeight + 8);
 
     ensureTableRoom(rowHeight);
+    doc.rect(MARGIN, y, tableRight - MARGIN, rowHeight).fill(bandColor(it));
     doc.font("Inter").fontSize(9.5).fillColor(INK).text(String(rowNumber), colX.idx + 5, y + 6, { width: colX.desc - colX.idx - 10 });
     doc.text(descText, colX.desc, y + 6, { width: descWidth });
     if (it.note) {
@@ -200,33 +223,24 @@ function generateQuotationPdf(quotation, res) {
   y += 12;
 
   // --- Government Fee Total / Professional Fee Total / Sub Total / Discount / Total -------------
-  // Pre-discount split, classified from the item's own category text (what's actually grouped on
-  // the document) rather than the separate per-item feeType field — that field is only ever set
-  // via Quotation Templates, so a manually built or hand-edited quotation has it blank on every
-  // item and it silently falls back to whatever the template happened to tag, which doesn't
-  // necessarily match how the items are actually grouped here. A blank category (no per-item
-  // grouping at all, typical of a standalone single-type quotation) falls back to the quotation's
-  // whole-document fee type.
-  const isGovFeeItem = (it) => {
-    const cat = (it.category || "").toLowerCase();
-    if (cat.includes("government")) return true;
-    if (cat.includes("professional")) return false;
-    return (quotation.fee_type || quotation.feeType || "Professional Fee") === "Government Fee";
-  };
+  // Pre-discount split, ordered to match whichever classification actually appears first among
+  // the items — so reordering the line items also reorders the two totals underneath them.
   const govFeeTotal = items.filter(isGovFeeItem).reduce((a, it) => a + (Number(it.qty) || 0) * (Number(it.price) || 0) * (1 - (Number(it.discountPct) || 0) / 100), 0);
   const profFeeTotal = subtotal - govFeeTotal;
+  const firstGovIdx = items.findIndex(isGovFeeItem);
+  const firstProfIdx = items.findIndex((it) => !isGovFeeItem(it));
+  const govFirst = firstGovIdx !== -1 && (firstProfIdx === -1 || firstGovIdx < firstProfIdx);
   ensureRoom(102);
   const totalsWidth = 220;
   const totalsX = tableRight - totalsWidth;
-  if (govFeeTotal > 0) {
-    doc.font("Inter").fontSize(9.5).fillColor(GRAY).text("Government Fee Total", totalsX, y, { width: 110 });
-    doc.font("Inter").fontSize(9.5).fillColor(INK).text(money2(govFeeTotal), totalsX + 110, y, { width: totalsWidth - 110, align: "right" });
+  const drawFeeTotalLine = (label, amount) => {
+    doc.font("Inter").fontSize(9.5).fillColor(GRAY).text(label, totalsX, y, { width: 110 });
+    doc.font("Inter").fontSize(9.5).fillColor(INK).text(money2(amount), totalsX + 110, y, { width: totalsWidth - 110, align: "right" });
     y += 16;
-  }
-  if (profFeeTotal > 0) {
-    doc.font("Inter").fontSize(9.5).fillColor(GRAY).text("Professional Fee Total", totalsX, y, { width: 110 });
-    doc.font("Inter").fontSize(9.5).fillColor(INK).text(money2(profFeeTotal), totalsX + 110, y, { width: totalsWidth - 110, align: "right" });
-    y += 16;
+  };
+  if (govFeeTotal > 0 && profFeeTotal > 0) {
+    if (govFirst) { drawFeeTotalLine("Government Fee Total", govFeeTotal); drawFeeTotalLine("Professional Fee Total", profFeeTotal); }
+    else { drawFeeTotalLine("Professional Fee Total", profFeeTotal); drawFeeTotalLine("Government Fee Total", govFeeTotal); }
   }
   doc.font("Inter").fontSize(9.5).fillColor(GRAY).text("Sub Total", totalsX, y, { width: 110 });
   doc.font("Inter").fontSize(9.5).fillColor(INK).text(money2(subtotal), totalsX + 110, y, { width: totalsWidth - 110, align: "right" });

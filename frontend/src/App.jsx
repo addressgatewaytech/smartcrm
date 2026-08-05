@@ -5,7 +5,7 @@ import { useApiStore } from "./store";
 import {
   LayoutDashboard, Users, Handshake, FileText, UserCheck, ShoppingCart,
   Receipt, ClipboardList, Bell, Coins, UserCog, ListChecks, Building2,
-  Plus, X, Check, ChevronRight, AlertTriangle, CircleDollarSign,
+  Plus, X, Check, ChevronRight, ChevronUp, ChevronDown, AlertTriangle, CircleDollarSign,
   UserPlus, ShieldCheck, Ban, Clock, ArrowRight, Search, Mail, Phone,
   BadgeCheck, CalendarClock, Briefcase, Copy, Files, Link2, Pencil, Trash2, Repeat, BarChart3, Download, MoreHorizontal, ChevronsLeft, ChevronsRight, Camera, Star,
   Database, Upload, MessageCircle, Recycle, ArchiveX, ShieldAlert, Settings as SettingsIcon,
@@ -390,6 +390,76 @@ const quotationFeeTypeLabel = (q) => {
 const quotationFeeTypeTone = (q) => {
   const label = quotationFeeTypeLabel(q);
   return label === "Government Fee" ? "neutral" : label === "Professional + Government Fee" ? "info" : "success";
+};
+
+// Light background bands so a Government Fee section and a Professional Fee section are visually
+// obvious at a glance — in the builder, the templates editor, the "Current view" tab, the PDF
+// preview, and the actual generated PDF (see the matching hex values in quotationPdf.js). Chosen
+// to sit clearly apart from all three quotation themes' own tint colors (gray/teal/gold).
+const GOV_FEE_BG = "#E7F0FB";
+const PROF_FEE_BG = "#EAF7EF";
+
+// Shared classification for the Government Fee Total / Professional Fee Total split shown on a
+// quotation document — distinct from professionalFeeAmount above, which drives business volume/
+// incentive math and is deliberately left untouched. Trusts a line's own feeType when it's
+// actually set; only when it's blank does it fall back to matching "government"/"professional" in
+// the line's category text, and finally to the quotation's whole-document fee type for a line with
+// neither — covers older quotations/templates whose items were never individually tagged.
+const isGovFeeLine = (it, quotationFeeType) => {
+  if (it.feeType) return it.feeType === "Government Fee";
+  const cat = (it.category || "").toLowerCase();
+  if (cat.includes("government")) return true;
+  if (cat.includes("professional")) return false;
+  return (quotationFeeType || "Professional Fee") === "Government Fee";
+};
+
+// Category-ordered split of a line-item list's total. The two totals are ordered to match
+// whichever classification actually appears first among the items, so reordering items in the
+// builder/template editor also reorders the totals shown underneath them.
+const govProfSplit = (items, quotationFeeType) => {
+  const lineAmount = (it) => it.qty * it.price * (1 - (it.discountPct || 0) / 100);
+  const subtotal = items.reduce((a, it) => a + lineAmount(it), 0);
+  const govTotal = items.filter(it => isGovFeeLine(it, quotationFeeType)).reduce((a, it) => a + lineAmount(it), 0);
+  const profTotal = subtotal - govTotal;
+  const firstGovIdx = items.findIndex(it => isGovFeeLine(it, quotationFeeType));
+  const firstProfIdx = items.findIndex(it => !isGovFeeLine(it, quotationFeeType));
+  const govFirst = firstGovIdx !== -1 && (firstProfIdx === -1 || firstGovIdx < firstProfIdx);
+  return { subtotal, govTotal, profTotal, govFirst };
+};
+
+// Moves array element `i` up (dir=-1) or down (dir=1) by one position — used for the per-line
+// "move item" controls in the quotation builder and templates editor.
+const moveArrayItem = (arr, i, dir) => {
+  const j = i + dir;
+  if (j < 0 || j >= arr.length) return arr;
+  const next = arr.slice();
+  [next[i], next[j]] = [next[j], next[i]];
+  return next;
+};
+
+// Moves an entire category block (every consecutive item sharing the same category text as index
+// `i`) up or down past the adjacent block — "move category" as one action instead of dragging
+// every line in it one at a time. Items with no category (category "") are each their own
+// single-item block, same as items already are without this.
+const moveCategoryBlock = (arr, i, dir) => {
+  const cat = arr[i].category || "";
+  let start = i, end = i;
+  while (start > 0 && (arr[start - 1].category || "") === cat) start--;
+  while (end < arr.length - 1 && (arr[end + 1].category || "") === cat) end++;
+  const block = arr.slice(start, end + 1);
+  if (dir < 0) {
+    if (start === 0) return arr;
+    const prevCat = arr[start - 1].category || "";
+    let prevStart = start - 1;
+    while (prevStart > 0 && (arr[prevStart - 1].category || "") === prevCat) prevStart--;
+    return [...arr.slice(0, prevStart), ...block, ...arr.slice(prevStart, start), ...arr.slice(end + 1)];
+  } else {
+    if (end === arr.length - 1) return arr;
+    const nextCat = arr[end + 1].category || "";
+    let nextEnd = end + 1;
+    while (nextEnd < arr.length - 1 && (arr[nextEnd + 1].category || "") === nextCat) nextEnd++;
+    return [...arr.slice(0, start), ...arr.slice(end + 1, nextEnd + 1), ...block, ...arr.slice(nextEnd + 1)];
+  }
 };
 
 // Where a record originally came from. "Assigned" = the Lead Manager handed this lead to its owner
@@ -2339,7 +2409,17 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
       <div className="field"><label>Subject</label><input value={subject} onChange={e=>setSubject(e.target.value)} placeholder="e.g. 100% FOREIGN OWNERSHIP COMPANY FORMATION - Government Fees" /></div>
 
       {items.map((it, i) => (
-        <div key={i} className="agw-card" style={{ marginBottom: 10, padding: 12 }}>
+        <div key={i} className="agw-card" style={{ marginBottom: 10, padding: 12, background: isGovFeeLine(it) ? GOV_FEE_BG : PROF_FEE_BG }}>
+          <div style={{ display:"flex", justifyContent:"flex-end", gap:4, marginBottom: 6 }}>
+            <button type="button" className="btn btn-sm btn-ghost" title="Move category up" disabled={i===0}
+              onClick={()=>setItems(moveCategoryBlock(items, i, -1))}><ChevronUp size={13}/><ChevronUp size={13} style={{marginLeft:-8}}/></button>
+            <button type="button" className="btn btn-sm btn-ghost" title="Move category down" disabled={i===items.length-1}
+              onClick={()=>setItems(moveCategoryBlock(items, i, 1))}><ChevronDown size={13}/><ChevronDown size={13} style={{marginLeft:-8}}/></button>
+            <button type="button" className="btn btn-sm btn-ghost" title="Move item up" disabled={i===0}
+              onClick={()=>setItems(moveArrayItem(items, i, -1))}><ChevronUp size={13}/></button>
+            <button type="button" className="btn btn-sm btn-ghost" title="Move item down" disabled={i===items.length-1}
+              onClick={()=>setItems(moveArrayItem(items, i, 1))}><ChevronDown size={13}/></button>
+          </div>
           <div className="row2">
             <div className="field"><label>Category / stage</label>
               <input value={it.category || ""} onChange={e=>update(i,"category",e.target.value)} placeholder="e.g. STAGE - 1 : GOVERNMENT FEES" />
@@ -2350,8 +2430,16 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
               </select>
             </div>
           </div>
-          <div className="field"><label>Item & description</label>
-            <input value={it.description || ""} onChange={e=>update(i,"description",e.target.value)} placeholder="e.g. Issue New CR" />
+          <div className="row2">
+            <div className="field"><label>Item & description</label>
+              <input value={it.description || ""} onChange={e=>update(i,"description",e.target.value)} placeholder="e.g. Issue New CR" />
+            </div>
+            <div className="field"><label>Fee type</label>
+              <select value={it.feeType || ""} onChange={e=>update(i,"feeType",e.target.value)}>
+                <option value="">Auto (from category text)</option>
+                {FEE_TYPES.map(ft=><option key={ft} value={ft}>{ft}</option>)}
+              </select>
+            </div>
           </div>
           <div className="field"><label>Note (optional — small text under the item)</label>
             <input value={it.note || ""} onChange={e=>update(i,"note",e.target.value)} placeholder="e.g. 50 QAR per partner" />
@@ -2599,6 +2687,7 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
   const cq = { ...q, ...content };
   const subtotal = cq.items.reduce((a,it)=>a+it.qty*it.price*(1-(it.discountPct||0)/100),0);
   const total = Math.max(0, subtotal - (cq.orderDiscount||0));
+  const govProfSplitCq = govProfSplit(cq.items, q.feeType);
   const hasDiscount = cq.items.some(it=>it.discountPct>0) || (cq.orderDiscount||0) > 0;
   const myDesignation = state?.employees.find(e=>e.id===userId)?.designation;
   const assignedApproverDesignations = (state?.approvalTypes||[]).find(t=>t.key==="quotation_approval")?.approverDesignations || [];
@@ -2684,20 +2773,48 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
             </div>
           )}
 
-          <table className="agw-table" style={{ marginTop: 12 }}>
-            <thead><tr><th>Category</th><th>Item & description</th><th>Qty</th><th>Rate</th><th>Disc.</th><th>Amount</th></tr></thead>
-            <tbody>
-              {cq.items.map((it,i)=>(
-                <tr key={i}>
-                  <td style={{fontSize:11.5, color:"var(--ink-soft)"}}>{it.category || "—"}</td>
-                  <td>{it.description || it.service}{it.note && <div style={{fontSize:11, color:"var(--ink-soft)"}}>{it.note}</div>}</td>
-                  <td>{it.qty}</td><td className="mono">{money(it.price)}</td>
-                  <td>{it.discountPct||0}%</td><td className="mono">{money(it.qty*it.price*(1-(it.discountPct||0)/100))}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div style={{ textAlign:"right", marginTop: 10, fontSize:13, color:"var(--ink-soft)" }}>Sub Total: <span className="mono">{money(subtotal)}</span></div>
+          {(() => {
+            let lastCategory = null;
+            return (
+            <table className="agw-table" style={{ marginTop: 12 }}>
+              <thead><tr><th>Category</th><th>Item & description</th><th>Qty</th><th>Rate</th><th>Disc.</th><th>Amount</th></tr></thead>
+              <tbody>
+                {cq.items.map((it,i) => {
+                  const bg = isGovFeeLine(it, q.feeType) ? GOV_FEE_BG : PROF_FEE_BG;
+                  const showHeader = (it.category || "") !== lastCategory && it.category;
+                  lastCategory = it.category || lastCategory;
+                  return (
+                    <React.Fragment key={i}>
+                      {showHeader && (
+                        <tr style={{ background: bg }}>
+                          <td colSpan={6} style={{ fontWeight:600, fontSize:11.5 }}>{it.category}</td>
+                        </tr>
+                      )}
+                      <tr style={{ background: bg }}>
+                        <td style={{fontSize:11.5, color:"var(--ink-soft)"}}>{it.category || "—"}</td>
+                        <td>{it.description || it.service}{it.note && <div style={{fontSize:11, color:"var(--ink-soft)"}}>{it.note}</div>}</td>
+                        <td>{it.qty}</td><td className="mono">{money(it.price)}</td>
+                        <td>{it.discountPct||0}%</td><td className="mono">{money(it.qty*it.price*(1-(it.discountPct||0)/100))}</td>
+                      </tr>
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+            );
+          })()}
+          {govProfSplitCq.govTotal > 0 && govProfSplitCq.profTotal > 0 && (govProfSplitCq.govFirst ? (
+            <>
+              <div style={{ textAlign:"right", marginTop: 10, fontSize:13, color:"var(--ink-soft)" }}>Government Fee Total: <span className="mono">{money(govProfSplitCq.govTotal)}</span></div>
+              <div style={{ textAlign:"right", marginTop: 2, fontSize:13, color:"var(--ink-soft)" }}>Professional Fee Total: <span className="mono">{money(govProfSplitCq.profTotal)}</span></div>
+            </>
+          ) : (
+            <>
+              <div style={{ textAlign:"right", marginTop: 10, fontSize:13, color:"var(--ink-soft)" }}>Professional Fee Total: <span className="mono">{money(govProfSplitCq.profTotal)}</span></div>
+              <div style={{ textAlign:"right", marginTop: 2, fontSize:13, color:"var(--ink-soft)" }}>Government Fee Total: <span className="mono">{money(govProfSplitCq.govTotal)}</span></div>
+            </>
+          ))}
+          <div style={{ textAlign:"right", marginTop: (govProfSplitCq.govTotal > 0 && govProfSplitCq.profTotal > 0) ? 2 : 10, fontSize:13, color:"var(--ink-soft)" }}>Sub Total: <span className="mono">{money(subtotal)}</span></div>
           {(cq.orderDiscount||0) > 0 && <div style={{ textAlign:"right", marginTop: 2, fontSize:13, color:"var(--ink-soft)" }}>Discount: <span className="mono">(-) {money(cq.orderDiscount)}</span></div>}
           <div style={{ textAlign:"right", marginTop: 4, fontSize: 15 }}><strong>Total: <span className="mono">{money(total)}</span></strong></div>
           {cq.terms && <div className="side-note">{cq.terms}</div>}
@@ -2791,30 +2908,17 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
         let runningNumber = 0;
         const rows = [];
         src.items.forEach((it, i) => {
+          const bg = isGovFeeLine(it, q.feeType) ? GOV_FEE_BG : PROF_FEE_BG;
           if ((it.category || "") !== lastCategory && it.category) {
-            rows.push({ kind: "category", label: it.category, key: "cat-"+i });
+            rows.push({ kind: "category", label: it.category, key: "cat-"+i, bg });
             lastCategory = it.category;
           }
           runningNumber++;
-          rows.push({ kind: "item", it, number: runningNumber, idx: i, key: "item-"+i });
+          rows.push({ kind: "item", it, number: runningNumber, idx: i, key: "item-"+i, bg });
         });
         const pdfSubtotal = src.items.reduce((a,it)=>a+it.qty*it.price*(1-(it.discountPct||0)/100),0);
         const pdfTotal = Math.max(0, pdfSubtotal - (src.orderDiscount||0));
-        // Pre-discount split by fee type. Classified from the item's own category text (what a
-        // salesperson actually types and sees grouped on the document), not the separate per-item
-        // feeType field — that field is only ever set via Quotation Templates, so a manually built
-        // or hand-edited quotation has it blank on every item and it silently falls back to
-        // whatever the template happened to tag, which doesn't necessarily match how the items are
-        // actually grouped here. A category left blank (no per-item grouping at all, typical of a
-        // standalone single-type quotation) falls back to the quotation's whole-document fee type.
-        const isGovFeeItem = (it) => {
-          const cat = (it.category || "").toLowerCase();
-          if (cat.includes("government")) return true;
-          if (cat.includes("professional")) return false;
-          return (q.feeType || "Professional Fee") === "Government Fee";
-        };
-        const pdfGovFeeTotal = src.items.filter(isGovFeeItem).reduce((a,it)=>a+it.qty*it.price*(1-(it.discountPct||0)/100),0);
-        const pdfProfFeeTotal = pdfSubtotal - pdfGovFeeTotal;
+        const pdfSplit = govProfSplit(src.items, q.feeType);
         const termLines = (src.terms || "").split("\n").map(t=>t.trim()).filter(Boolean);
         const noteLines = (src.notes || "").split("\n").map(t=>t.trim()).filter(Boolean);
 
@@ -2884,9 +2988,9 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
               </thead>
               <tbody>
                 {rows.map(r => r.kind === "category" ? (
-                  <tr key={r.key}><td colSpan={editingNow ? 6 : 4} style={{ padding:"9px 10px", fontWeight:600, fontSize:12, borderBottom:"1px solid var(--hair)" }}>{r.label}</td></tr>
+                  <tr key={r.key} style={{ background:r.bg }}><td colSpan={editingNow ? 6 : 4} style={{ padding:"9px 10px", fontWeight:600, fontSize:12, borderBottom:"1px solid var(--hair)" }}>{r.label}</td></tr>
                 ) : (
-                  <tr key={r.key} style={{ borderBottom:"1px solid var(--hair)" }}>
+                  <tr key={r.key} style={{ borderBottom:"1px solid var(--hair)", background:r.bg }}>
                     <td style={{ padding:"9px 10px", verticalAlign:"top" }}>{r.number}</td>
                     <td style={{ padding:"9px 10px" }}>
                       {editingNow ? (
@@ -2933,12 +3037,17 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
             <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:24 }}>
               <table style={{ fontSize:13 }}>
                 <tbody>
-                  {pdfGovFeeTotal > 0 && (
-                    <tr><td style={{ padding:"4px 16px 4px 0", color:"var(--ink-soft)" }}>Government Fee Total</td><td className="mono" style={{ padding:"4px 0", textAlign:"right" }}>{pdfGovFeeTotal.toFixed(2)}</td></tr>
-                  )}
-                  {pdfProfFeeTotal > 0 && (
-                    <tr><td style={{ padding:"4px 16px 4px 0", color:"var(--ink-soft)" }}>Professional Fee Total</td><td className="mono" style={{ padding:"4px 0", textAlign:"right" }}>{pdfProfFeeTotal.toFixed(2)}</td></tr>
-                  )}
+                  {pdfSplit.govTotal > 0 && pdfSplit.profTotal > 0 && (pdfSplit.govFirst ? (
+                    <>
+                      <tr><td style={{ padding:"4px 16px 4px 0", color:"var(--ink-soft)" }}>Government Fee Total</td><td className="mono" style={{ padding:"4px 0", textAlign:"right" }}>{pdfSplit.govTotal.toFixed(2)}</td></tr>
+                      <tr><td style={{ padding:"4px 16px 4px 0", color:"var(--ink-soft)" }}>Professional Fee Total</td><td className="mono" style={{ padding:"4px 0", textAlign:"right" }}>{pdfSplit.profTotal.toFixed(2)}</td></tr>
+                    </>
+                  ) : (
+                    <>
+                      <tr><td style={{ padding:"4px 16px 4px 0", color:"var(--ink-soft)" }}>Professional Fee Total</td><td className="mono" style={{ padding:"4px 0", textAlign:"right" }}>{pdfSplit.profTotal.toFixed(2)}</td></tr>
+                      <tr><td style={{ padding:"4px 16px 4px 0", color:"var(--ink-soft)" }}>Government Fee Total</td><td className="mono" style={{ padding:"4px 0", textAlign:"right" }}>{pdfSplit.govTotal.toFixed(2)}</td></tr>
+                    </>
+                  ))}
                   <tr><td style={{ padding:"4px 16px 4px 0", color:"var(--ink-soft)" }}>Sub Total</td><td className="mono" style={{ padding:"4px 0", textAlign:"right" }}>{pdfSubtotal.toFixed(2)}</td></tr>
                   {(editingNow || (src.orderDiscount||0) > 0) && (
                     <tr><td style={{ padding:"4px 16px 4px 0", color:"var(--ink-soft)" }}>Discount</td>
@@ -3097,7 +3206,17 @@ function QuotationTemplatesPage({ state, dispatch }) {
         <div className="field"><label>Subject</label><input value={subject} onChange={e=>setSubject(e.target.value)} placeholder="e.g. 100% FOREIGN OWNERSHIP COMPANY FORMATION - Professional fees" /></div>
 
         {items.map((it,i) => (
-          <div key={i} className="agw-card" style={{ marginBottom: 10, padding: 12 }}>
+          <div key={i} className="agw-card" style={{ marginBottom: 10, padding: 12, background: isGovFeeLine(it) ? GOV_FEE_BG : PROF_FEE_BG }}>
+            <div style={{ display:"flex", justifyContent:"flex-end", gap:4, marginBottom: 6 }}>
+              <button type="button" className="btn btn-sm btn-ghost" title="Move category up" disabled={i===0}
+                onClick={()=>setItems(moveCategoryBlock(items, i, -1))}><ChevronUp size={13}/><ChevronUp size={13} style={{marginLeft:-8}}/></button>
+              <button type="button" className="btn btn-sm btn-ghost" title="Move category down" disabled={i===items.length-1}
+                onClick={()=>setItems(moveCategoryBlock(items, i, 1))}><ChevronDown size={13}/><ChevronDown size={13} style={{marginLeft:-8}}/></button>
+              <button type="button" className="btn btn-sm btn-ghost" title="Move item up" disabled={i===0}
+                onClick={()=>setItems(moveArrayItem(items, i, -1))}><ChevronUp size={13}/></button>
+              <button type="button" className="btn btn-sm btn-ghost" title="Move item down" disabled={i===items.length-1}
+                onClick={()=>setItems(moveArrayItem(items, i, 1))}><ChevronDown size={13}/></button>
+            </div>
             <div className="row2">
               <div className="field"><label>Category / stage</label>
                 <input value={it.category || ""} onChange={e=>update(i,"category",e.target.value)} placeholder="e.g. STAGE - 1 : GOVERNMENT FEES" />
