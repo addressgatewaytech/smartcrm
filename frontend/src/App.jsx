@@ -11,7 +11,7 @@ import {
   Database, Upload, MessageCircle, Recycle, ArchiveX, ShieldAlert, Settings as SettingsIcon,
   Sun, Moon, BookOpen
 } from "lucide-react";
-import { money, fmtDate, fmtDateDMY, Stamp, statusTone, Rail, DonutChart, LineChart, BarChart, SalesPersonBars, Modal, Empty, ConfirmModal, RowActions, exportCSV, usePagination, PaginationBar, TableScrollHint } from "./ui.jsx";
+import { money, fmtDate, fmtDateDMY, Stamp, statusTone, Rail, DonutChart, LineChart, BarChart, SalesPersonBars, Modal, Empty, ConfirmModal, RowActions, exportCSV, usePagination, PaginationBar, TableScrollHint, useConfirm } from "./ui.jsx";
 import { TasksPage } from "./pages/tasks.jsx";
 import { AttendanceWidget, AttendancePage } from "./pages/attendance.jsx";
 import { LeadAssignmentManagerPage } from "./pages/leadAssignment.jsx";
@@ -2649,8 +2649,15 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
   const [removing, setRemoving] = useState(false);
   const [emailing, setEmailing] = useState(false);
   const [revising, setRevising] = useState(false);
+  const confirm = useConfirm();
   const editable = ["Draft","Pending Manager Approval"].includes(q.status);
   const isAdmin = ADMIN_LIKE.includes(role);
+  // Once sent to the client, the only way back to an editable Draft is a deliberate revision —
+  // available any time before a Sales Order actually exists for this quotation (Approved is
+  // included too since Government Fee quotations go straight to Approved with no sales order at
+  // all, and revising a non-Government one after Approved is an admin's explicit call to undo an
+  // already-created sales order, not something to allow by accident).
+  const revisable = ["Sent","Under Negotiation","Client Accepted","Approved"].includes(q.status);
   const customerEmail = state?.customers.find(c=>c.name===q.customer)?.email;
   const linkedSalesOrder = state?.salesOrders.find(so => so.quotationId === q.id);
 
@@ -2865,7 +2872,10 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
               ) : (
                 <button className="btn btn-primary" disabled={actionBusy} onClick={()=>runAction({type:"SET_QUOTATION_STATUS", id:q.id, status:"Client Accepted"}, { keepOpen: true })}>Client accepted</button>
               )}
-              <button className="btn" style={{color:"var(--danger)"}} disabled={actionBusy} onClick={()=>runAction({type:"SET_QUOTATION_STATUS", id:q.id, status:"Rejected"})}>Mark rejected</button>
+              <button className="btn" style={{color:"var(--danger)"}} disabled={actionBusy} onClick={async ()=>{
+                if (await confirm({ title:`Mark ${q.id} rejected?`, body:"The client turned this down. The linked deal moves to Lost — this can't be undone from here.", confirmLabel:"Mark rejected" }))
+                  runAction({type:"SET_QUOTATION_STATUS", id:q.id, status:"Rejected"});
+              }}>Mark rejected</button>
             </>}
             {q.status === "Under Negotiation" && (
               q.feeType === "Government Fee" ? (
@@ -2876,12 +2886,15 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
             )}
             {q.status === "Client Accepted" && (
               isAccountsOrAdmin(role) ? (
-                <button className="btn btn-primary" disabled={actionBusy} onClick={()=>runAction({type:"CONVERT_TO_SALES_ORDER", quotationId:q.id})}>{actionBusy ? "Creating…" : "Convert Sales Order"}</button>
+                <button className="btn btn-primary" disabled={actionBusy} onClick={async ()=>{
+                  if (await confirm({ title:`Convert ${q.id} to a Sales Order?`, body:"This creates a real Sales Order from this quotation and moves the linked deal to Won. Make sure the terms are final first.", confirmLabel:"Convert" }))
+                    runAction({type:"CONVERT_TO_SALES_ORDER", quotationId:q.id});
+                }}>{actionBusy ? "Creating…" : "Convert Sales Order"}</button>
               ) : (
                 <div className="side-note" style={{marginTop:0}}>Client accepted — now under payment process. Accounts will convert this into a sales order.</div>
               )
             )}
-            {q.status === "Approved" &&
+            {revisable && isAdmin &&
               <button className="btn" disabled={actionBusy} onClick={()=>setRevising(true)}><Pencil size={13}/> Revise quotation</button>}
           </div>
           {revising && (
@@ -4267,6 +4280,7 @@ function SubscriptionDetailModal({ subscription: sub, state, dispatch, isAdmin, 
   const tier = state.subscriptionPlans[sub.plan]?.tiers.find(t=>t.name===sub.tier);
   const status = subStatusOf(sub);
   const [renewing, setRenewing] = useState(false);
+  const confirm = useConfirm();
   const txUsed = subTransactionsUsed(sub, state);
   const txOver = tier && txUsed > tier.transactionsIncluded;
   const linkedJobs = state.jobCards.filter(j => j.customer === sub.customer && j.status !== "Cancelled" && (j.statusLog?.[0]?.at || sub.startDate) >= sub.startDate);
@@ -4371,7 +4385,11 @@ function SubscriptionDetailModal({ subscription: sub, state, dispatch, isAdmin, 
       {isAdmin && status !== "Cancelled" && (
         <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
           <button className="btn btn-primary" onClick={()=>setRenewing(true)}><Repeat size={13}/> Renew for 12 months</button>
-          <button className="btn" style={{color:"var(--danger)"}} onClick={()=>{ dispatch({type:"UPDATE_SUBSCRIPTION", id:sub.id, payload:{status:"Cancelled"}}); onClose(); }}>Cancel subscription</button>
+          <button className="btn" style={{color:"var(--danger)"}} onClick={async ()=>{
+            if (await confirm({ title:"Cancel this subscription?", body:`${sub.customer} — ${sub.plan} (${sub.tier}). This stops future renewals; it can't be undone from here.`, confirmLabel:"Cancel subscription" })) {
+              dispatch({type:"UPDATE_SUBSCRIPTION", id:sub.id, payload:{status:"Cancelled"}}); onClose();
+            }
+          }}>Cancel subscription</button>
         </div>
       )}
 
@@ -5062,6 +5080,7 @@ function JobDetailModal({ job, dispatch, role, userId, employees, approvalTypes=
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [newComment, setNewComment] = useState("");
   const [downloading, setDownloading] = useState(false);
+  const confirm = useConfirm();
   const canManage = role === "ops_manager" || role === "ops_member" || ADMIN_LIKE.includes(role);
   const canApproveJob = role === "accounts" || ADMIN_LIKE.includes(role);
   // Marking a job card Completed needs Operations Manager sign-off — narrower than canManage,
@@ -5162,7 +5181,10 @@ function JobDetailModal({ job, dispatch, role, userId, employees, approvalTypes=
               <span className={`checkbox ${item.done ? "checked":""}`} onClick={()=>canManage && !locked && dispatch({type:"TOGGLE_CHECKLIST_ITEM", jobId:job.id, itemId:item.id})} style={{cursor: canManage && !locked ?"pointer":"default"}}>{item.done && <Check size={12}/>}</span>
               <span style={{ flex:1, textDecoration: item.done ? "line-through":"none", color: item.done? "var(--ink-soft)":"var(--ink)", cursor: canManage && !locked ?"pointer":"default" }}
                 onClick={()=>canManage && !locked && dispatch({type:"TOGGLE_CHECKLIST_ITEM", jobId:job.id, itemId:item.id})}>{item.label}</span>
-              {canManage && !locked && <button className="btn btn-sm btn-ghost" style={{color:"var(--danger)"}} onClick={()=>dispatch({type:"REMOVE_JOB_CHECKLIST_ITEM", jobId:job.id, itemId:item.id})}><Trash2 size={12}/></button>}
+              {canManage && !locked && <button className="btn btn-sm btn-ghost" style={{color:"var(--danger)"}} onClick={async ()=>{
+                if (await confirm({ title:"Remove this checklist item?", body:item.label, confirmLabel:"Remove" }))
+                  dispatch({type:"REMOVE_JOB_CHECKLIST_ITEM", jobId:job.id, itemId:item.id});
+              }}><Trash2 size={12}/></button>}
             </div>
           ))}
         </div>
@@ -6044,6 +6066,7 @@ function EmployeeHrCard({ e, state, dispatch, isAdmin, userId, onOpenDocs, onOpe
 
 function LeaveRequestsTable({ state, dispatch, isAdmin, userId }) {
   const [removeReq, setRemoveReq] = useState(null);
+  const confirm = useConfirm();
   const nameFor = (id) => state.employees.find(e=>e.id===id)?.name || id;
   const rows = isAdmin ? state.leaveRequests : state.leaveRequests.filter(r => r.employeeId === userId);
 
@@ -6063,7 +6086,10 @@ function LeaveRequestsTable({ state, dispatch, isAdmin, userId }) {
               <td style={{ display:"flex", gap:6 }}>
                 {isAdmin && r.status === "Pending" && <>
                   <button className="btn btn-sm" onClick={()=>dispatch({type:"UPDATE_LEAVE_STATUS", id:r.id, status:"Approved", decidedBy:"HR"})}>Approve</button>
-                  <button className="btn btn-sm" style={{color:"var(--danger)"}} onClick={()=>dispatch({type:"UPDATE_LEAVE_STATUS", id:r.id, status:"Rejected", decidedBy:"HR"})}>Reject</button>
+                  <button className="btn btn-sm" style={{color:"var(--danger)"}} onClick={async ()=>{
+                    if (await confirm({ title:"Reject this leave request?", body:`${nameFor(r.employeeId)} — ${r.type}, ${fmtDate(r.startDate)} to ${fmtDate(r.endDate)}.`, confirmLabel:"Reject" }))
+                      dispatch({type:"UPDATE_LEAVE_STATUS", id:r.id, status:"Rejected", decidedBy:"HR"});
+                  }}>Reject</button>
                 </>}
                 {(isAdmin || r.status === "Pending") && <RowActions onRemove={()=>setRemoveReq(r)} />}
               </td>
@@ -6216,6 +6242,7 @@ function PunchRequestModal({ employee: e, state, dispatch, onClose }) {
 
 function PunchRequestsTable({ state, dispatch, isAdmin, userId }) {
   const [removeReq, setRemoveReq] = useState(null);
+  const confirm = useConfirm();
   const nameFor = (id) => state.employees.find(e=>e.id===id)?.name || id;
   const rows = isAdmin ? state.punchRequests : state.punchRequests.filter(r => r.employeeId === userId);
 
@@ -6236,7 +6263,10 @@ function PunchRequestsTable({ state, dispatch, isAdmin, userId }) {
               <td style={{ display:"flex", gap:6 }}>
                 {isAdmin && r.status === "Pending" && <>
                   <button className="btn btn-sm" onClick={()=>dispatch({type:"UPDATE_PUNCH_REQUEST_STATUS", id:r.id, status:"Approved", decidedBy:"HR"})}>Approve</button>
-                  <button className="btn btn-sm" style={{color:"var(--danger)"}} onClick={()=>dispatch({type:"UPDATE_PUNCH_REQUEST_STATUS", id:r.id, status:"Rejected", decidedBy:"HR"})}>Reject</button>
+                  <button className="btn btn-sm" style={{color:"var(--danger)"}} onClick={async ()=>{
+                    if (await confirm({ title:"Reject this punch correction?", body:`${nameFor(r.employeeId)} — ${fmtDate(r.date)}.`, confirmLabel:"Reject" }))
+                      dispatch({type:"UPDATE_PUNCH_REQUEST_STATUS", id:r.id, status:"Rejected", decidedBy:"HR"});
+                  }}>Reject</button>
                 </>}
                 {(isAdmin || r.status === "Pending") && <RowActions onRemove={()=>setRemoveReq(r)} />}
               </td>

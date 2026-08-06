@@ -134,16 +134,19 @@ router.delete("/:id", requireRole(["admin_like"]), async (req, res) => {
   res.json({ ok: true });
 });
 
-// Reopens an Approved quotation for editing — moves it back to Draft (unlocking PATCH and the
-// normal Submit-for-approval / Send-to-client flow) and returns the linked deal to "Quotation
-// Sent" so the pipeline reflects that it's back under negotiation. Does NOT touch any Sales
-// Order/Invoice/Job Card already created from the previous approval — those are a separate
-// record of what was actually agreed at the time; an admin can remove one via its own page if it
-// truly was a mistake.
-router.post("/:id/revise", async (req, res) => {
+// Reopens a quotation for editing — moves it back to Draft (unlocking PATCH and the normal
+// Submit-for-approval / Send-to-client flow) and returns the linked deal to "Quotation Sent" so
+// the pipeline reflects that it's back under negotiation. Available any time after it's been
+// sent to the client and before/at Approved (covers a client wanting changes mid-negotiation, not
+// just after full approval) — Admin-only, since it can silently reopen a quotation a Sales
+// Manager already signed off on. Does NOT touch any Sales Order/Invoice/Job Card already created
+// from a previous approval — those are a separate record of what was actually agreed at the time;
+// an admin can remove one via its own page if it truly was a mistake.
+router.post("/:id/revise", requireRole(["admin_like"]), async (req, res) => {
   const [q] = await query("SELECT status, deal_id FROM quotations WHERE id = ?", [req.params.id]);
   if (!q) return res.status(404).json({ error: "Not found" });
-  if (q.status !== "Approved") return res.status(400).json({ error: "Only an Approved quotation can be revised" });
+  const revisable = ["Sent", "Under Negotiation", "Client Accepted", "Approved"];
+  if (!revisable.includes(q.status)) return res.status(400).json({ error: "This quotation can't be revised from its current status" });
   await query("UPDATE quotations SET status = 'Draft' WHERE id = ?", [req.params.id]);
   if (q.deal_id) await query("UPDATE deals SET stage = 'Quotation Sent' WHERE id = ?", [q.deal_id]);
   res.json({ ok: true });

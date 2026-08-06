@@ -1,6 +1,6 @@
 // Shared UI primitives used across App.jsx and the page-level modules under ./pages/*.
 // Extracted from App.jsx so new pages don't duplicate this code inline.
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useContext, useRef, createContext } from "react";
 import { X, Pencil, Trash2 } from "lucide-react";
 
 // Client-side pagination for a list page's already-filtered `rows` array. Callers slice their
@@ -272,6 +272,51 @@ export function ConfirmModal({ title, body, confirmLabel = "Remove", onConfirm, 
       </div>
     </Modal>
   );
+}
+
+// App-wide "are you sure" system — one confirm dialog, callable from anywhere as an awaitable
+// instead of every button needing its own useState + inline <ConfirmModal/> boilerplate (that
+// per-button pattern is still fine and used all over the app; this exists for the places that
+// were skipping confirmation altogether because that boilerplate felt like too much for one
+// button). Mounted once via <ConfirmProvider> at the app root (see main.jsx); any component below
+// it calls `const confirm = useConfirm()` then `if (await confirm({ title, body, confirmLabel }))`.
+const ConfirmContext = createContext(null);
+
+export function ConfirmProvider({ children }) {
+  const [request, setRequest] = useState(null); // { title, body, confirmLabel }
+  const resolver = useRef(null);
+
+  const confirm = useCallback((opts) => {
+    return new Promise((resolve) => {
+      resolver.current = resolve;
+      setRequest(opts);
+    });
+  }, []);
+
+  const settle = (result) => {
+    resolver.current?.(result);
+    resolver.current = null;
+    setRequest(null);
+  };
+
+  return (
+    <ConfirmContext.Provider value={confirm}>
+      {children}
+      {request && (
+        <ConfirmModal title={request.title} body={request.body} confirmLabel={request.confirmLabel}
+          onConfirm={() => settle(true)} onClose={() => settle(false)} />
+      )}
+    </ConfirmContext.Provider>
+  );
+}
+
+// Returns an async confirm(opts) -> boolean. Await it and only proceed on true:
+//   const confirm = useConfirm();
+//   onClick={async () => { if (await confirm({ title: "Cancel this?", body: "..." })) dispatch(...); }}
+export function useConfirm() {
+  const confirm = useContext(ConfirmContext);
+  if (!confirm) throw new Error("useConfirm() must be used inside <ConfirmProvider>");
+  return confirm;
 }
 
 export function RowActions({ onEdit, onRemove }) {
