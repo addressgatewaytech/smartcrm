@@ -187,3 +187,18 @@ export const mapTask = (t) => ({
   decidedBy: t.decided_by, decidedAt: t.decided_at, rejectionReason: t.rejection_reason,
   createdAt: t.created_at, statusLog: (t.statusLog || []).map(mapStatusLogEntry),
 });
+
+export const mapTaskTemplate = (t) => ({
+  id: t.id, name: t.name, department: t.department, title: t.title, description: t.description || "",
+  priority: t.priority, dueInDays: t.due_in_days, createdBy: t.created_by, createdAt: t.created_at,
+});
+
+export const mapSalesTaskDef = (d) => ({
+  id: d.id, key: d.task_key, name: d.name, metricType: d.metric_type,
+  target: Number(d.target), source: d.source, sortOrder: d.sort_order,
+});
+
+export const mapSalesTaskLog = (l) => ({
+  userId: l.user_id, taskDefId: l.task_def_id, activityDate: l.activity_date,
+  completedCount: Number(l.completed_count),
+});

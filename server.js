@@ -31,6 +31,8 @@ app.use("/api/customers", require("./src/routes/customers.routes"));
 app.use("/api/public/onboarding", require("./src/routes/publicOnboarding.routes")); // no requireAuth — public form-fill link
 app.use("/api/job-cards", require("./src/routes/jobCards.routes"));
 app.use("/api/tasks", require("./src/routes/tasks.routes"));
+app.use("/api/task-templates", require("./src/routes/taskTemplates.routes"));
+app.use("/api/sales-tasks", require("./src/routes/salesTasks.routes"));
 app.use("/api/todos", require("./src/routes/todos.routes"));
 app.use("/api/subscriptions", require("./src/routes/subscriptions.routes"));
 app.use("/api/hr", require("./src/routes/hr.routes"));

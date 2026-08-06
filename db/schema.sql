@@ -425,6 +425,55 @@ CREATE TABLE IF NOT EXISTS task_status_log (
   FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
+-- Reusable starting points for the Tasks above — admin-managed, one-off pre-fill for the New Task
+-- form (title/description/priority/department/due-in-days). Purely a convenience; creating a task
+-- from a template still goes through the normal tasks INSERT above, nothing links back to the
+-- template afterward.
+CREATE TABLE IF NOT EXISTS task_templates (
+  id           VARCHAR(20) PRIMARY KEY,     -- TT10100...
+  name         VARCHAR(150) NOT NULL,
+  department   VARCHAR(100),
+  title        VARCHAR(300) NOT NULL,
+  description  TEXT,
+  priority     ENUM('Low','Normal','High','Urgent') DEFAULT 'Normal',
+  due_in_days  INT NULL,
+  created_by   VARCHAR(20),
+  created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+-- ---------------------------------------------------------------------------
+-- SALES DAILY TASKS (Sales department only — separate from the generic Tasks above)
+-- ---------------------------------------------------------------------------
+-- The fixed list of daily prospecting activities and their company-wide targets. 'Manual' sources
+-- are logged by the salesperson during the day (see sales_task_daily_log below); 'Auto' sources
+-- (Confirmed Sales, Revenue Target) are never logged here at all — they're computed live from
+-- sales_orders/invoice_payments at read time, so there's nothing to reset for those.
+CREATE TABLE IF NOT EXISTS sales_task_definitions (
+  id           VARCHAR(20) PRIMARY KEY,     -- STD10100...
+  task_key     VARCHAR(50) NOT NULL UNIQUE, -- stable key, e.g. 'whatsapp_prospects'
+  name         VARCHAR(150) NOT NULL,
+  metric_type  ENUM('Count','Money') NOT NULL DEFAULT 'Count',
+  target       DECIMAL(12,2) NOT NULL,
+  source       ENUM('Manual','Auto') NOT NULL DEFAULT 'Manual',
+  sort_order   TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+-- Per-user daily counters for the 11 Manual activities, keyed by (user, task, day) — same trick as
+-- data_user_activity: a new calendar day is simply an unwritten row, so "reset daily" needs no
+-- cron job at all. Written via INSERT ... ON DUPLICATE KEY UPDATE from src/routes/salesTasks.routes.js.
+CREATE TABLE IF NOT EXISTS sales_task_daily_log (
+  user_id         VARCHAR(20) NOT NULL,
+  task_def_id     VARCHAR(20) NOT NULL,
+  activity_date   DATE NOT NULL,
+  completed_count INT NOT NULL DEFAULT 0,
+  updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id, task_def_id, activity_date),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (task_def_id) REFERENCES sales_task_definitions(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
 -- Personal "My To-Do List" — purely private per-user notes/reminders, separate from the
 -- manager-assigned Tasks above (nobody else assigns or approves these; only the owner can
 -- see/edit/delete their own). reminder_date is a plain date (no time-of-day); the cron sweep in

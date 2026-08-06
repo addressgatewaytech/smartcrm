@@ -137,6 +137,31 @@ export function DonutChart({ data, size = 160, centerLabel }) {
   );
 }
 
+// A single-value % gauge — distinct from DonutChart, whose center label is always the summed
+// total rather than a percentage, which doesn't fit a "Daily/Monthly Performance" KPI.
+export function ProgressRing({ pct, size = 96, color = "var(--brand)", label }) {
+  const clamped = Math.max(0, Math.min(100, pct));
+  const r = size / 2;
+  const stroke = size * 0.14;
+  const radius = r - stroke / 2;
+  const circumference = 2 * Math.PI * radius;
+  const dash = (clamped / 100) * circumference;
+  return (
+    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:4 }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <circle cx={r} cy={r} r={radius} fill="none" stroke="var(--hair)" strokeWidth={stroke} />
+        {clamped > 0 && (
+          <circle cx={r} cy={r} r={radius} fill="none" stroke={color} strokeWidth={stroke}
+            strokeDasharray={`${dash} ${circumference - dash}`} strokeLinecap="round"
+            transform={`rotate(-90 ${r} ${r})`} />
+        )}
+        <text x={r} y={r + size*0.06} textAnchor="middle" className="disp" style={{ fontSize: size*0.2, fill:"var(--ink)" }}>{Math.round(clamped)}%</text>
+      </svg>
+      {label && <div style={{ fontSize:12, color:"var(--ink-soft)" }}>{label}</div>}
+    </div>
+  );
+}
+
 // series: [{ label, points: number[], color }], labels: string[] (x-axis, same length as points).
 export function LineChart({ series, labels, height = 200, formatY = (n) => n }) {
   const width = 560;

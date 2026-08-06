@@ -117,6 +117,29 @@ async function main() {
   console.log("Seeding app-wide settings...");
   await conn.execute(`INSERT IGNORE INTO app_settings (id) VALUES (1)`);
 
+  console.log("Seeding Sales Daily Task definitions...");
+  const salesTaskDefs = [
+    ["STD01", "whatsapp_prospects", "New WhatsApp Prospects", "Count", 10, "Manual"],
+    ["STD02", "social_media_prospects", "New Social Media Prospects", "Count", 10, "Manual"],
+    ["STD03", "personalized_emails", "Personalized Emails", "Count", 10, "Manual"],
+    ["STD04", "telephone_calls", "Direct Telephone Calls", "Count", 10, "Manual"],
+    ["STD05", "company_visits", "Direct Company Visits", "Count", 10, "Manual"],
+    ["STD06", "eks_invitations", "EKS Invitations", "Count", 10, "Manual"],
+    ["STD07", "consulting_invitations", "Consulting Session Invitations", "Count", 10, "Manual"],
+    ["STD08", "decision_maker_contacts", "New Decision Maker Contacts", "Count", 10, "Manual"],
+    ["STD09", "qualified_leads", "Qualified Leads", "Count", 5, "Manual"],
+    ["STD10", "meetings_booked", "Meetings / Consultations Booked", "Count", 2, "Manual"],
+    ["STD11", "proposals_presented", "Proposals Presented", "Count", 2, "Manual"],
+    ["STD12", "confirmed_sales", "Confirmed Sales", "Money", 1000, "Auto"],
+    ["STD13", "revenue_target", "Revenue Target", "Money", 10000, "Auto"],
+  ];
+  for (const [id, taskKey, name, metricType, target, source] of salesTaskDefs) {
+    await conn.execute(
+      `INSERT IGNORE INTO sales_task_definitions (id, task_key, name, metric_type, target, source, sort_order) VALUES (?,?,?,?,?,?,?)`,
+      [id, taskKey, name, metricType, target, source, salesTaskDefs.findIndex(d => d[0] === id)]
+    );
+  }
+
   console.log("\nDone. First login: admin@addressgateway.com / ChangeMe123!  — change this immediately.");
   await conn.end();
 }

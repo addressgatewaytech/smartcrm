@@ -249,6 +249,19 @@ export const api = {
     update: (id, payload) => patch(`/todos/${id}`, payload),
     remove: (id) => del(`/todos/${id}`),
   },
+  taskTemplates: {
+    list: () => get("/task-templates"),
+    create: (payload) => post("/task-templates", payload),
+    update: (id, payload) => patch(`/task-templates/${id}`, payload),
+    remove: (id) => del(`/task-templates/${id}`),
+  },
+  salesTasks: {
+    definitions: () => get("/sales-tasks/definitions"),
+    updateTarget: (id, target) => patch(`/sales-tasks/definitions/${id}`, { target }),
+    logs: () => get("/sales-tasks/logs"),
+    increment: (taskDefId, delta) => post(`/sales-tasks/logs/${taskDefId}/increment`, { delta }),
+    setCount: (taskDefId, count) => patch(`/sales-tasks/logs/${taskDefId}`, { count }),
+  },
   subscriptions: {
     plans: () => get("/subscriptions/plans"),
     addPlan: (name, description) => post("/subscriptions/plans", { name, description }),

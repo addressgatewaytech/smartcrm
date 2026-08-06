@@ -11,7 +11,8 @@ import {
   Database, Upload, MessageCircle, Recycle, ArchiveX, ShieldAlert, Settings as SettingsIcon,
   Sun, Moon, BookOpen
 } from "lucide-react";
-import { money, fmtDate, fmtDateDMY, Stamp, statusTone, Rail, DonutChart, LineChart, BarChart, SalesPersonBars, Modal, Empty, ConfirmModal, RowActions, exportCSV, usePagination, PaginationBar, TableScrollHint, useConfirm } from "./ui.jsx";
+import { money, fmtDate, fmtDateDMY, Stamp, statusTone, Rail, DonutChart, LineChart, BarChart, SalesPersonBars, ProgressRing, Modal, Empty, ConfirmModal, RowActions, exportCSV, usePagination, PaginationBar, TableScrollHint, useConfirm } from "./ui.jsx";
+import { todayStr as salesTaskToday, firstOfMonthStr, userTaskSnapshot } from "./salesTasksHelpers";
 import { TasksPage } from "./pages/tasks.jsx";
 import { AttendanceWidget, AttendancePage } from "./pages/attendance.jsx";
 import { LeadAssignmentManagerPage } from "./pages/leadAssignment.jsx";
@@ -1242,6 +1243,10 @@ function Dashboard({ state, role, userId, setPage }) {
       businessVolume: businessVol, collected, pendingCollection, pendingLeads, pendingQuotes };
   }).sort((a,b) => b.businessVolume - a.businessVolume);
 
+  // Sales Daily Tasks widget data — same shape userTaskSnapshot expects everywhere it's used
+  // (this Dashboard block, the Reports tab, and the Sales Daily Tasks page itself).
+  const salesTaskData = { logs: state.salesTaskLogs || [], quotations: state.quotations, salesOrders: state.salesOrders, invoices: state.invoices };
+
   // --- Charts tab data -------------------------------------------------------------------------
   const [chartTab, setChartTab] = useState("overview");
 
@@ -1487,6 +1492,52 @@ function Dashboard({ state, role, userId, setPage }) {
                       <td>{r.pendingCollection > 0 ? <span className="mono" style={{color:"var(--danger)"}}>{money(r.pendingCollection)}</span> : "—"}</td>
                     </tr>
                   ))}
+                </tbody>
+              </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {isSalesRole && state.salesTaskDefs?.length > 0 && (
+        <div className="agw-card" style={{ marginTop: 16 }}>
+          <strong style={{ fontSize: 14 }}>{role === "sales_exec" ? "My Sales Daily Tasks" : "Sales Daily Tasks — team"}</strong>
+          <div style={{ marginTop: 10 }}>
+            {role === "sales_exec" ? (() => {
+              const salesTaskToday_ = salesTaskToday();
+              const todaySnap = userTaskSnapshot(state.salesTaskDefs, salesTaskData, userId, salesTaskToday_, salesTaskToday_);
+              const monthSnap = userTaskSnapshot(state.salesTaskDefs, salesTaskData, userId, firstOfMonthStr(), salesTaskToday_);
+              return (
+                <div style={{ display:"flex", gap:28, flexWrap:"wrap", alignItems:"center" }}>
+                  <ProgressRing pct={todaySnap.completionPct} label="Daily performance" />
+                  <ProgressRing pct={monthSnap.completionPct} color="var(--gold)" label="Monthly performance" />
+                  <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                    <div style={{ fontSize:12.5, color:"var(--ink-soft)" }}>Today's task completion: <strong style={{ color:"var(--ink)" }}>{todaySnap.completionPct}%</strong></div>
+                    <div style={{ fontSize:12.5, color:"var(--ink-soft)" }}>Revenue achieved (today): <strong style={{ color:"var(--ink)" }}>{money(todaySnap.revenue)}</strong></div>
+                    <div style={{ fontSize:12.5, color:"var(--ink-soft)" }}>Sales achieved (today): <strong style={{ color:"var(--ink)" }}>{money(todaySnap.sales)}</strong></div>
+                    <div style={{ fontSize:12.5, color:"var(--ink-soft)" }}>Pending tasks: <strong style={{ color:"var(--ink)" }}>{todaySnap.pendingCount}</strong></div>
+                  </div>
+                </div>
+              );
+            })() : (
+              <div style={{ overflowX:"auto" }}>
+              <table className="agw-table">
+                <thead><tr><th>Employee</th><th>Task completion %</th><th>Revenue</th><th>Sales</th><th>Current status</th></tr></thead>
+                <tbody>
+                  {salesOwners.map(owner => {
+                    const salesTaskToday_ = salesTaskToday();
+                    const snap = userTaskSnapshot(state.salesTaskDefs, salesTaskData, owner.id, salesTaskToday_, salesTaskToday_);
+                    return (
+                      <tr key={owner.id}>
+                        <td style={{display:"flex",alignItems:"center",gap:8}}><span className="avatar">{owner.initials}</span>{owner.name}</td>
+                        <td className="mono">{snap.completionPct}%</td>
+                        <td className="mono">{money(snap.revenue)}</td>
+                        <td className="mono">{money(snap.sales)}</td>
+                        <td><Stamp tone={statusTone(snap.overallStatus)}>{snap.overallStatus}</Stamp></td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
               </div>
@@ -6725,6 +6776,7 @@ const REPORT_TABS = [
   { key:"incentives", label:"Incentives" },
   { key:"operations", label:"Operations" },
   { key:"tasks", label:"Employee Tasks" },
+  { key:"salesDailyTasks", label:"Sales Daily Tasks" },
   { key:"leadPerformance", label:"Lead Performance" },
   { key:"attendanceHours", label:"Attendance" },
 ];
@@ -6755,6 +6807,7 @@ function ReportsPage({ state, role }) {
       {tab === "incentives" && <IncentivesReport state={state} range={range} />}
       {tab === "operations" && <OperationsReport state={state} range={range} />}
       {tab === "tasks" && <EmployeeTasksReport state={state} range={range} />}
+      {tab === "salesDailyTasks" && <SalesDailyTasksReport state={state} range={range} />}
       {tab === "leadPerformance" && <LeadPerformanceReport state={state} range={range} />}
       {tab === "attendanceHours" && <AttendanceHoursReport state={state} range={range} />}
     </div>
@@ -7205,6 +7258,78 @@ function EmployeeTasksReport({ state, range }) {
                 <td>{t.priority}</td><td><Stamp tone={statusTone(t.status)}>{t.status}</Stamp></td>
                 <td className="mono">{t.progressPct}%</td>
                 <td className="mono" style={{fontSize:12}}>{fmtDate(t.dueDate)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </ReportTableCard>
+    </div>
+  );
+}
+
+// "Employee-wise Completion" and "Pending/Completed Tasks" are always today's live snapshot
+// (matches the Dashboard widget); "Target Achievement" and "Revenue"/"Sales" respect the report's
+// period picker; "Monthly Performance" is always the current calendar month regardless of the
+// period picker — all computed client-side from state via the shared salesTasksHelpers, same as
+// every other report tab here filters already-loaded state instead of calling a dedicated backend
+// report endpoint.
+function SalesDailyTasksReport({ state, range }) {
+  const defs = state.salesTaskDefs || [];
+  if (defs.length === 0) return <Empty icon={ListChecks} text="Sales Daily Tasks aren't set up yet." />;
+
+  const data = { logs: state.salesTaskLogs || [], quotations: state.quotations, salesOrders: state.salesOrders, invoices: state.invoices };
+  const today = salesTaskToday();
+  const from = range[0] || "2000-01-01";
+  const to = range[1] || today;
+  const monthStart = firstOfMonthStr();
+  const salesUsers = state.employees.filter(e => e.roles.includes("sales_exec") || e.roles.includes("sales_manager"));
+
+  const rows = salesUsers.map(owner => ({
+    owner,
+    today: userTaskSnapshot(defs, data, owner.id, today, today),
+    period: userTaskSnapshot(defs, data, owner.id, from, to),
+    month: userTaskSnapshot(defs, data, owner.id, monthStart, today),
+  }));
+  const avgCompletion = rows.length ? Math.round(rows.reduce((a,r)=>a+r.today.completionPct,0)/rows.length) : 0;
+  const totalRevenue = rows.reduce((a,r)=>a+r.period.revenue,0);
+  const totalSales = rows.reduce((a,r)=>a+r.period.sales,0);
+
+  const columns = [
+    { key:"employee", label:"Employee" }, { key:"completion", label:"Employee-wise Completion" }, { key:"target", label:"Target Achievement" },
+    { key:"revenue", label:"Revenue" }, { key:"sales", label:"Sales" }, { key:"pending", label:"Pending Tasks" },
+    { key:"completed", label:"Completed Tasks" }, { key:"monthly", label:"Monthly Performance" },
+  ];
+  const pdfRows = rows.map(r => ({
+    employee: r.owner.name, completion: `${r.today.completionPct}%`, target: `${r.period.targetAchievementPct}%`,
+    revenue: money(r.period.revenue), sales: money(r.period.sales), pending: r.today.pendingCount,
+    completed: r.today.completedCount, monthly: `${r.month.completionPct}%`,
+  }));
+
+  return (
+    <div>
+      <ReportKpis items={[
+        { label:"Salespeople tracked", value: rows.length },
+        { label:"Avg. today's completion", value: `${avgCompletion}%` },
+        { label:"Revenue (period)", value: money(totalRevenue) },
+        { label:"Sales (period)", value: money(totalSales) },
+      ]} />
+      <ReportTableCard title="Sales Daily Tasks — employee performance" empty={rows.length===0 ? "No sales team members yet." : null} emptyIcon={ListChecks}
+        onExport={rows.length ? ()=>exportCSV("sales-daily-tasks.csv", columns.map(c=>c.label), pdfRows.map(r=>columns.map(c=>r[c.key]))) : null}
+        onExportExcel={rows.length ? ()=>exportExcel("sales-daily-tasks.xlsx", columns.map(c=>c.label), pdfRows.map(r=>columns.map(c=>r[c.key]))) : null}
+        onExportPdf={rows.length ? ()=>exportPdf("Sales Daily Tasks", `${fmtDate(range[0])} – ${fmtDate(range[1])}`, columns, pdfRows) : null}>
+        <table className="agw-table">
+          <thead><tr><th>Employee</th><th>Completion</th><th>Target achievement</th><th>Revenue</th><th>Sales</th><th>Pending</th><th>Completed</th><th>Monthly</th></tr></thead>
+          <tbody>
+            {rows.map(r => (
+              <tr key={r.owner.id}>
+                <td style={{display:"flex",alignItems:"center",gap:8}}><span className="avatar">{r.owner.initials}</span>{r.owner.name}</td>
+                <td className="mono">{r.today.completionPct}%</td>
+                <td className="mono">{r.period.targetAchievementPct}%</td>
+                <td className="mono">{money(r.period.revenue)}</td>
+                <td className="mono">{money(r.period.sales)}</td>
+                <td className="mono">{r.today.pendingCount}</td>
+                <td className="mono">{r.today.completedCount}</td>
+                <td className="mono">{r.month.completionPct}%</td>
               </tr>
             ))}
           </tbody>

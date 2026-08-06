@@ -4,12 +4,13 @@ import {
   mapUser, mapLead, mapDeal, mapQuotation, mapCustomer, mapSalesOrder, mapInvoice, mapJobCard,
   mapNotification, mapDataRecord, mapDataSettings, mapDataActivity, mapExportHistoryEntry, mapSubscriptionPlans,
   mapSubscription, mapQuotationTemplates, mapIncentiveRule, mapLeaveRequest, mapPunchRequest, mapAttendance,
-  mapAppSettings, mapTask, mapTodo,
+  mapAppSettings, mapTask, mapTodo, mapTaskTemplate, mapSalesTaskDef, mapSalesTaskLog,
 } from "./mappers";
 
 const emptyState = () => ({
   services: [], employees: [], leads: [], deals: [], quotations: [], customers: [],
   salesOrders: [], invoices: [], jobCards: [], tasks: [], todos: [], notifications: [], quotationTemplates: {},
+  taskTemplates: [], salesTaskDefs: [], salesTaskLogs: [],
   checklistTemplates: {}, incentiveRules: [], leaveRequests: [], punchRequests: [],
   subscriptionPlans: {}, subscriptions: [], dataRecords: [], dataExportHistory: [], dataUserActivity: [],
   dataSettings: { dailyEmailTarget: 10, dailyWhatsappTarget: 10, dailyCallTarget: 10, emailIntervalMinutes: 5, whatsappIntervalMinutes: 10, recyclingEnabled: true, recyclingDays: 30, emailTemplate: { subject: "", body: "" }, whatsappTemplate: { body: "" } },
@@ -44,6 +45,9 @@ export function useApiStore(enabled) {
       jobCards: async () => ({ jobCards: (await api.jobCards.list()).map(mapJobCard) }),
       tasks: async () => ({ tasks: (await api.tasks.list()).map(mapTask) }),
       todos: async () => ({ todos: (await api.todos.list()).map(mapTodo) }),
+      taskTemplates: async () => ({ taskTemplates: (await api.taskTemplates.list()).map(mapTaskTemplate) }),
+      salesTaskDefs: async () => ({ salesTaskDefs: (await api.salesTasks.definitions()).map(mapSalesTaskDef) }),
+      salesTaskLogs: async () => ({ salesTaskLogs: (await api.salesTasks.logs()).map(mapSalesTaskLog) }),
       notifications: async () => ({ notifications: (await api.notifications.list()).map(mapNotification) }),
       quotationTemplates: async () => ({ quotationTemplates: mapQuotationTemplates(await api.quotationTemplates.list()) }),
       checklistTemplates: async () => ({ checklistTemplates: await api.checklistTemplates.list() }),
@@ -227,6 +231,16 @@ export function useApiStore(enabled) {
       case "APPROVE_TASK": await api.tasks.approve(action.id); return refresh(["tasks"]);
       case "REJECT_TASK": await api.tasks.reject(action.id, action.reason); return refresh(["tasks"]);
       case "DELETE_TASK": await api.tasks.remove(action.id); return refresh(["tasks"]);
+
+      // --- Task Templates ------------------------------------------------------------------
+      case "CREATE_TASK_TEMPLATE": await api.taskTemplates.create(action.payload); return refresh(["taskTemplates"]);
+      case "UPDATE_TASK_TEMPLATE": await api.taskTemplates.update(action.id, action.payload); return refresh(["taskTemplates"]);
+      case "DELETE_TASK_TEMPLATE": await api.taskTemplates.remove(action.id); return refresh(["taskTemplates"]);
+
+      // --- Sales Daily Tasks -----------------------------------------------------------------
+      case "UPDATE_SALES_TASK_TARGET": await api.salesTasks.updateTarget(action.id, action.target); return refresh(["salesTaskDefs"]);
+      case "INCREMENT_SALES_TASK": await api.salesTasks.increment(action.taskDefId, action.delta); return refresh(["salesTaskLogs"]);
+      case "SET_SALES_TASK_COUNT": await api.salesTasks.setCount(action.taskDefId, action.count); return refresh(["salesTaskLogs"]);
 
       // --- My To-Do List -----------------------------------------------------------------
       case "CREATE_TODO": await api.todos.create(action.payload); return refresh(["todos"]);

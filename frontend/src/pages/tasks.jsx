@@ -7,10 +7,17 @@ import { useState } from "react";
 import { Search, Download, Plus, Trash2, ListChecks, Check, Pencil, Bell, BellOff } from "lucide-react";
 import { ApiError } from "../api";
 import { Modal, ConfirmModal, Stamp, statusTone, Rail, Empty, exportCSV, fmtDate } from "../ui.jsx";
+import { SalesDailyTasksTab } from "./salesDailyTasks.jsx";
+import { TaskTemplatesTab } from "./taskTemplates.jsx";
 
 const ADMIN_LIKE = ["super_admin", "admin", "admin_exec"];
 const TASK_MANAGER_ROLES = ["sales_manager", "ops_manager", "hr"];
 const canManageTasks = (role) => ADMIN_LIKE.includes(role) || TASK_MANAGER_ROLES.includes(role);
+// Sales Daily Tasks is Sales-department + admin-oversight only — same predicate used across the
+// rest of the app (Dashboard, SalesPersonReport, DataByUserTab) rather than the free-text
+// employees.dept column.
+const canSeeSalesTasks = (role) => ADMIN_LIKE.includes(role) || ["sales_exec", "sales_manager"].includes(role);
+const daysFromNow = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
 
 const KANBAN_COLS = ["Assigned", "Accepted", "In Progress", "Pending Approval", "Completed", "Rejected"];
 
@@ -55,8 +62,10 @@ export function TasksPage({ state, dispatch, role, userId }) {
           <button className={`tab ${view === "kanban" ? "active" : ""}`} onClick={() => setView("kanban")}>Kanban</button>
           <button className={`tab ${view === "table" ? "active" : ""}`} onClick={() => setView("table")}>Table</button>
           <button className={`tab ${view === "todo" ? "active" : ""}`} onClick={() => setView("todo")}>My To-Do List</button>
+          {canSeeSalesTasks(role) && <button className={`tab ${view === "salesTasks" ? "active" : ""}`} onClick={() => setView("salesTasks")}>Sales Daily Tasks</button>}
+          {manager && <button className={`tab ${view === "templates" ? "active" : ""}`} onClick={() => setView("templates")}>Templates</button>}
         </div>
-        {view !== "todo" && (
+        {!["todo", "salesTasks", "templates"].includes(view) && (
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <div style={{ position: "relative", maxWidth: 260 }}>
             <Search size={15} style={{ position: "absolute", left: 12, top: 9, color: "var(--ink-soft)" }} />
@@ -74,6 +83,8 @@ export function TasksPage({ state, dispatch, role, userId }) {
       </div>
 
       {view === "todo" && <MyToDoListTab state={state} dispatch={dispatch} />}
+      {view === "salesTasks" && <SalesDailyTasksTab state={state} dispatch={dispatch} role={role} userId={userId} />}
+      {view === "templates" && <TaskTemplatesTab state={state} dispatch={dispatch} role={role} />}
 
       {view === "table" && (
         <div className="agw-card" style={{ padding: 0 }}>
@@ -158,8 +169,20 @@ function NewTaskModal({ state, dispatch, onClose }) {
   const [priority, setPriority] = useState("Normal");
   const [dueDate, setDueDate] = useState("");
   const [assignedTo, setAssignedTo] = useState("");
+  const [templateId, setTemplateId] = useState("");
   const activeEmployees = state.employees.filter((e) => e.active !== false && e.category !== "Management");
   const department = state.employees.find((e) => e.id === assignedTo)?.dept || "";
+  const templates = state.taskTemplates || [];
+
+  const applyTemplate = (id) => {
+    setTemplateId(id);
+    const t = templates.find((x) => x.id === id);
+    if (!t) return;
+    setTitle(t.title);
+    setDescription(t.description || "");
+    setPriority(t.priority || "Normal");
+    if (t.dueInDays != null) setDueDate(daysFromNow(t.dueInDays));
+  };
 
   const submit = async () => {
     try {
@@ -172,6 +195,14 @@ function NewTaskModal({ state, dispatch, onClose }) {
 
   return (
     <Modal title="New task" sub="Assign an employee a task to track through to completion." onClose={onClose} width={520}>
+      {templates.length > 0 && (
+        <div className="field"><label>Use a template (optional)</label>
+          <select value={templateId} onChange={(e) => applyTemplate(e.target.value)}>
+            <option value="">Start from scratch…</option>
+            {templates.map((t) => <option key={t.id} value={t.id}>{t.name}{t.department ? ` — ${t.department}` : ""}</option>)}
+          </select>
+        </div>
+      )}
       <div className="field"><label>Title</label><input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Prepare Q3 client renewal list" /></div>
       <div className="field"><label>Description</label><textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Optional details / instructions" /></div>
       <div className="row2">
