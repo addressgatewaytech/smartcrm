@@ -3,6 +3,39 @@
 import { useState, useEffect, useCallback, useContext, useRef, createContext } from "react";
 import { X, Pencil, Trash2 } from "lucide-react";
 
+// Canonical role catalogue — the single source of truth on the frontend. Previously duplicated
+// independently in App.jsx and re-declared locally in tasks.jsx, taskTemplates.jsx,
+// salesDailyTasks.jsx, leadAssignment.jsx, and attendance.jsx; import from here instead so a role
+// added/renamed here doesn't silently drift out of sync in six other places.
+export const ROLE_LABEL = {
+  super_admin: "Super Admin", admin: "Admin", admin_exec: "Admin Executive",
+  sales_manager: "Sales Manager", sales_exec: "Sales Executive",
+  ops_manager: "Operations Manager", ops_member: "Operations Team Member",
+  accounts: "Accounts", hr: "HR", executive: "Executive", data_manager: "Data Manager",
+  lead_manager: "Lead Manager",
+  // Sees every business module read-only — never assignable, never in Sales Daily Task scope,
+  // enforced read-only at the API level (src/middleware/auth.js) regardless of any page's own
+  // gating. Deliberately distinct from "executive" (Dashboard + Reports only).
+  viewer: "Viewer",
+};
+
+// Super Admin / Admin / Admin Executive all get elevated (admin-tier) access.
+// Users & Roles management stays limited to Super Admin + Admin — see NAV in App.jsx.
+// "Executive" is intentionally NOT in this list — it's a read-only oversight role
+// (Dashboard + Reports only, no create/edit/approve/delete anywhere in the app).
+export const ADMIN_LIKE = ["super_admin", "admin", "admin_exec"];
+
+// sales_exec/sales_manager (+ admin oversight) — the Sales-department predicate used for Sales
+// Daily Tasks scope, the Dashboard's per-salesperson breakdown, and sales reports. Previously
+// re-derived independently in three places (App.jsx Dashboard, tasks.jsx, salesDailyTasks.jsx).
+export const isSalesRole = (role) => ADMIN_LIKE.includes(role) || role === "sales_manager" || role === "sales_exec";
+
+// Whether an employee can be handed a lead/task/job card/data record — active, not tagged
+// "Management" (oversees/approves work rather than being handed it directly), and not a "viewer"
+// (holds no operational role at all). Previously duplicated inline in ~5 assignment-pool filters
+// across App.jsx, tasks.jsx, and leadAssignment.jsx.
+export const isAssignable = (employee) => employee.active !== false && employee.category !== "Management" && !(employee.roles || []).includes("viewer");
+
 // Client-side pagination for a list page's already-filtered `rows` array. Callers slice their
 // own render with `pageRows` and drop <PaginationBar {...pagination} /> below the table — every
 // list page in the app uses this same pair rather than each rolling its own page-size/prev-next

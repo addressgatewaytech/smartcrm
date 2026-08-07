@@ -6,10 +6,9 @@
 import { useState } from "react";
 import { Plus, TrendingUp } from "lucide-react";
 import { ApiError } from "../api";
-import { Stamp, statusTone, Empty, money, ProgressRing } from "../ui.jsx";
+import { Stamp, statusTone, Empty, money, ProgressRing, ADMIN_LIKE } from "../ui.jsx";
 import { todayStr, firstOfMonthStr, userTaskSnapshot } from "../salesTasksHelpers";
 
-const ADMIN_LIKE = ["super_admin", "admin", "admin_exec"];
 const isManagerOrAdmin = (role) => ADMIN_LIKE.includes(role) || role === "sales_manager";
 
 export function SalesDailyTasksTab({ state, dispatch, role, userId }) {

@@ -5,9 +5,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { Clock, LogIn, LogOut, Download } from "lucide-react";
 import { api, ApiError } from "../api";
-import { Stamp, Empty, exportCSV } from "../ui.jsx";
+import { Stamp, Empty, exportCSV, ADMIN_LIKE } from "../ui.jsx";
 
-const ADMIN_LIKE = ["super_admin", "admin", "admin_exec"];
 const canSeeAllAttendance = (role) => ADMIN_LIKE.includes(role) || role === "hr";
 
 const todayStr = () => new Date().toISOString().slice(0, 10);

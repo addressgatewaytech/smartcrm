@@ -8,9 +8,8 @@
 import { useState } from "react";
 import { Search, UserCog, Plus } from "lucide-react";
 import { ApiError } from "../api";
-import { Modal, Stamp, Empty, BarChart, fmtDate, ConfirmModal, RowActions } from "../ui.jsx";
+import { Modal, Stamp, Empty, BarChart, fmtDate, ConfirmModal, RowActions, ADMIN_LIKE, isAssignable } from "../ui.jsx";
 
-const ADMIN_LIKE = ["super_admin", "admin", "admin_exec"];
 // Matches the backend's canDistributeLeads exactly — only Lead Manager (or admin-tier, as
 // everywhere else in this app) brings in and distributes leads. Sales Manager can still see this
 // page (nav visibility) but no longer creates or assigns leads from it.
@@ -233,7 +232,7 @@ function AssignLeadModal({ lead, employees, dispatch, onClose }) {
   const [userId, setUserId] = useState(lead.owner || "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const activeEmployees = employees.filter((e) => e.active !== false && e.category !== "Management");
+  const activeEmployees = employees.filter(isAssignable);
 
   const submit = async () => {
     setSaving(true); setError("");

@@ -1,7 +1,6 @@
 const express = require("express");
 const { query } = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
-const { requireRole } = require("../middleware/roles");
 const { quoteTotal } = require("../utils/helpers");
 const { generateTablePdf } = require("../utils/reportPdf");
 
@@ -11,16 +10,15 @@ router.use(requireAuth);
 // Generic "render this already-computed report table as a PDF" endpoint — the data is computed
 // client-side (same as every other report in this app; see ReportsPage in App.jsx) and posted
 // here just to be rendered, so any authenticated user can export a report they can already see on
-// screen. Placed before the role gate below, which is for the older server-computed report routes.
+// screen.
 router.post("/pdf", (req, res) => {
   const { title, subtitle, columns, rows } = req.body;
   if (!title || !Array.isArray(columns) || !Array.isArray(rows)) return res.status(400).json({ error: "title, columns, and rows are required" });
   generateTablePdf({ title, subtitle, columns, rows }, res);
 });
 
-// Reports are visible to Admin-tier, Sales Manager, Accounts, and the read-only Executive role.
-router.use(requireRole(["admin_like", "sales_manager", "accounts", "executive"]));
-
+// The whole Reports module is read-only and open to every role — every department gets company
+// performance visibility, not just Admin-tier/Sales Manager/Accounts/Executive as before.
 const range = (req) => [req.query.from || "1970-01-01", req.query.to || "2999-12-31"];
 
 router.get("/business-volume", async (req, res) => {

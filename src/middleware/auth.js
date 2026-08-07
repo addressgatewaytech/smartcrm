@@ -9,6 +9,13 @@ function requireAuth(req, res, next) {
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET);
     req.user = payload; // { id, roles, activeRole }
+    // A Viewer holds no operational role and must never be able to write anything, regardless of
+    // whether the specific route below happens to have its own requireRole gate — several routes
+    // (e.g. deals.routes.js) have none at all beyond ownership-scoping. Enforced once, globally,
+    // here, rather than requiring every route file to remember to exclude "viewer".
+    if ((payload.roles || []).includes("viewer") && !["GET", "HEAD", "OPTIONS"].includes(req.method)) {
+      return res.status(403).json({ error: "Viewers have read-only access" });
+    }
     next();
   } catch (err) {
     return res.status(401).json({ error: "Invalid or expired token" });

@@ -6,17 +6,12 @@
 import { useState } from "react";
 import { Search, Download, Plus, Trash2, ListChecks, Check, Pencil, Bell, BellOff } from "lucide-react";
 import { ApiError } from "../api";
-import { Modal, ConfirmModal, Stamp, statusTone, Rail, Empty, exportCSV, fmtDate } from "../ui.jsx";
+import { Modal, ConfirmModal, Stamp, statusTone, Rail, Empty, exportCSV, fmtDate, ADMIN_LIKE, isSalesRole, isAssignable } from "../ui.jsx";
 import { SalesDailyTasksTab } from "./salesDailyTasks.jsx";
 import { TaskTemplatesTab } from "./taskTemplates.jsx";
 
-const ADMIN_LIKE = ["super_admin", "admin", "admin_exec"];
 const TASK_MANAGER_ROLES = ["sales_manager", "ops_manager", "hr"];
 const canManageTasks = (role) => ADMIN_LIKE.includes(role) || TASK_MANAGER_ROLES.includes(role);
-// Sales Daily Tasks is Sales-department + admin-oversight only — same predicate used across the
-// rest of the app (Dashboard, SalesPersonReport, DataByUserTab) rather than the free-text
-// employees.dept column.
-const canSeeSalesTasks = (role) => ADMIN_LIKE.includes(role) || ["sales_exec", "sales_manager"].includes(role);
 const daysFromNow = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
 
 const KANBAN_COLS = ["Assigned", "Accepted", "In Progress", "Pending Approval", "Completed", "Rejected"];
@@ -62,7 +57,7 @@ export function TasksPage({ state, dispatch, role, userId }) {
           <button className={`tab ${view === "kanban" ? "active" : ""}`} onClick={() => setView("kanban")}>Kanban</button>
           <button className={`tab ${view === "table" ? "active" : ""}`} onClick={() => setView("table")}>Table</button>
           <button className={`tab ${view === "todo" ? "active" : ""}`} onClick={() => setView("todo")}>My To-Do List</button>
-          {canSeeSalesTasks(role) && <button className={`tab ${view === "salesTasks" ? "active" : ""}`} onClick={() => setView("salesTasks")}>Sales Daily Tasks</button>}
+          {isSalesRole(role) && <button className={`tab ${view === "salesTasks" ? "active" : ""}`} onClick={() => setView("salesTasks")}>Sales Daily Tasks</button>}
           {manager && <button className={`tab ${view === "templates" ? "active" : ""}`} onClick={() => setView("templates")}>Templates</button>}
         </div>
         {!["todo", "salesTasks", "templates"].includes(view) && (
@@ -170,7 +165,7 @@ function NewTaskModal({ state, dispatch, onClose }) {
   const [dueDate, setDueDate] = useState("");
   const [assignedTo, setAssignedTo] = useState("");
   const [templateId, setTemplateId] = useState("");
-  const activeEmployees = state.employees.filter((e) => e.active !== false && e.category !== "Management");
+  const activeEmployees = state.employees.filter(isAssignable);
   const department = state.employees.find((e) => e.id === assignedTo)?.dept || "";
   const templates = state.taskTemplates || [];
 
@@ -237,7 +232,7 @@ function EditTaskModal({ task, state, dispatch, onClose }) {
   const [dueDate, setDueDate] = useState(task.dueDate || "");
   const [assignedTo, setAssignedTo] = useState(task.assignedTo);
   const [error, setError] = useState("");
-  const activeEmployees = state.employees.filter((e) => e.active !== false && e.category !== "Management");
+  const activeEmployees = state.employees.filter(isAssignable);
   const department = state.employees.find((e) => e.id === assignedTo)?.dept || task.department || "";
 
   const submit = async () => {

@@ -5,9 +5,7 @@
 import { useState } from "react";
 import { Plus, Pencil, Trash2, Files } from "lucide-react";
 import { ApiError } from "../api";
-import { Modal, Empty, useConfirm } from "../ui.jsx";
-
-const ADMIN_LIKE = ["super_admin", "admin", "admin_exec"];
+import { Modal, Empty, useConfirm, ADMIN_LIKE } from "../ui.jsx";
 
 export function TaskTemplatesTab({ state, dispatch, role }) {
   const isAdmin = ADMIN_LIKE.includes(role);

@@ -11,7 +11,7 @@ import {
   Database, Upload, MessageCircle, Recycle, ArchiveX, ShieldAlert, Settings as SettingsIcon,
   Sun, Moon, BookOpen
 } from "lucide-react";
-import { money, fmtDate, fmtDateDMY, Stamp, statusTone, Rail, DonutChart, LineChart, BarChart, SalesPersonBars, ProgressRing, Modal, Empty, ConfirmModal, RowActions, exportCSV, usePagination, PaginationBar, TableScrollHint, useConfirm } from "./ui.jsx";
+import { money, fmtDate, fmtDateDMY, Stamp, statusTone, Rail, DonutChart, LineChart, BarChart, SalesPersonBars, ProgressRing, Modal, Empty, ConfirmModal, RowActions, exportCSV, usePagination, PaginationBar, TableScrollHint, useConfirm, ADMIN_LIKE, ROLE_LABEL, isSalesRole, isAssignable } from "./ui.jsx";
 import { todayStr as salesTaskToday, firstOfMonthStr, userTaskSnapshot } from "./salesTasksHelpers";
 import { TasksPage } from "./pages/tasks.jsx";
 import { AttendanceWidget, AttendancePage } from "./pages/attendance.jsx";
@@ -340,19 +340,9 @@ const QUOTE_THEME_KEYS = Object.keys(QUOTE_THEMES);
 const DEFAULT_BANK = "ADDRESS GATEWAY BUSINESS SERVICES\nBank - Commercial Bank, Account Number - 4680-21670035-001\nIBAN - QA14CBQA000000468021670035001, Company Fawran - ER-17274261\nDoha, Qatar";
 const DEFAULT_FOOTER_NOTE = "This quotation is provided for estimation purposes only and does not constitute legal or financial advice; signature is not required.";
 
-const ROLE_LABEL = {
-  super_admin: "Super Admin", admin: "Admin", admin_exec: "Admin Executive",
-  sales_manager: "Sales Manager", sales_exec: "Sales Executive",
-  ops_manager: "Operations Manager", ops_member: "Operations Team Member",
-  accounts: "Accounts", hr: "HR", executive: "Executive", data_manager: "Data Manager",
-  lead_manager: "Lead Manager",
-};
+// ROLE_LABEL and ADMIN_LIKE now live in ui.jsx (imported above) — the single source of truth for
+// both, previously duplicated independently here and re-declared in five page-level files.
 
-// Super Admin / Admin / Admin Executive all get elevated (admin-tier) access.
-// Users & Roles management stays limited to Super Admin + Admin — see NAV below.
-// "Executive" is intentionally NOT in this list — it's a read-only oversight role
-// (Dashboard + Reports only, no create/edit/approve/delete anywhere in the app).
-const ADMIN_LIKE = ["super_admin", "admin", "admin_exec"];
 // Only Accounts/Admin-tier convert an accepted quotation into a Sales Order, onboard a Sales Order
 // into an Invoice, and get the clean (non-watermarked, downloadable) Sales Order/Invoice PDF —
 // every other role sees those documents watermarked "INTERNAL USE ONLY" and can't download them.
@@ -664,7 +654,9 @@ const NAV = [
     { key: "leadAssignment", label: "Lead Assignment Manager", icon: UserPlus, roles: [...ADMIN_LIKE,"lead_manager","sales_manager"] },
   ]},
   { group: "Insights", items: [
-    { key: "reports", label: "Reports", icon: BarChart3, roles: [...ADMIN_LIKE,"sales_manager","accounts","executive"] },
+    // Open to every role — every department gets company performance visibility, not just
+    // Admin-tier/Sales Manager/Accounts/Executive as before.
+    { key: "reports", label: "Reports", icon: BarChart3, roles: "all" },
   ]},
   { group: "", items: [
     { key: "notifications", label: "Notifications", icon: Bell, roles: "all" },
@@ -920,8 +912,13 @@ export default function App() {
     : state.tasks.filter(t => t.status === "Assigned" && t.assignedTo === userId).length;
   const navBadge = (key) => key === "notifications" ? unreadCount : key === "jobs" ? jobsBadgeCount : key === "tasks" ? tasksBadgeCount : 0;
 
-  const visibleNav = NAV.map(g => ({ ...g, items: g.items.filter(i => i.roles === "all" || i.roles.includes(role)) }))
-    .filter(g => g.items.length);
+  // A Viewer sees every module read-only without needing to be added to each item's roles array
+  // individually — except Settings and Users & Roles, which stay admin-only meta-administration
+  // (backup download, user credentials) rather than a business "module" to observe.
+  const VIEWER_EXCLUDED_NAV = ["users", "settings"];
+  const visibleNav = NAV.map(g => ({ ...g, items: g.items.filter(i =>
+    i.roles === "all" || i.roles.includes(role) || (role === "viewer" && !VIEWER_EXCLUDED_NAV.includes(i.key))
+  ) })).filter(g => g.items.length);
 
   // Bottom tab bar (mobile only): Dashboard + up to 2 role-relevant items + Notifications + More.
   const flatNav = visibleNav.flatMap(g => g.items);
@@ -1155,7 +1152,7 @@ export default function App() {
 /* DASHBOARD                                                               */
 /* ---------------------------------------------------------------------- */
 
-function Dashboard({ state, role, userId, setPage }) {
+function Dashboard({ state, dispatch, role, userId, setPage }) {
   const { period, setPeriod, customFrom, setCustomFrom, customTo, setCustomTo, range } = usePeriod("month");
   const showPeriod = role !== "ops_manager" && role !== "ops_member" && role !== "hr";
 
@@ -1220,11 +1217,11 @@ function Dashboard({ state, role, userId, setPage }) {
   // Per-salesperson leads/deals/quotations/collections breakdown — admin and sales managers see the
   // whole team; a sales_exec sees the exact same layout scoped to just themselves, so "their own
   // dashboard follows the same type" as the team view instead of getting a different design.
-  const isSalesRole = ADMIN_LIKE.includes(role) || role === "sales_manager" || role === "sales_exec";
+  const isSalesTeamRole = isSalesRole(role);
   const salesOwners = role === "sales_exec"
     ? state.employees.filter(e => e.id === userId)
     : state.employees.filter(e => e.roles.includes("sales_exec") || e.roles.includes("sales_manager"));
-  const salesPersonRows = !isSalesRole ? [] : salesOwners.map(owner => {
+  const salesPersonRows = !isSalesTeamRole ? [] : salesOwners.map(owner => {
     const leads = state.leads.filter(l => l.owner===owner.id && inRange(l.createdAt, range));
     const allOwnedDealIds = new Set(state.deals.filter(d => d.owner===owner.id).map(d => d.id));
     const deals = state.deals.filter(d => d.owner===owner.id && inRange(d.createdAt, range));
@@ -1249,6 +1246,12 @@ function Dashboard({ state, role, userId, setPage }) {
 
   // --- Charts tab data -------------------------------------------------------------------------
   const [chartTab, setChartTab] = useState("overview");
+  // A lightweight "log a lead" action for roles that don't get the full Leads page (only
+  // admin-tier/sales_manager/sales_exec do — see NAV in App.jsx) — everyone else can still capture
+  // an enquiry they come across without seeing the Leads list/pipeline. A Viewer never gets this
+  // either, being strictly read-only everywhere.
+  const canQuickAddLead = !isSalesRole(role) && role !== "viewer";
+  const [showQuickAddLead, setShowQuickAddLead] = useState(false);
 
   const dealStageColors = { Open:"var(--info)", "Quotation Sent":"var(--gold)", Won:"var(--success)", Lost:"var(--danger)" };
   const dealsByStage = ["Open","Quotation Sent","Won","Lost"].map(stage => ({
@@ -1336,10 +1339,14 @@ function Dashboard({ state, role, userId, setPage }) {
 
   return (
     <div>
-      <div className="tabbar" style={{ marginBottom: 16 }}>
-        <button className={`tab ${chartTab==="overview"?"active":""}`} onClick={()=>setChartTab("overview")}>Overview</button>
-        <button className={`tab ${chartTab==="charts"?"active":""}`} onClick={()=>setChartTab("charts")}>Charts</button>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 16, flexWrap:"wrap", gap:10 }}>
+        <div className="tabbar" style={{ marginBottom:0 }}>
+          <button className={`tab ${chartTab==="overview"?"active":""}`} onClick={()=>setChartTab("overview")}>Overview</button>
+          <button className={`tab ${chartTab==="charts"?"active":""}`} onClick={()=>setChartTab("charts")}>Charts</button>
+        </div>
+        {canQuickAddLead && <button className="btn btn-primary" onClick={()=>setShowQuickAddLead(true)}><Plus size={15}/> Log a lead</button>}
       </div>
+      {showQuickAddLead && <LeadFormModal state={state} dispatch={dispatch} userId={userId} editLead={null} onClose={()=>setShowQuickAddLead(false)} />}
 
       {chartTab === "overview" && <>
       {showPeriod && (
@@ -1473,7 +1480,7 @@ function Dashboard({ state, role, userId, setPage }) {
         </div>
       )}
 
-      {isSalesRole && (
+      {isSalesTeamRole && (
         <div className="agw-card" style={{ marginTop: 16 }}>
           <strong style={{ fontSize: 14 }}>{role === "sales_exec" ? "My performance" : "Sales team performance"}</strong>
           <div style={{ marginTop: 10 }}>
@@ -1500,7 +1507,7 @@ function Dashboard({ state, role, userId, setPage }) {
         </div>
       )}
 
-      {isSalesRole && state.salesTaskDefs?.length > 0 && (
+      {isSalesTeamRole && state.salesTaskDefs?.length > 0 && (
         <div className="agw-card" style={{ marginTop: 16 }}>
           <strong style={{ fontSize: 14 }}>{role === "sales_exec" ? "My Sales Daily Tasks" : "Sales Daily Tasks — team"}</strong>
           <div style={{ marginTop: 10 }}>
@@ -1601,7 +1608,7 @@ function Dashboard({ state, role, userId, setPage }) {
                   {leadsBySource.length === 0 ? <Empty icon={Users} text="No leads yet." /> : <BarChart data={leadsBySource} />}
                 </div>
               </div>
-              {isSalesRole && (
+              {isSalesTeamRole && (
                 <div className="agw-card" style={{ gridColumn: "1 / -1" }}>
                   <strong style={{ fontSize: 14 }}>{role === "sales_exec" ? "My leads, deals & quotations" : "Sales team — leads, deals & quotations"}</strong>
                   <div style={{ marginTop: 16 }}>
@@ -1623,6 +1630,71 @@ function Dashboard({ state, role, userId, setPage }) {
 
 const LEAD_STATUSES = ["New","Contacted","Follow-up Scheduled","Interested","Not Interested","Qualified","Unqualified","Converted"];
 
+// Extracted out of LeadsPage so it's also reachable from the Dashboard's "Log a lead" quick-add
+// (for roles that get lead-creation without the full Leads page) — same form, same POST /leads,
+// just a second entry point. editLead=null means "new lead"; otherwise pre-fills for editing.
+function LeadFormModal({ state, dispatch, userId, editLead, onClose }) {
+  const blankForm = { name:"", company:"", phone:"", email:"", reference:"", source:"Website", service: SERVICES[0] };
+  const [form, setForm] = useState(editLead
+    ? { name:editLead.name, company:editLead.company, phone:editLead.phone||"", email:editLead.email||"", reference:editLead.reference||"", source:editLead.source, service:editLead.service }
+    : blankForm);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+
+  const handleSave = async () => {
+    setSaving(true);
+    setSaveError("");
+    try {
+      if (editLead) {
+        await dispatch({type:"UPDATE_LEAD", id:editLead.id, payload:form});
+      } else {
+        const result = await dispatch({type:"ADD_LEAD", payload:{...form, owner: userId}});
+        if (result?.duplicateOf) {
+          alert(`Note: no new customer was created — "${form.company}"'s phone/email already matches an existing customer, "${result.duplicateOf}". The lead was linked to that customer instead.`);
+        }
+      }
+      onClose();
+    } catch (err) {
+      setSaveError(err instanceof ApiError ? err.message : "Couldn't save — please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal title={editLead ? `Edit ${editLead.id}` : "New lead"} sub={editLead ? undefined : "Capture an enquiry before it's qualified into a deal."} onClose={onClose}>
+      <div className="row2">
+        <div className="field"><label>Contact name</label><input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="Full name" /></div>
+        <div className="field"><label>Company</label><input value={form.company} onChange={e=>setForm({...form,company:e.target.value})} placeholder="Company name" /></div>
+      </div>
+      <div className="row2">
+        <div className="field"><label>Phone</label><input value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="+974 ..." /></div>
+        <div className="field"><label>Email</label><input type="email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})} placeholder="name@company.com" /></div>
+      </div>
+      <div className="row2">
+        <div className="field"><label>Source</label>
+          <select value={form.source} onChange={e=>setForm({...form,source:e.target.value})}>
+            {["Website","Referral","Walk-in","Campaign","Other"].map(s=><option key={s}>{s}</option>)}
+          </select>
+        </div>
+        <div className="field"><label>Reference (optional)</label><input value={form.reference} onChange={e=>setForm({...form,reference:e.target.value})} placeholder="e.g. Referred by..., reference code" /></div>
+      </div>
+      <div className="field"><label>Interested service</label>
+        <select value={form.service} onChange={e=>setForm({...form,service:e.target.value})}>
+          {state.services.map(s=><option key={s}>{s}</option>)}
+        </select>
+      </div>
+      {saveError && <div className="side-note" style={{ color:"var(--danger)" }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{saveError}</div>}
+      <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop: 16 }}>
+        <button className="btn" onClick={onClose}>Cancel</button>
+        <button className="btn btn-primary" disabled={saving || !form.name || !form.company} onClick={handleSave}>
+          {saving ? "Saving…" : editLead ? "Save changes" : "Add lead"}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 function LeadsPage({ state, dispatch, userId, role }) {
   const [view, setView] = useState("kanban");
   const [draggedLeadId, setDraggedLeadId] = useState(null);
@@ -1637,31 +1709,7 @@ function LeadsPage({ state, dispatch, userId, role }) {
   const [fuNote, setFuNote] = useState("");
   const [fuStatus, setFuStatus] = useState("Contacted");
   const [fuNext, setFuNext] = useState(daysFromNow(3));
-  const blankForm = { name:"", company:"", phone:"", email:"", reference:"", source:"Website", service: SERVICES[0] };
-  const [form, setForm] = useState(blankForm);
   const [dealValue, setDealValue] = useState(15000);
-  const [saveError, setSaveError] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  const handleSaveLead = async () => {
-    setSaving(true);
-    setSaveError("");
-    try {
-      if (editLead) {
-        await dispatch({type:"UPDATE_LEAD", id:editLead.id, payload:form});
-      } else {
-        const result = await dispatch({type:"ADD_LEAD", payload:{...form, owner: userId}});
-        if (result?.duplicateOf) {
-          alert(`Note: no new customer was created — "${form.company}"'s phone/email already matches an existing customer, "${result.duplicateOf}". The lead was linked to that customer instead.`);
-        }
-      }
-      setShowAdd(false); setEditLead(null); setForm(blankForm);
-    } catch (err) {
-      setSaveError(err instanceof ApiError ? err.message : "Couldn't save — please try again.");
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const [query, setQuery] = useState("");
   const { period, setPeriod, customFrom, setCustomFrom, customTo, setCustomTo, range } = usePeriod("all");
@@ -1684,10 +1732,10 @@ function LeadsPage({ state, dispatch, userId, role }) {
   const isAdmin = ADMIN_LIKE.includes(role);
   // Same pool AssignLeadModal (Lead Assignment Manager) draws from — any active, non-management
   // employee is a valid lead owner, not just sales-tagged roles.
-  const assignableEmployees = state.employees.filter(e => e.active !== false && e.category !== "Management");
+  const assignableEmployees = state.employees.filter(isAssignable);
 
   const openFollowUp = (l) => { setFollowFor(l); setFuNote(""); setFuStatus(l.status); setFuNext(l.nextFollowUp || daysFromNow(3)); };
-  const openEdit = (l) => { setEditLead(l); setForm({ name:l.name, company:l.company, phone:l.phone||"", email:l.email||"", reference:l.reference||"", source:l.source, service:l.service }); };
+  const openEdit = (l) => setEditLead(l);
 
   return (
     <div>
@@ -1717,7 +1765,7 @@ function LeadsPage({ state, dispatch, userId, role }) {
             owned.map(l=>[l.id, l.createdAt, l.name, l.company, l.service, leadOrigin(l), l.source, l.reference||"", state.employees.find(t=>t.id===l.owner)?.name||"", l.status, l.nextFollowUp||""]))}>
             <Download size={13}/> Export
           </button>
-          <button className="btn btn-primary" onClick={()=>{ setForm(blankForm); setShowAdd(true); }}><Plus size={15}/> New lead</button>
+          {role !== "viewer" && <button className="btn btn-primary" onClick={()=>setShowAdd(true)}><Plus size={15}/> New lead</button>}
         </div>
       </div>
 
@@ -1938,36 +1986,8 @@ function LeadsPage({ state, dispatch, userId, role }) {
       )}
 
       {(showAdd || editLead) && (
-        <Modal title={editLead ? `Edit ${editLead.id}` : "New lead"} sub={editLead ? undefined : "Capture an enquiry before it's qualified into a deal."} onClose={()=>{ setShowAdd(false); setEditLead(null); }}>
-          <div className="row2">
-            <div className="field"><label>Contact name</label><input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="Full name" /></div>
-            <div className="field"><label>Company</label><input value={form.company} onChange={e=>setForm({...form,company:e.target.value})} placeholder="Company name" /></div>
-          </div>
-          <div className="row2">
-            <div className="field"><label>Phone</label><input value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="+974 ..." /></div>
-            <div className="field"><label>Email</label><input type="email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})} placeholder="name@company.com" /></div>
-          </div>
-          <div className="row2">
-            <div className="field"><label>Source</label>
-              <select value={form.source} onChange={e=>setForm({...form,source:e.target.value})}>
-                {["Website","Referral","Walk-in","Campaign","Other"].map(s=><option key={s}>{s}</option>)}
-              </select>
-            </div>
-            <div className="field"><label>Reference (optional)</label><input value={form.reference} onChange={e=>setForm({...form,reference:e.target.value})} placeholder="e.g. Referred by..., reference code" /></div>
-          </div>
-          <div className="field"><label>Interested service</label>
-            <select value={form.service} onChange={e=>setForm({...form,service:e.target.value})}>
-              {state.services.map(s=><option key={s}>{s}</option>)}
-            </select>
-          </div>
-          {saveError && <div className="side-note" style={{ color:"var(--danger)" }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{saveError}</div>}
-          <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop: 16 }}>
-            <button className="btn" onClick={()=>{ setShowAdd(false); setEditLead(null); setSaveError(""); }}>Cancel</button>
-            <button className="btn btn-primary" disabled={saving || !form.name || !form.company} onClick={handleSaveLead}>
-              {saving ? "Saving…" : editLead ? "Save changes" : "Add lead"}
-            </button>
-          </div>
-        </Modal>
+        <LeadFormModal state={state} dispatch={dispatch} userId={userId} editLead={editLead}
+          onClose={()=>{ setShowAdd(false); setEditLead(null); }} />
       )}
 
       {convert && (
@@ -2011,7 +2031,7 @@ function DealsPage({ state, dispatch, setPage, onViewQuotation, role, userId }) 
   });
   const pg = usePagination(deals);
   const isAdmin = ADMIN_LIKE.includes(role);
-  const assignableEmployees = state.employees.filter(e => e.active !== false && e.category !== "Management");
+  const assignableEmployees = state.employees.filter(isAssignable);
 
   return (
     <div>
@@ -2039,7 +2059,7 @@ function DealsPage({ state, dispatch, setPage, onViewQuotation, role, userId }) 
             deals.map(d=>[d.id, d.createdAt, d.customer, d.service, d.value, dealOrigin(state, d), state.employees.find(t=>t.id===d.owner)?.name||"", d.stage, d.expectedClose]))}>
             <Download size={13}/> Export
           </button>
-          <button className="btn btn-primary" onClick={()=>setNewDeal(true)}><Plus size={15}/> New deal</button>
+          {role !== "viewer" && <button className="btn btn-primary" onClick={()=>setNewDeal(true)}><Plus size={15}/> New deal</button>}
         </div>
       </div>
 
@@ -2619,7 +2639,7 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, onHighligh
             rows.map(q=>[q.id, q.createdAt, q.customer, q.items[0]?.service||"", state.employees.find(t=>t.id===q.owner)?.name||"", quotationOrigin(state, q), quotationFeeTypeLabel(q), total(q), q.validTill, q.status]))}>
             <Download size={13}/> Export
           </button>
-          <button className="btn btn-primary" onClick={()=>setNewQuote(true)}><Plus size={15}/> New quotation</button>
+          {role !== "viewer" && <button className="btn btn-primary" onClick={()=>setNewQuote(true)}><Plus size={15}/> New quotation</button>}
         </div>
       </div>
       <div className="agw-card" style={{ padding: 0 }}>
@@ -3414,7 +3434,7 @@ function CustomersPage({ state, dispatch, role, userId }) {
             filtered.map(c=>{ const flagged = [...c.docs, ...c.employees.flatMap(e=>e.docs)].filter(d => docState(d.expiry).label !== "Valid").length; return [c.name, c.createdAt, c.contact||"", c.phone||"", c.email||"", c.companySize||"", flagged>0?`${flagged} flagged`:"Clear"]; }))}>
             <Download size={13}/> Export
           </button>
-          <button className="btn btn-primary" onClick={()=>setShowAdd(true)}><Plus size={15}/> New customer</button>
+          {role !== "viewer" && <button className="btn btn-primary" onClick={()=>setShowAdd(true)}><Plus size={15}/> New customer</button>}
         </div>
       </div>
 
@@ -3967,7 +3987,7 @@ function SubscriptionsPage({ state, dispatch, role, userId }) {
               visibleSubs.map(s=>[s.id, s.customer, s.plan, s.tier, s.annualFee, s.startDate, s.expiryDate, subStatusOf(s)]))}>
               <Download size={13}/> Export
             </button>
-            <button className="btn btn-primary" onClick={()=>setNewSub(true)}><Plus size={15}/> New subscription</button>
+            {role !== "viewer" && <button className="btn btn-primary" onClick={()=>setNewSub(true)}><Plus size={15}/> New subscription</button>}
           </div>
         )}
       </div>
@@ -5100,7 +5120,7 @@ function NewJobCardModal({ state, dispatch, onClose }) {
 }
 
 function AssignModal({ job, dispatch, employees, onClose }) {
-  const opsTeam = employees.filter(t => t.active !== false && t.category !== "Management" && (t.roles.includes("ops_member") || t.roles.includes("ops_manager")));
+  const opsTeam = employees.filter(t => isAssignable(t) && (t.roles.includes("ops_member") || t.roles.includes("ops_manager")));
   const [selected, setSelected] = useState(job.assignees);
   const toggle = (id) => setSelected(sel => sel.includes(id) ? sel.filter(x=>x!==id) : [...sel, id]);
   return (
