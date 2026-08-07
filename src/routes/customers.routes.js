@@ -16,20 +16,18 @@ router.get("/", async (req, res) => {
   const staff = await query("SELECT * FROM customer_staff");
   const staffDocs = await query("SELECT * FROM customer_staff_docs");
 
-  // Same full-access set as the Reports module (see ReportsPage in App.jsx): Admin-tier, Sales
-  // Manager, Accounts, Viewer, and Executive see every customer; everyone else only their own
-  // (derived below). Accounts/Viewer/Executive were added here for consistency with Reports —
-  // Accounts previously fell through to the ownership-derivation filter despite never owning a
-  // lead/deal themselves, so in practice saw almost no customers.
-  const canSeeAll = isAdminLike(req.user.roles) || ["sales_manager", "accounts", "viewer", "executive"].some(r => req.user.roles.includes(r));
+  // Only Admin-tier sees every customer; everyone else sees only their own — a customer they
+  // created directly, or one linked to a lead/deal they own. Unlike before, a customer with no
+  // traceable owner at all is now admin-only (not shown to everyone) — KYC records are sensitive
+  // enough that "can't prove who it belongs to" should mean restricted, not wide open.
+  const canSeeAll = isAdminLike(req.user.roles);
   let visible = customers;
   if (!canSeeAll) {
-    // Customers have no owner column — ownership is derived from the customer's most recent lead
-    // (a lead auto-creates its customer, so this covers most records), falling back to the most
-    // recent deal. Done here (not client-side) because /leads itself is scoped to the requesting
-    // user for a sales_exec, so the client never has enough data to derive anyone else's ownership.
-    // Only hides a customer this user can prove belongs to someone else — one with no lead/deal
-    // match (e.g. added directly) stays visible rather than vanishing on its creator.
+    // Customers have no direct owner column — ownership is derived from the customer's most
+    // recent lead (a lead auto-creates its customer, so this covers most records), falling back to
+    // the most recent deal, and finally to created_by for one added directly via "New customer".
+    // Done here (not client-side) because /leads itself is scoped to the requesting user, so the
+    // client never has enough data to derive anyone else's ownership.
     const leads = await query("SELECT company, owner, customer_id, created_at FROM leads ORDER BY created_at DESC");
     const deals = await query("SELECT customer, owner, customer_id, created_at FROM deals ORDER BY created_at DESC");
     // Case-insensitive, matching how findOrCreateCustomer itself matches names —
@@ -41,9 +39,10 @@ router.get("/", async (req, res) => {
       const lead = leads.find((l) => l.customer_id === customer.id) || leads.find((l) => !l.customer_id && sameName(l.company, customer.name));
       if (lead) return lead.owner;
       const deal = deals.find((d) => d.customer_id === customer.id) || deals.find((d) => !d.customer_id && sameName(d.customer, customer.name));
-      return deal ? deal.owner : null;
+      if (deal) return deal.owner;
+      return customer.created_by || null;
     };
-    visible = customers.filter((c) => { const owner = ownerFor(c); return owner == null || owner === req.user.id; });
+    visible = customers.filter((c) => ownerFor(c) === req.user.id);
   }
 
   res.json(visible.map((c) => ({
@@ -60,8 +59,8 @@ router.post("/", async (req, res) => {
     return res.status(400).json({ error: `This looks like a duplicate of the existing customer "${dup.match.name}" (matched by ${dup.field}) — please use that profile instead of creating a new one.` });
   }
   const id = await withTransaction((conn) => nextSequentialId(conn, "AGBSCU", "customer"));
-  await query("INSERT INTO customers (id, name, type, contact, phone, landline, contact_mobile, email, address, company_size) VALUES (?,?,?,?,?,?,?,?,?,?)",
-    [id, b.name, b.type || "Company", b.contact || null, b.phone || null, b.landline || null, b.contactMobile || null, b.email || null, b.address || null, b.companySize || null]);
+  await query("INSERT INTO customers (id, name, type, contact, phone, landline, contact_mobile, email, address, company_size, created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+    [id, b.name, b.type || "Company", b.contact || null, b.phone || null, b.landline || null, b.contactMobile || null, b.email || null, b.address || null, b.companySize || null, req.user.id]);
   res.status(201).json({ id });
 });
 

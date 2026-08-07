@@ -234,7 +234,13 @@ CREATE TABLE IF NOT EXISTS customers (
   email        VARCHAR(190),
   address      VARCHAR(500),
   company_size ENUM('Up to 10 Employees','Up to 30 Employees','Up to 100 Employees','Up to 200 Employees'),
-  created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  -- Who directly added this customer (via the "New customer" button, not via a lead/deal) — the
+  -- fallback ownership signal in GET /customers for a customer with no traceable lead/deal, so its
+  -- creator doesn't lose visibility of their own record. NULL for customers predating this column,
+  -- or created through the lead/deal pipeline (findOrCreateCustomer), which don't set it.
+  created_by   VARCHAR(20) NULL,
+  created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS customer_docs (
