@@ -6801,9 +6801,42 @@ const REPORT_TABS = [
   { key:"attendanceHours", label:"Attendance" },
 ];
 
-function ReportsPage({ state, role }) {
+// Admin-tier, Sales Manager, and Accounts already had full company-wide Reports access before
+// Reports opened to every role — they keep it, since they manage/oversee a team or the whole
+// company's finances. Viewer and Executive are pure-oversight roles with no owned data of their
+// own, so scoping them to "their own" would just show them nothing — they stay full-access too,
+// consistent with why those roles exist. Everyone else (Sales Exec, Ops Manager, Ops Member, HR,
+// Data Manager, Lead Manager) sees only their own contributions in every report.
+const FULL_REPORT_ACCESS_ROLES = [...ADMIN_LIKE, "sales_manager", "accounts", "viewer", "executive"];
+
+function ReportsPage({ state, role, userId }) {
   const [tab, setTab] = useState("volume");
   const { period, setPeriod, customFrom, setCustomFrom, customTo, setCustomTo, range } = usePeriod("month");
+
+  // Scoped once here (not inside each report component) so every tab automatically only ever sees
+  // "their own" data for a restricted role — the report components themselves are unchanged, they
+  // just receive a pre-filtered `state`. Deliberately separate from each entity's own module-level
+  // visibility rules elsewhere in the app (e.g. an Ops Manager still manages every Job Card on the
+  // actual Job Cards page — that's an operational necessity unrelated to this Reports-only scoping).
+  const canSeeAllReports = FULL_REPORT_ACCESS_ROLES.includes(role);
+  const reportState = canSeeAllReports ? state : (() => {
+    const ownedQuotationIds = new Set(state.quotations.filter(q => q.owner === userId).map(q => q.id));
+    const ownedSalesOrders = state.salesOrders.filter(so => ownedQuotationIds.has(so.quotationId));
+    const ownedSalesOrderIds = new Set(ownedSalesOrders.map(so => so.id));
+    return {
+      ...state,
+      leads: state.leads.filter(l => l.owner === userId),
+      deals: state.deals.filter(d => d.owner === userId),
+      quotations: state.quotations.filter(q => q.owner === userId),
+      salesOrders: ownedSalesOrders,
+      invoices: state.invoices.filter(inv => ownedSalesOrderIds.has(inv.salesOrderId)),
+      jobCards: state.jobCards.filter(j => (j.assignees || []).includes(userId) || j.createdBy === userId),
+      tasks: state.tasks.filter(t => t.assignedTo === userId || t.createdBy === userId),
+      // customers is already scoped to "own" server-side (see GET /customers) — every role that
+      // isn't in the full-access set only ever receives their own customers to begin with.
+      employees: state.employees.filter(e => e.id === userId),
+    };
+  })();
 
   return (
     <div>
@@ -6818,18 +6851,18 @@ function ReportsPage({ state, role }) {
         <PeriodFilter period={period} setPeriod={setPeriod} customFrom={customFrom} setCustomFrom={setCustomFrom} customTo={customTo} setCustomTo={setCustomTo} />
       </div>
 
-      {tab === "volume" && <VolumeReport state={state} range={range} />}
-      {tab === "salespeople" && <SalesPersonReport state={state} range={range} />}
-      {tab === "collections" && <CollectionsReport state={state} range={range} />}
-      {tab === "customers" && <CustomersReport state={state} range={range} />}
-      {tab === "users" && <UsersReport state={state} range={range} />}
-      {tab === "hr" && <AttendanceHRReport state={state} range={range} />}
-      {tab === "incentives" && <IncentivesReport state={state} range={range} />}
-      {tab === "operations" && <OperationsReport state={state} range={range} />}
-      {tab === "tasks" && <EmployeeTasksReport state={state} range={range} />}
-      {tab === "salesDailyTasks" && <SalesDailyTasksReport state={state} range={range} />}
-      {tab === "leadPerformance" && <LeadPerformanceReport state={state} range={range} />}
-      {tab === "attendanceHours" && <AttendanceHoursReport state={state} range={range} />}
+      {tab === "volume" && <VolumeReport state={reportState} range={range} />}
+      {tab === "salespeople" && <SalesPersonReport state={reportState} range={range} />}
+      {tab === "collections" && <CollectionsReport state={reportState} range={range} />}
+      {tab === "customers" && <CustomersReport state={reportState} range={range} />}
+      {tab === "users" && <UsersReport state={reportState} range={range} />}
+      {tab === "hr" && <AttendanceHRReport state={reportState} range={range} />}
+      {tab === "incentives" && <IncentivesReport state={reportState} range={range} />}
+      {tab === "operations" && <OperationsReport state={reportState} range={range} />}
+      {tab === "tasks" && <EmployeeTasksReport state={reportState} range={range} />}
+      {tab === "salesDailyTasks" && <SalesDailyTasksReport state={reportState} range={range} />}
+      {tab === "leadPerformance" && <LeadPerformanceReport state={reportState} range={range} />}
+      {tab === "attendanceHours" && <AttendanceHoursReport state={reportState} range={range} userId={canSeeAllReports ? undefined : userId} />}
     </div>
   );
 }
@@ -7409,13 +7442,17 @@ function LeadPerformanceReport({ state, range }) {
   );
 }
 
-function AttendanceHoursReport({ state, range }) {
+function AttendanceHoursReport({ state, range, userId }) {
   const [rows, setRows] = useState(null);
   useEffect(() => {
     let cancelled = false;
-    api.hr.attendanceSummary(range[0], range[1]).then(data => { if (!cancelled) setRows(Array.isArray(data) ? data : [data]); }).catch(() => { if (!cancelled) setRows([]); });
+    // This report fetches its own data server-side (attendance can span a long history), so the
+    // "own only" scoping ReportsPage applies to every other tab's client-side state has to be
+    // passed through as an explicit userId here instead — undefined for full-access roles fetches
+    // everyone, same as before.
+    api.hr.attendanceSummary(range[0], range[1], userId).then(data => { if (!cancelled) setRows(Array.isArray(data) ? data : [data]); }).catch(() => { if (!cancelled) setRows([]); });
     return () => { cancelled = true; };
-  }, [range[0], range[1]]);
+  }, [range[0], range[1], userId]);
 
   const nameOf = (uid) => state.employees.find(e=>e.id===uid)?.name || uid;
   const deptOf = (uid) => state.employees.find(e=>e.id===uid)?.dept || "";

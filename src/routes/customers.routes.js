@@ -16,7 +16,12 @@ router.get("/", async (req, res) => {
   const staff = await query("SELECT * FROM customer_staff");
   const staffDocs = await query("SELECT * FROM customer_staff_docs");
 
-  const canSeeAll = isAdminLike(req.user.roles) || req.user.roles.includes("sales_manager");
+  // Same full-access set as the Reports module (see ReportsPage in App.jsx): Admin-tier, Sales
+  // Manager, Accounts, Viewer, and Executive see every customer; everyone else only their own
+  // (derived below). Accounts/Viewer/Executive were added here for consistency with Reports —
+  // Accounts previously fell through to the ownership-derivation filter despite never owning a
+  // lead/deal themselves, so in practice saw almost no customers.
+  const canSeeAll = isAdminLike(req.user.roles) || ["sales_manager", "accounts", "viewer", "executive"].some(r => req.user.roles.includes(r));
   let visible = customers;
   if (!canSeeAll) {
     // Customers have no owner column — ownership is derived from the customer's most recent lead
