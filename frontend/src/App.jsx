@@ -6952,6 +6952,7 @@ function VolumeReport({ state, range }) {
 }
 
 function SalesPersonReport({ state, range }) {
+  const [view, setView] = useState("table");
   const owners = state.employees.filter(e => e.roles.includes("sales_exec") || e.roles.includes("sales_manager"));
 
   const rows = owners.map(owner => {
@@ -6990,27 +6991,41 @@ function SalesPersonReport({ state, range }) {
         { label:"Total pending (leads + quotes)", value: totals.pending },
       ]} />
 
-      <ReportTableCard title="Performance by salesperson" empty={rows.length===0 ? "No sales roles configured yet." : null} emptyIcon={Users}
-        onExport={rows.length ? ()=>exportCSV("sales-by-person.csv",
-          ["Salesperson","Leads","Pending leads","Deals","Deals won","Quotations","Pending quotations","Invoices","Invoiced (QAR)","Collected (QAR)","Business volume (QAR)"],
-          rows.map(r=>[r.owner.name, r.leadsCount, r.pendingLeads, r.dealsCount, r.dealsWon, r.quotesCount, r.pendingQuotes, r.invoicesCount, r.invoicedAmount, r.collected, r.businessVolume])) : null}>
-        <table className="agw-table">
-          <thead><tr><th>Salesperson</th><th>Leads</th><th>Deals</th><th>Quotations</th><th>Invoices</th><th>Business volume</th><th>Pending</th></tr></thead>
-          <tbody>
-            {rows.map(r => (
-              <tr key={r.owner.id}>
-                <td style={{display:"flex",alignItems:"center",gap:8}}><span className="avatar">{r.owner.initials}</span>{r.owner.name}</td>
-                <td>{r.leadsCount}</td>
-                <td>{r.dealsCount} <span style={{color:"var(--ink-soft)",fontSize:11}}>({r.dealsWon} won)</span></td>
-                <td>{r.quotesCount}</td>
-                <td>{r.invoicesCount}<div style={{fontSize:11,color:"var(--ink-soft)"}}>{money(r.collected)} collected</div></td>
-                <td className="mono" style={{color:"var(--gold)"}}>{money(r.businessVolume)}</td>
-                <td>{(r.pendingLeads+r.pendingQuotes) > 0 ? <Stamp tone="warning">{r.pendingLeads+r.pendingQuotes}</Stamp> : "—"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </ReportTableCard>
+      <div className="tabbar" style={{ marginBottom: 12, borderBottom:"none" }}>
+        <button className={`tab ${view==="table"?"active":""}`} onClick={()=>setView("table")}>Table</button>
+        <button className={`tab ${view==="chart"?"active":""}`} onClick={()=>setView("chart")}>Chart</button>
+      </div>
+
+      {view === "table" ? (
+        <ReportTableCard title="Performance by salesperson" empty={rows.length===0 ? "No sales roles configured yet." : null} emptyIcon={Users}
+          onExport={rows.length ? ()=>exportCSV("sales-by-person.csv",
+            ["Salesperson","Leads","Pending leads","Deals","Deals won","Quotations","Pending quotations","Invoices","Invoiced (QAR)","Collected (QAR)","Business volume (QAR)"],
+            rows.map(r=>[r.owner.name, r.leadsCount, r.pendingLeads, r.dealsCount, r.dealsWon, r.quotesCount, r.pendingQuotes, r.invoicesCount, r.invoicedAmount, r.collected, r.businessVolume])) : null}>
+          <table className="agw-table">
+            <thead><tr><th>Salesperson</th><th>Leads</th><th>Deals</th><th>Quotations</th><th>Invoices</th><th>Business volume</th><th>Pending</th></tr></thead>
+            <tbody>
+              {rows.map(r => (
+                <tr key={r.owner.id}>
+                  <td style={{display:"flex",alignItems:"center",gap:8}}><span className="avatar">{r.owner.initials}</span>{r.owner.name}</td>
+                  <td>{r.leadsCount}</td>
+                  <td>{r.dealsCount} <span style={{color:"var(--ink-soft)",fontSize:11}}>({r.dealsWon} won)</span></td>
+                  <td>{r.quotesCount}</td>
+                  <td>{r.invoicesCount}<div style={{fontSize:11,color:"var(--ink-soft)"}}>{money(r.collected)} collected</div></td>
+                  <td className="mono" style={{color:"var(--gold)"}}>{money(r.businessVolume)}</td>
+                  <td>{(r.pendingLeads+r.pendingQuotes) > 0 ? <Stamp tone="warning">{r.pendingLeads+r.pendingQuotes}</Stamp> : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </ReportTableCard>
+      ) : (
+        <div className="agw-card">
+          <strong style={{ fontSize:13 }}>{rows.length === 1 ? "My leads, deals & quotations" : "Sales team — leads, deals & quotations"}</strong>
+          <div style={{ marginTop:16 }}>
+            {rows.length === 0 ? <Empty icon={Users} text="No sales roles configured yet." /> : <SalesPersonBars rows={rows} />}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
