@@ -52,7 +52,7 @@ router.post("/", async (req, res) => {
   // name, or by phone/email under a different name) instead of creating a duplicate, and
   // persisting the link so this lead's `company` text stays reconciled with that Customer
   // forever (see customers.routes.js PATCH's rename cascade).
-  const { customerId, duplicateOf } = await findOrCreateCustomer(query, { name: b.company, phone: b.phone, email: b.email, contact: b.name });
+  const { customerId, duplicateOf } = await findOrCreateCustomer(query, { name: b.company, phone: b.phone, email: b.email, contact: b.name, ownerId: owner });
 
   await query(
     `INSERT INTO leads (id, name, company, phone, email, reference, source, service, owner, status, next_follow_up, created_by, assigned_at, sla_due_at, customer_id)
@@ -91,7 +91,7 @@ router.patch("/:id", async (req, res) => {
   // Editing the company name means it may now belong to a different (or new) Customer profile —
   // re-resolve rather than leaving customer_id pointed at the old one.
   if (b.company !== undefined) {
-    const { customerId } = await findOrCreateCustomer(query, { name: b.company, phone: b.phone, email: b.email });
+    const { customerId } = await findOrCreateCustomer(query, { name: b.company, phone: b.phone, email: b.email, ownerId: req.user.id });
     fields.push("customer_id = ?"); params.push(customerId);
   }
   if (!fields.length) return res.status(400).json({ error: "Nothing to update" });

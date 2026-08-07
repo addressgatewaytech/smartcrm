@@ -26,16 +26,17 @@ router.post("/", async (req, res) => {
   // directly-created deal (no leadId — "New Deal" modal's free-text/datalist customer field)
   // resolves/creates its own Customer link the same way a lead does.
   let customerId = null;
+  const owner = b.owner || req.user.id;
   if (b.leadId) {
     const [lead] = await query("SELECT customer_id FROM leads WHERE id = ?", [b.leadId]);
     customerId = lead?.customer_id || null;
   }
   if (!customerId) {
-    ({ customerId } = await findOrCreateCustomer(query, { name: b.customer }));
+    ({ customerId } = await findOrCreateCustomer(query, { name: b.customer, ownerId: owner }));
   }
   await query(
     `INSERT INTO deals (id, lead_id, customer, service, value, owner, stage, expected_close, customer_id) VALUES (?,?,?,?,?,?,?,?,?)`,
-    [id, b.leadId || null, b.customer, b.service || null, b.value || 0, b.owner || req.user.id, b.stage || "Open", b.expectedClose || null, customerId]
+    [id, b.leadId || null, b.customer, b.service || null, b.value || 0, owner, b.stage || "Open", b.expectedClose || null, customerId]
   );
   res.status(201).json({ id });
 });
@@ -65,7 +66,7 @@ router.patch("/:id", async (req, res) => {
   if (b.owner !== undefined && isAdminLike(req.user.roles)) { fields.push("owner = ?"); params.push(b.owner); }
   // Editing the customer name means it may now belong to a different (or new) Customer profile.
   if (b.customer !== undefined) {
-    const { customerId } = await findOrCreateCustomer(query, { name: b.customer });
+    const { customerId } = await findOrCreateCustomer(query, { name: b.customer, ownerId: req.user.id });
     fields.push("customer_id = ?"); params.push(customerId);
   }
   // Stamps the moment a deal actually closes — the Dashboard's "today's closed deals" section

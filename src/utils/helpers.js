@@ -75,15 +75,19 @@ async function findDuplicateCustomer(query, { name, phone, email }, excludeId = 
  * name, so the caller can surface "this looks like an existing customer" instead of silently
  * merging into it.
  */
-async function findOrCreateCustomer(query, { name, phone, email, contact }) {
+async function findOrCreateCustomer(query, { name, phone, email, contact, ownerId }) {
   const dup = await findDuplicateCustomer(query, { name, phone, email });
   if (dup) return { customerId: dup.match.id, duplicateOf: dup.field === "name" ? null : dup.match.name };
 
   // Branded sequential ID (AGBSCU10100, ...), same format as every other entity — its own short
   // transaction since callers pass the plain `query` function, not a shared connection.
   const customerId = await withTransaction((conn) => nextSequentialId(conn, "AGBSCU", "customer"));
-  await query("INSERT INTO customers (id, name, type, contact, phone, email) VALUES (?,?,?,?,?,?)",
-    [customerId, name, "Company", contact || null, phone || null, email || null]);
+  // created_by is the persisted ownership signal GET /customers scopes by — every call site passes
+  // whoever the new lead/deal/quotation/job-card actually belongs to (not necessarily the
+  // requesting user, e.g. an admin creating a lead on a rep's behalf), so the customer this record
+  // spawns lands in the right person's list from the moment it exists.
+  await query("INSERT INTO customers (id, name, type, contact, phone, email, created_by) VALUES (?,?,?,?,?,?,?)",
+    [customerId, name, "Company", contact || null, phone || null, email || null, ownerId || null]);
   return { customerId, duplicateOf: null };
 }
 

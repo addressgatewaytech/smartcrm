@@ -57,7 +57,7 @@ router.post("/direct", requireRole(["sales_manager", "sales_exec", "ops_manager"
   const [tpl] = await query("SELECT steps FROM checklist_templates WHERE service = ?", [service]);
   const steps = tpl ? tpl.steps : [];
   const checklist = steps.map((label, i) => ({ id: `CI-${i}`, label, done: false }));
-  const { customerId } = await findOrCreateCustomer(query, { name: customer });
+  const { customerId } = await findOrCreateCustomer(query, { name: customer, ownerId: req.user.id });
 
   await query(
     `INSERT INTO job_cards (id, customer, service, description, status, priority, target_date, checklist, created_by, customer_id) VALUES (?,?,?,?, 'Pending Approval', 'Normal', ?, ?, ?, ?)`,

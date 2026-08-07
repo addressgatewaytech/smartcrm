@@ -82,7 +82,7 @@ router.post("/", async (req, res) => {
   // A standalone quotation (no dealId — free-text customer field) resolves/creates its own
   // Customer link the same way a lead or directly-created deal does.
   if (!customerId) {
-    ({ customerId } = await findOrCreateCustomer(query, { name: b.customer }));
+    ({ customerId } = await findOrCreateCustomer(query, { name: b.customer, ownerId: owner }));
   }
 
   await query(
@@ -112,7 +112,7 @@ router.patch("/:id", async (req, res) => {
   const hasDiscount = (b.items || []).some((it) => it.discountPct > 0) || (b.orderDiscount || 0) > 0;
   const newStatus = hasDiscount ? "Pending Manager Approval" : "Draft";
   // Editing the customer name means it may now belong to a different (or new) Customer profile.
-  const customerId = b.customer !== undefined ? (await findOrCreateCustomer(query, { name: customer })).customerId : undefined;
+  const customerId = b.customer !== undefined ? (await findOrCreateCustomer(query, { name: customer, ownerId: req.user.id })).customerId : undefined;
   await query(
     `UPDATE quotations SET customer=?, fee_type=?, theme=?, subject=?, items=?, order_discount=?, bank=?, footer_note=?, notes=?, terms=?, status=?${customerId !== undefined ? ", customer_id=?" : ""}
      WHERE id = ?`,
@@ -239,7 +239,7 @@ router.post("/:id/clone", async (req, res) => {
   const customer = req.body.customer || src.customer;
   const customerChanged = req.body.customer && req.body.customer !== src.customer;
   const dealId = customerChanged ? null : src.deal_id;
-  const customerId = customerChanged ? (await findOrCreateCustomer(query, { name: customer })).customerId : src.customer_id;
+  const customerId = customerChanged ? (await findOrCreateCustomer(query, { name: customer, ownerId: req.user.id })).customerId : src.customer_id;
   await query(
     `INSERT INTO quotations (id, deal_id, customer, fee_type, theme, subject, items, order_discount, bank, footer_note, notes, terms, status, valid_till, owner, favorite, customer_id)
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'Draft',?,?,0,?)`,
