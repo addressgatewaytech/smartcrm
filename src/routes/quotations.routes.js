@@ -39,7 +39,9 @@ function parseRow(r) {
 }
 
 router.get("/", async (req, res) => {
-  const isSalesExec = req.user.roles.includes("sales_exec") && !isAdminLike(req.user.roles) && !req.user.roles.includes("sales_manager");
+  // Same broadened scope as /leads and /deals — a plain sales_exec or Ops team member sees only
+  // their own quotations (e.g. one created from a deal they own); sales managers/admins see all.
+  const isSalesExec = (req.user.roles.includes("sales_exec") || req.user.roles.includes("ops_manager") || req.user.roles.includes("ops_member")) && !isAdminLike(req.user.roles) && !req.user.roles.includes("sales_manager");
   const rows = isSalesExec
     ? await query("SELECT * FROM quotations WHERE owner = ? OR owner IS NULL ORDER BY created_at DESC", [req.user.id])
     : await query("SELECT * FROM quotations ORDER BY created_at DESC");
@@ -62,8 +64,13 @@ router.get("/:id/pdf", async (req, res) => {
   generateQuotationPdf({ ...parseRow(row), customer_address: customer?.address || "" }, res);
 });
 
+// A quotation must come from an existing Deal — no more standalone/direct quotations with a
+// free-text customer, so every quotation is traceable back through Deal -> Lead for reporting and
+// pipeline management. (Cloning an existing quotation to a different customer is a separate,
+// deliberate "use this as a template" path and is unaffected by this rule.)
 router.post("/", async (req, res) => {
   const b = req.body;
+  if (!b.dealId) return res.status(400).json({ error: "A quotation must be created from an existing deal" });
   const id = await withTransaction((conn) => nextSequentialId(conn, "AGBSQS", "quotation"));
   const hasDiscount = (b.items || []).some((it) => it.discountPct > 0) || (b.orderDiscount || 0) > 0;
   const status = hasDiscount ? "Pending Manager Approval" : "Draft";
@@ -72,15 +79,12 @@ router.post("/", async (req, res) => {
   // "Create quotation" — otherwise a manager/admin creating one on a sales_exec's behalf makes it
   // invisible to that sales_exec (owner-scoped GET / filters strictly by owner).
   let owner = b.owner;
-  let customerId = null;
-  if (b.dealId) {
-    const [deal] = await query("SELECT owner, customer_id FROM deals WHERE id = ?", [b.dealId]);
-    if (!owner) owner = deal?.owner;
-    customerId = deal?.customer_id || null;
-  }
+  const [deal] = await query("SELECT owner, customer_id FROM deals WHERE id = ?", [b.dealId]);
+  if (!deal) return res.status(404).json({ error: "Deal not found" });
+  if (!owner) owner = deal.owner;
+  let customerId = deal.customer_id || null;
   owner = owner || req.user.id;
-  // A standalone quotation (no dealId — free-text customer field) resolves/creates its own
-  // Customer link the same way a lead or directly-created deal does.
+  // A deal predating customer_id linking resolves/creates its Customer link the same way a lead does.
   if (!customerId) {
     ({ customerId } = await findOrCreateCustomer(query, { name: b.customer, ownerId: owner }));
   }

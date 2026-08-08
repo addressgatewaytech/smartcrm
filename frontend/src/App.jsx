@@ -622,9 +622,12 @@ function CloudLinkButton({ url, onSave }) {
 const NAV = [
   { group: "Overview", items: [{ key: "dashboard", label: "Dashboard", icon: LayoutDashboard, roles: "all" }] },
   { group: "CRM", items: [
-    { key: "leads", label: "Leads", icon: Users, roles: [...ADMIN_LIKE,"sales_manager","sales_exec"] },
-    { key: "deals", label: "Deals", icon: Handshake, roles: [...ADMIN_LIKE,"sales_manager","sales_exec"] },
-    { key: "quotations", label: "Quotations", icon: FileText, roles: [...ADMIN_LIKE,"sales_manager","sales_exec"] },
+    // Ops Manager/Ops Member see these too now — scoped server-side to just their own (a lead
+    // they added via the Dashboard quick-add, and whatever deal/quotation grows out of it), the
+    // same "own data only" restriction a plain Sales Exec already has — not full team access.
+    { key: "leads", label: "Leads", icon: Users, roles: [...ADMIN_LIKE,"sales_manager","sales_exec","ops_manager","ops_member"] },
+    { key: "deals", label: "Deals", icon: Handshake, roles: [...ADMIN_LIKE,"sales_manager","sales_exec","ops_manager","ops_member"] },
+    { key: "quotations", label: "Quotations", icon: FileText, roles: [...ADMIN_LIKE,"sales_manager","sales_exec","ops_manager","ops_member"] },
     { key: "quotationTemplates", label: "Quotation Templates", icon: Files, roles: [...ADMIN_LIKE,"sales_manager"] },
     { key: "customers", label: "Customers & KYC", icon: UserCheck, roles: [...ADMIN_LIKE,"sales_manager","sales_exec","accounts"] },
   ]},
@@ -1250,7 +1253,9 @@ function Dashboard({ state, dispatch, role, userId, setPage }) {
   // admin-tier/sales_manager/sales_exec do — see NAV in App.jsx) — everyone else can still capture
   // an enquiry they come across without seeing the Leads list/pipeline. A Viewer never gets this
   // either, being strictly read-only everywhere.
-  const canQuickAddLead = !isSalesRole(role) && role !== "viewer";
+  // Ops Manager/Ops Member now have the full Leads page (own-data-scoped) via NAV, so the
+  // Dashboard quick-add would just be a second, redundant "add lead" entry point for them.
+  const canQuickAddLead = !isSalesRole(role) && role !== "viewer" && role !== "ops_manager" && role !== "ops_member";
   const [showQuickAddLead, setShowQuickAddLead] = useState(false);
 
   const dealStageColors = { Open:"var(--info)", "Quotation Sent":"var(--gold)", Won:"var(--success)", Lost:"var(--danger)" };
@@ -2582,7 +2587,6 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, onHighligh
   // Derived, not a frozen snapshot — so in-modal actions (favorite toggle, etc.) that refresh
   // state.quotations are reflected immediately instead of only after closing and reopening.
   const open = openId ? state.quotations.find(q => q.id === openId) : null;
-  const [newQuote, setNewQuote] = useState(false);
   const [cloneFor, setCloneFor] = useState(null);
   const [removeQuote, setRemoveQuote] = useState(null);
   const [favoritesOnly, setFavoritesOnly] = useState(false);
@@ -2639,11 +2643,10 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, onHighligh
             rows.map(q=>[q.id, q.createdAt, q.customer, q.items[0]?.service||"", state.employees.find(t=>t.id===q.owner)?.name||"", quotationOrigin(state, q), quotationFeeTypeLabel(q), total(q), q.validTill, q.status]))}>
             <Download size={13}/> Export
           </button>
-          {role !== "viewer" && <button className="btn btn-primary" onClick={()=>setNewQuote(true)}><Plus size={15}/> New quotation</button>}
         </div>
       </div>
       <div className="agw-card" style={{ padding: 0 }}>
-        {rows.length === 0 ? <Empty icon={favoritesOnly ? Star : FileText} text={favoritesOnly ? "No favorite quotations yet — star a quotation to use it as a go-to format." : "No quotations yet. Create one from a deal, or start a new one."} /> : (
+        {rows.length === 0 ? <Empty icon={favoritesOnly ? Star : FileText} text={favoritesOnly ? "No favorite quotations yet — star a quotation to use it as a go-to format." : "No quotations yet — create one from an open Deal's \"Create quotation\" button."} /> : (
         <table className="agw-table">
           <thead><tr><th></th><th>Quotation</th><th>Created</th><th>Customer</th><th>Service</th><th>Sales person</th><th>Lead type</th><th>Amount (QAR)</th><th>Valid till</th><th>Status</th><th></th><th></th></tr></thead>
           <tbody>
@@ -2679,7 +2682,6 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, onHighligh
         <PaginationBar {...pg} />
       </div>
       {open && <QuoteDetailModal quotation={open} state={state} dispatch={dispatch} role={role} userId={userId} customerOptions={customerOptions} templates={state.quotationTemplates} startInEdit={openInEdit} onClose={()=>{ setOpenId(null); setOpenInEdit(false); }} />}
-      {newQuote && <QuoteBuilderModal editableCustomer customerOptions={customerOptions} defaultService={state.services[0]} services={state.services} dispatch={dispatch} templates={state.quotationTemplates} role={role} employees={state.employees} onClose={()=>setNewQuote(false)} />}
       {cloneFor && <CloneQuoteModal quotation={cloneFor} customerOptions={customerOptions} dispatch={dispatch} onClose={()=>setCloneFor(null)} />}
       {removeQuote && <ConfirmModal title={`Remove ${removeQuote.id}?`} body={`${removeQuote.customer} — this draft quotation can't be recovered once removed.`} onConfirm={()=>dispatch({type:"DELETE_QUOTATION", id:removeQuote.id})} onClose={()=>setRemoveQuote(null)} />}
     </div>
@@ -5844,7 +5846,7 @@ const WORKFLOW_STAGES = [
 // Step-by-step guides shown as a numbered list under "Tutorials" — plain data so a new one is
 // just another entry here, not a new component.
 const QUOTATION_TUTORIAL_STEPS = [
-  { title: "Start the quotation", desc: "From an open Deal, click \"Create quotation\" — customer and service come pre-filled from the deal. Or, on the Quotations page, click \"New quotation\" and pick the customer yourself." },
+  { title: "Start the quotation", desc: "From an open Deal, click \"Create quotation\" — customer and service come pre-filled from the deal. Every quotation must start from an existing Deal now — there's no standalone \"New quotation\" anymore." },
   { title: "Pick the primary service", desc: "Choosing a service auto-loads that service's saved template (Quotation Templates), with its usual line items, terms, notes and bank details already filled in — edit anything that doesn't fit this particular job." },
   { title: "Check the line items", desc: "Each item has a Category/stage, a Qty, Rate and Discount %. Group items under the category label they belong to (e.g. everything under \"Government Fee\") — the quotation totals Government Fee and Professional Fee separately based on that grouping, so a line sitting in the wrong category throws the split off even though the grand total stays correct." },
   { title: "Assign the sales person (Admin only)", desc: "Admins see a \"Sales person\" dropdown when building a quotation, letting them attribute it to a different rep instead of always themselves or the deal's owner." },

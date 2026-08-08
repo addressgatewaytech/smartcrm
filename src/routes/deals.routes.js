@@ -7,10 +7,11 @@ const { nextSequentialId, findOrCreateCustomer } = require("../utils/helpers");
 const router = express.Router();
 router.use(requireAuth);
 
-// Same visibility rule as /leads: a sales_exec only sees their own deals; sales managers and
+// Same visibility rule as /leads: a sales_exec (or Ops team member, who now sees/manages their own
+// pipeline the same way once they've added a lead) only sees their own deals; sales managers and
 // admins see everyone's. (A deal with no owner shouldn't normally exist — POST always sets one —
 // but "OR owner IS NULL" is kept for parity with /leads in case of legacy/imported rows.)
-const isSalesExecOnly = (roles) => roles.includes("sales_exec") && !isAdminLike(roles) && !roles.includes("sales_manager");
+const isSalesExecOnly = (roles) => (roles.includes("sales_exec") || roles.includes("ops_manager") || roles.includes("ops_member")) && !isAdminLike(roles) && !roles.includes("sales_manager");
 
 router.get("/", async (req, res) => {
   const rows = isSalesExecOnly(req.user.roles)
