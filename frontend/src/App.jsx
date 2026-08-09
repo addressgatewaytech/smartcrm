@@ -192,7 +192,7 @@ const CSS = `
   .rail-line.done { background: var(--success); }
 
   .modal-backdrop { position: fixed; inset: 0; background: rgba(20,18,14,.4); display: flex;
-    align-items: flex-start; justify-content: center; padding: 40px 20px; z-index: 50; overflow-y:auto; }
+    align-items: center; justify-content: center; padding: 40px 20px; z-index: 50; overflow-y:auto; }
   .modal { background: var(--surface); border-radius: 14px; width: 100%; max-width: 620px; padding: 22px 24px 24px; max-height: calc(100vh - 80px); overflow-y: auto; }
   /* Any table sitting directly inside a modal (several PDF/document preview modals render one
      without their own overflow wrapper) scrolls horizontally instead of blowing out the modal's

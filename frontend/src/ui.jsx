@@ -361,8 +361,15 @@ export function ConfirmProvider({ children }) {
     <ConfirmContext.Provider value={confirm}>
       {children}
       {request && (
-        <ConfirmModal title={request.title} body={request.body} confirmLabel={request.confirmLabel}
-          onConfirm={() => settle(true)} onClose={() => settle(false)} />
+        // Every themed color (--surface, --ink, ...) and base reset (box-sizing, button font)
+        // is scoped to descendants of .agw. ConfirmProvider wraps <App/> from outside, so without
+        // this wrapper the dialog renders with none of them — transparent background, unstyled
+        // buttons — invisibly broken until it happens to open on top of visible page content.
+        // display:contents keeps this div out of the layout; it exists only for CSS inheritance.
+        <div className="agw" style={{ display: "contents" }}>
+          <ConfirmModal title={request.title} body={request.body} confirmLabel={request.confirmLabel}
+            onConfirm={() => settle(true)} onClose={() => settle(false)} />
+        </div>
       )}
     </ConfirmContext.Provider>
   );
