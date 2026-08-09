@@ -2415,7 +2415,7 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
   };
 
   return (
-    <Modal title="Build quotation" sub={editableCustomer ? "All amounts in QAR" : `${customer} — all amounts in QAR`} onClose={onClose} width={700}>
+    <Modal title="Build quotation" sub={editableCustomer ? "All amounts in QAR" : `${customer} — all amounts in QAR`} onClose={onClose} width={860}>
       {editableCustomer && (
         <div className="row2">
           <div className="field">
@@ -2798,6 +2798,23 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
     }
   };
   const cancelVisualEdit = () => { setDraft(null); setVisualEdit(false); setVisualSaveError(""); };
+
+  // Reordering from the "Current view" tab saves immediately (no staged draft to review first,
+  // unlike Visual edit) — same pattern as the "Sales person" reassignment dropdown just above.
+  const [reordering, setReordering] = useState(false);
+  const [reorderError, setReorderError] = useState("");
+  const reorderContentItems = async (newItems) => {
+    setReordering(true);
+    setReorderError("");
+    try {
+      await dispatch({ type:"UPDATE_QUOTATION", id:q.id, payload:{ ...content, items:newItems, customer:q.customer, feeType:q.feeType } });
+      setContent(c => ({ ...c, items:newItems }));
+    } catch (err) {
+      setReorderError(err instanceof ApiError ? err.message : "Couldn't reorder — please try again.");
+    } finally {
+      setReordering(false);
+    }
+  };
   const updDraft = (field, val) => setDraft(d => ({ ...d, [field]: val }));
   const updDraftItem = (i, field, val) => setDraft(d => ({ ...d, items: d.items.map((it,idx) => idx===i ? { ...it, [field]: val } : it) }));
   const addDraftItem = () => setDraft(d => {
@@ -2807,7 +2824,7 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
   const removeDraftItem = (i) => setDraft(d => ({ ...d, items: d.items.filter((_,idx) => idx!==i) }));
 
   return (
-    <Modal title={q.id} sub={q.customer} onClose={onClose} width={720}>
+    <Modal title={q.id} sub={q.customer} onClose={onClose} width={960}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
         <div className="tabbar" style={{ marginBottom:0, borderBottom:"none" }}>
           <button className={`tab ${view==="details"?"active":""}`} onClick={()=>setView("details")}>Current view</button>
@@ -2853,11 +2870,13 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
             </div>
           )}
 
+          {reorderError && <div className="side-note" style={{ color:"var(--danger)", marginTop:0, marginBottom:10 }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{reorderError}</div>}
           {(() => {
             let lastCategory = null;
             return (
+            <div style={{ overflowX:"auto" }}>
             <table className="agw-table" style={{ marginTop: 12 }}>
-              <thead><tr><th>Category</th><th>Item & description</th><th>Qty</th><th>Rate</th><th>Disc.</th><th>Amount</th></tr></thead>
+              <thead><tr><th>Category</th><th>Item & description</th><th>Qty</th><th>Rate</th><th>Disc.</th><th>Amount</th>{editable && <th style={{width:56}}>Order</th>}</tr></thead>
               <tbody>
                 {cq.items.map((it,i) => {
                   const bg = isGovFeeLine(it, q.feeType) ? GOV_FEE_BG : PROF_FEE_BG;
@@ -2867,7 +2886,19 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
                     <React.Fragment key={i}>
                       {showHeader && (
                         <tr style={{ background: bg }}>
-                          <td colSpan={6} style={{ fontWeight:600, fontSize:11.5 }}>{it.category}</td>
+                          <td colSpan={editable ? 7 : 6} style={{ fontWeight:600, fontSize:11.5 }}>
+                            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                              <span>{it.category}</span>
+                              {editable && (
+                                <span style={{ display:"flex", gap:2 }}>
+                                  <button type="button" className="btn btn-sm btn-ghost" title="Move category up" disabled={reordering || i===0} style={{padding:2}}
+                                    onClick={()=>reorderContentItems(moveCategoryBlock(cq.items, i, -1))}><ChevronUp size={12}/><ChevronUp size={12} style={{marginLeft:-8}}/></button>
+                                  <button type="button" className="btn btn-sm btn-ghost" title="Move category down" disabled={reordering || i===cq.items.length-1} style={{padding:2}}
+                                    onClick={()=>reorderContentItems(moveCategoryBlock(cq.items, i, 1))}><ChevronDown size={12}/><ChevronDown size={12} style={{marginLeft:-8}}/></button>
+                                </span>
+                              )}
+                            </div>
+                          </td>
                         </tr>
                       )}
                       <tr style={{ background: bg }}>
@@ -2875,12 +2906,23 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
                         <td>{it.description || it.service}{it.note && <div style={{fontSize:11, color:"var(--ink-soft)"}}>{it.note}</div>}</td>
                         <td>{it.qty}</td><td className="mono">{money(it.price)}</td>
                         <td>{it.discountPct||0}%</td><td className="mono">{money(it.qty*it.price*(1-(it.discountPct||0)/100))}</td>
+                        {editable && (
+                          <td>
+                            <div style={{ display:"flex", gap:2 }}>
+                              <button type="button" className="btn btn-sm btn-ghost" title="Move item up" disabled={reordering || i===0} style={{padding:2}}
+                                onClick={()=>reorderContentItems(moveArrayItem(cq.items, i, -1))}><ChevronUp size={12}/></button>
+                              <button type="button" className="btn btn-sm btn-ghost" title="Move item down" disabled={reordering || i===cq.items.length-1} style={{padding:2}}
+                                onClick={()=>reorderContentItems(moveArrayItem(cq.items, i, 1))}><ChevronDown size={12}/></button>
+                            </div>
+                          </td>
+                        )}
                       </tr>
                     </React.Fragment>
                   );
                 })}
               </tbody>
             </table>
+            </div>
             );
           })()}
           {govProfSplitCq.govTotal > 0 && govProfSplitCq.profTotal > 0 && (govProfSplitCq.govFirst ? (
@@ -2996,7 +3038,7 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
         src.items.forEach((it, i) => {
           const bg = isGovFeeLine(it, q.feeType) ? GOV_FEE_BG : PROF_FEE_BG;
           if ((it.category || "") !== lastCategory && it.category) {
-            rows.push({ kind: "category", label: it.category, key: "cat-"+i, bg });
+            rows.push({ kind: "category", label: it.category, key: "cat-"+i, bg, idx: i });
             lastCategory = it.category;
           }
           runningNumber++;
@@ -3069,12 +3111,26 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
                   <th style={{ color:"#fff", textAlign:"right", padding:"9px 10px", fontWeight:500, width:90 }}>Rate</th>
                   {editingNow && <th style={{ color:"#fff", textAlign:"right", padding:"9px 10px", fontWeight:500, width:60 }}>Disc.%</th>}
                   <th style={{ color:"#fff", textAlign:"right", padding:"9px 10px", fontWeight:500, width:90 }}>Amount</th>
-                  {editingNow && <th style={{ width:28 }}></th>}
+                  {editingNow && <th style={{ width:76 }}></th>}
                 </tr>
               </thead>
               <tbody>
                 {rows.map(r => r.kind === "category" ? (
-                  <tr key={r.key} style={{ background:r.bg }}><td colSpan={editingNow ? 6 : 4} style={{ padding:"9px 10px", fontWeight:600, fontSize:12, borderBottom:"1px solid var(--hair)" }}>{r.label}</td></tr>
+                  <tr key={r.key} style={{ background:r.bg }}>
+                    <td colSpan={editingNow ? 6 : 4} style={{ padding:"9px 10px", fontWeight:600, fontSize:12, borderBottom:"1px solid var(--hair)" }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                        <span>{r.label}</span>
+                        {editingNow && (
+                          <span style={{ display:"flex", gap:2 }}>
+                            <button type="button" className="btn btn-sm btn-ghost" title="Move category up" disabled={r.idx===0} style={{padding:2}}
+                              onClick={()=>updDraft("items", moveCategoryBlock(src.items, r.idx, -1))}><ChevronUp size={12}/><ChevronUp size={12} style={{marginLeft:-8}}/></button>
+                            <button type="button" className="btn btn-sm btn-ghost" title="Move category down" disabled={r.idx===src.items.length-1} style={{padding:2}}
+                              onClick={()=>updDraft("items", moveCategoryBlock(src.items, r.idx, 1))}><ChevronDown size={12}/><ChevronDown size={12} style={{marginLeft:-8}}/></button>
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
                 ) : (
                   <tr key={r.key} style={{ borderBottom:"1px solid var(--hair)", background:r.bg }}>
                     <td style={{ padding:"9px 10px", verticalAlign:"top" }}>{r.number}</td>
@@ -3107,9 +3163,15 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
                     <td className="mono" style={{ padding:"9px 10px", textAlign:"right", verticalAlign:"top" }}>{(r.it.qty*r.it.price*(1-(r.it.discountPct||0)/100)).toFixed(2)}</td>
                     {editingNow && (
                       <td style={{ padding:"9px 10px", verticalAlign:"top" }}>
-                        {src.items.length > 1 && (
-                          <button type="button" className="btn btn-sm btn-ghost" style={{ color:"var(--danger)", padding:2 }} onClick={()=>removeDraftItem(r.idx)}><X size={13}/></button>
-                        )}
+                        <div style={{ display:"flex", gap:2 }}>
+                          <button type="button" className="btn btn-sm btn-ghost" title="Move item up" disabled={r.idx===0} style={{padding:2}}
+                            onClick={()=>updDraft("items", moveArrayItem(src.items, r.idx, -1))}><ChevronUp size={12}/></button>
+                          <button type="button" className="btn btn-sm btn-ghost" title="Move item down" disabled={r.idx===src.items.length-1} style={{padding:2}}
+                            onClick={()=>updDraft("items", moveArrayItem(src.items, r.idx, 1))}><ChevronDown size={12}/></button>
+                          {src.items.length > 1 && (
+                            <button type="button" className="btn btn-sm btn-ghost" title="Remove item" style={{ color:"var(--danger)", padding:2 }} onClick={()=>removeDraftItem(r.idx)}><X size={13}/></button>
+                          )}
+                        </div>
                       </td>
                     )}
                   </tr>
