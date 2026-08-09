@@ -2764,7 +2764,12 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
     }
   };
 
-  const cq = { ...q, ...content };
+  // "Current view" and "PDF preview" share one edit session — entering edit mode from either
+  // tab, editing a field, then switching tabs keeps the same staged draft rather than each tab
+  // having its own separate editable copy.
+  const src = visualEdit && draft ? draft : content;
+  const editingNow = visualEdit && !!draft;
+  const cq = { ...q, ...src };
   const subtotal = cq.items.reduce((a,it)=>a+it.qty*it.price*(1-(it.discountPct||0)/100),0);
   const total = Math.max(0, subtotal - (cq.orderDiscount||0));
   const govProfSplitCq = govProfSplit(cq.items, q.feeType);
@@ -2798,23 +2803,6 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
     }
   };
   const cancelVisualEdit = () => { setDraft(null); setVisualEdit(false); setVisualSaveError(""); };
-
-  // Reordering from the "Current view" tab saves immediately (no staged draft to review first,
-  // unlike Visual edit) — same pattern as the "Sales person" reassignment dropdown just above.
-  const [reordering, setReordering] = useState(false);
-  const [reorderError, setReorderError] = useState("");
-  const reorderContentItems = async (newItems) => {
-    setReordering(true);
-    setReorderError("");
-    try {
-      await dispatch({ type:"UPDATE_QUOTATION", id:q.id, payload:{ ...content, items:newItems, customer:q.customer, feeType:q.feeType } });
-      setContent(c => ({ ...c, items:newItems }));
-    } catch (err) {
-      setReorderError(err instanceof ApiError ? err.message : "Couldn't reorder — please try again.");
-    } finally {
-      setReordering(false);
-    }
-  };
   const updDraft = (field, val) => setDraft(d => ({ ...d, [field]: val }));
   const updDraftItem = (i, field, val) => setDraft(d => ({ ...d, items: d.items.map((it,idx) => idx===i ? { ...it, [field]: val } : it) }));
   const addDraftItem = () => setDraft(d => {
@@ -2879,13 +2867,26 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
             </div>
           )}
 
-          {reorderError && <div className="side-note" style={{ color:"var(--danger)", marginTop:0, marginBottom:10 }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{reorderError}</div>}
+          {editable && (
+            <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:10 }}>
+              {editingNow ? (
+                <span style={{ display:"flex", gap:8 }}>
+                  <button className="btn btn-sm" disabled={savingVisual} onClick={cancelVisualEdit}>Cancel</button>
+                  <button className="btn btn-sm btn-primary" disabled={savingVisual} onClick={saveVisualEdit}><Check size={13}/> {savingVisual ? "Saving…" : "Save changes"}</button>
+                </span>
+              ) : (
+                <button className="btn btn-sm" onClick={startVisualEdit}><Pencil size={13}/> Edit items</button>
+              )}
+            </div>
+          )}
+          {visualSaveError && <div className="side-note" style={{ color:"var(--danger)", marginTop:0, marginBottom:10 }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{visualSaveError}</div>}
           {(() => {
             let lastCategory = null;
+            const editInputStyle = { border:"none", borderBottom:"1px dashed var(--hair)", background:"var(--gold-tint)", font:"inherit", color:"inherit", padding:"1px 2px", width:"100%", textAlign:"inherit" };
             return (
             <div style={{ overflowX:"auto" }}>
             <table className="agw-table" style={{ marginTop: 12 }}>
-              <thead><tr><th>Category</th><th>Item & description</th><th>Qty</th><th>Rate</th><th>Disc.</th><th>Amount</th>{editable && <th style={{width:56}}>Order</th>}</tr></thead>
+              <thead><tr><th>Category</th><th>Item & description</th><th>Qty</th><th>Rate</th><th>Disc.</th><th>Amount</th>{editingNow && <th style={{width:100}}></th>}</tr></thead>
               <tbody>
                 {cq.items.map((it,i) => {
                   const bg = isGovFeeLine(it, q.feeType) ? GOV_FEE_BG : PROF_FEE_BG;
@@ -2895,15 +2896,15 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
                     <React.Fragment key={i}>
                       {showHeader && (
                         <tr style={{ background: bg }}>
-                          <td colSpan={editable ? 7 : 6} style={{ fontWeight:600, fontSize:11.5 }}>
+                          <td colSpan={editingNow ? 7 : 6} style={{ fontWeight:600, fontSize:11.5 }}>
                             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                               <span>{it.category}</span>
-                              {editable && (
+                              {editingNow && (
                                 <span style={{ display:"flex", gap:2 }}>
-                                  <button type="button" className="btn btn-sm btn-ghost" title="Move category up" disabled={reordering || i===0} style={{padding:2}}
-                                    onClick={()=>reorderContentItems(moveCategoryBlock(cq.items, i, -1))}><ChevronUp size={12}/><ChevronUp size={12} style={{marginLeft:-8}}/></button>
-                                  <button type="button" className="btn btn-sm btn-ghost" title="Move category down" disabled={reordering || i===cq.items.length-1} style={{padding:2}}
-                                    onClick={()=>reorderContentItems(moveCategoryBlock(cq.items, i, 1))}><ChevronDown size={12}/><ChevronDown size={12} style={{marginLeft:-8}}/></button>
+                                  <button type="button" className="btn btn-sm btn-ghost" title="Move category up" disabled={i===0} style={{padding:2}}
+                                    onClick={()=>updDraft("items", moveCategoryBlock(src.items, i, -1))}><ChevronUp size={12}/><ChevronUp size={12} style={{marginLeft:-8}}/></button>
+                                  <button type="button" className="btn btn-sm btn-ghost" title="Move category down" disabled={i===src.items.length-1} style={{padding:2}}
+                                    onClick={()=>updDraft("items", moveCategoryBlock(src.items, i, 1))}><ChevronDown size={12}/><ChevronDown size={12} style={{marginLeft:-8}}/></button>
                                 </span>
                               )}
                             </div>
@@ -2912,16 +2913,38 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
                       )}
                       <tr style={{ background: bg }}>
                         <td style={{fontSize:11.5, color:"var(--ink-soft)"}}>{it.category || "—"}</td>
-                        <td>{it.description || it.service}{it.note && <div style={{fontSize:11, color:"var(--ink-soft)"}}>{it.note}</div>}</td>
-                        <td>{it.qty}</td><td className="mono">{money(it.price)}</td>
-                        <td>{it.discountPct||0}%</td><td className="mono">{money(it.qty*it.price*(1-(it.discountPct||0)/100))}</td>
-                        {editable && (
+                        <td>
+                          {editingNow ? (
+                            <>
+                              <input style={{ ...editInputStyle, marginBottom:4 }} value={it.description || ""} onChange={e=>updDraftItem(i,"description",e.target.value)} placeholder={it.service} />
+                              <input style={{ ...editInputStyle, fontSize:11, color:"var(--ink-soft)" }} value={it.note || ""} onChange={e=>updDraftItem(i,"note",e.target.value)} placeholder="Note (optional)" />
+                            </>
+                          ) : (
+                            <>{it.description || it.service}{it.note && <div style={{fontSize:11, color:"var(--ink-soft)"}}>{it.note}</div>}</>
+                          )}
+                        </td>
+                        <td className="mono">
+                          {editingNow ? <input type="number" style={editInputStyle} value={it.qty} onChange={e=>updDraftItem(i,"qty",(e.target.value === "" ? "" : Number(e.target.value)))} /> : it.qty}
+                        </td>
+                        <td className="mono">
+                          {editingNow ? <input type="number" style={editInputStyle} value={it.price} onChange={e=>updDraftItem(i,"price",(e.target.value === "" ? "" : Number(e.target.value)))} /> : money(it.price)}
+                        </td>
+                        <td>
+                          {editingNow ? <input type="number" min={0} max={100} style={editInputStyle} value={it.discountPct||0} onChange={e=>updDraftItem(i,"discountPct",(e.target.value === "" ? "" : Number(e.target.value)))} /> : `${it.discountPct||0}%`}
+                        </td>
+                        <td className="mono">{money(it.qty*it.price*(1-(it.discountPct||0)/100))}</td>
+                        {editingNow && (
                           <td>
                             <div style={{ display:"flex", gap:2 }}>
-                              <button type="button" className="btn btn-sm btn-ghost" title="Move item up" disabled={reordering || i===0} style={{padding:2}}
-                                onClick={()=>reorderContentItems(moveArrayItem(cq.items, i, -1))}><ChevronUp size={12}/></button>
-                              <button type="button" className="btn btn-sm btn-ghost" title="Move item down" disabled={reordering || i===cq.items.length-1} style={{padding:2}}
-                                onClick={()=>reorderContentItems(moveArrayItem(cq.items, i, 1))}><ChevronDown size={12}/></button>
+                              <button type="button" className="btn btn-sm btn-ghost" title="Move item up" disabled={i===0} style={{padding:2}}
+                                onClick={()=>updDraft("items", moveArrayItem(src.items, i, -1))}><ChevronUp size={12}/></button>
+                              <button type="button" className="btn btn-sm btn-ghost" title="Move item down" disabled={i===src.items.length-1} style={{padding:2}}
+                                onClick={()=>updDraft("items", moveArrayItem(src.items, i, 1))}><ChevronDown size={12}/></button>
+                              <button type="button" className="btn btn-sm btn-ghost" title="Insert item below" style={{padding:2}}
+                                onClick={()=>insertDraftItemAfter(i)}><Plus size={12}/></button>
+                              {src.items.length > 1 && (
+                                <button type="button" className="btn btn-sm btn-ghost" title="Remove item" style={{ color:"var(--danger)", padding:2 }} onClick={()=>removeDraftItem(i)}><X size={13}/></button>
+                              )}
                             </div>
                           </td>
                         )}
@@ -2934,6 +2957,9 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
             </div>
             );
           })()}
+          {editingNow && (
+            <button type="button" className="btn btn-sm" style={{ marginBottom:16 }} onClick={addDraftItem}><Plus size={13}/> Add item</button>
+          )}
           {govProfSplitCq.govTotal > 0 && govProfSplitCq.profTotal > 0 && (govProfSplitCq.govFirst ? (
             <>
               <div style={{ textAlign:"right", marginTop: 10, fontSize:13, color:"var(--ink-soft)" }}>Government Fee Total: <span className="mono">{money(govProfSplitCq.govTotal)}</span></div>
@@ -2979,7 +3005,11 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
             />
           )}
 
-          {actionError && <div className="side-note" style={{ color:"var(--danger)", marginTop:12, marginBottom:0 }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{actionError}</div>}
+          {editingNow && (
+            <div className="side-note" style={{ marginTop:12, marginBottom:0 }}>Finish editing — save or cancel above — before changing this quotation's status.</div>
+          )}
+          {!editingNow && actionError && <div className="side-note" style={{ color:"var(--danger)", marginTop:12, marginBottom:0 }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{actionError}</div>}
+          {!editingNow && (
           <div style={{ display:"flex", gap:8, marginTop: 12, flexWrap:"wrap" }}>
             {q.status === "Draft" && (hasDiscount || !canApprove) &&
               <button className="btn btn-primary" disabled={actionBusy} onClick={()=>runAction({type:"SUBMIT_QUOTATION_FOR_APPROVAL", id:q.id})}>Submit for approval</button>}
@@ -3021,6 +3051,7 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
             {revisable && isAdmin &&
               <button className="btn" disabled={actionBusy} onClick={()=>setRevising(true)}><Pencil size={13}/> Revise quotation</button>}
           </div>
+          )}
           {revising && (
             <ConfirmModal
               title={`Revise ${q.id}?`}
@@ -3036,8 +3067,6 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
       )}
 
       {view === "pdf" && (() => {
-        const src = visualEdit && draft ? draft : content;
-        const editingNow = visualEdit && !!draft;
         const themeColors = QUOTE_THEMES[src.theme] || QUOTE_THEMES.charcoal;
         const inputStyle = { border:"none", borderBottom:"1px dashed var(--hair)", background:"var(--gold-tint)", font:"inherit", color:"inherit", padding:"1px 2px", width:"100%" };
 
