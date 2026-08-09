@@ -2821,6 +2821,15 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
     const last = d.items[d.items.length-1];
     return { ...d, items: [...d.items, { category: last?.category || "", service: last?.service || q.items[0]?.service || "", description: "", note: "", qty: 1, price: 0, discountPct: 0 }] };
   });
+  // Inserts a blank line right after item `i`, not at the end — so a missed line can be dropped
+  // in between two existing ones instead of appended then moved up one row at a time.
+  const insertDraftItemAfter = (i) => setDraft(d => {
+    const ref = d.items[i];
+    const blank = { category: ref?.category || "", service: ref?.service || q.items[0]?.service || "", description: "", note: "", qty: 1, price: 0, discountPct: 0 };
+    const items = d.items.slice();
+    items.splice(i + 1, 0, blank);
+    return { ...d, items };
+  });
   const removeDraftItem = (i) => setDraft(d => ({ ...d, items: d.items.filter((_,idx) => idx!==i) }));
 
   return (
@@ -3108,16 +3117,17 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
                 <tr style={{ background:themeColors.headerBg }}>
                   <th style={{ color:"#fff", textAlign:"left", padding:"9px 10px", fontWeight:500, width:30 }}>#</th>
                   <th style={{ color:"#fff", textAlign:"left", padding:"9px 10px", fontWeight:500 }}>Item & Description</th>
+                  {editingNow && <th style={{ color:"#fff", textAlign:"right", padding:"9px 10px", fontWeight:500, width:55 }}>Qty</th>}
                   <th style={{ color:"#fff", textAlign:"right", padding:"9px 10px", fontWeight:500, width:90 }}>Rate</th>
                   {editingNow && <th style={{ color:"#fff", textAlign:"right", padding:"9px 10px", fontWeight:500, width:60 }}>Disc.%</th>}
                   <th style={{ color:"#fff", textAlign:"right", padding:"9px 10px", fontWeight:500, width:90 }}>Amount</th>
-                  {editingNow && <th style={{ width:76 }}></th>}
+                  {editingNow && <th style={{ width:96 }}></th>}
                 </tr>
               </thead>
               <tbody>
                 {rows.map(r => r.kind === "category" ? (
                   <tr key={r.key} style={{ background:r.bg }}>
-                    <td colSpan={editingNow ? 6 : 4} style={{ padding:"9px 10px", fontWeight:600, fontSize:12, borderBottom:"1px solid var(--hair)" }}>
+                    <td colSpan={editingNow ? 7 : 4} style={{ padding:"9px 10px", fontWeight:600, fontSize:12, borderBottom:"1px solid var(--hair)" }}>
                       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                         <span>{r.label}</span>
                         {editingNow && (
@@ -3147,12 +3157,14 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
                         </>
                       )}
                     </td>
+                    {editingNow && (
+                      <td className="mono" style={{ padding:"9px 10px", textAlign:"right", verticalAlign:"top" }}>
+                        <input type="number" style={{ ...inputStyle, textAlign:"right" }} value={r.it.qty} onChange={e=>updDraftItem(r.idx,"qty",(e.target.value === "" ? "" : Number(e.target.value)))} />
+                      </td>
+                    )}
                     <td className="mono" style={{ padding:"9px 10px", textAlign:"right", verticalAlign:"top" }}>
                       {editingNow ? (
-                        <>
-                          <input type="number" style={{ ...inputStyle, textAlign:"right", marginBottom:4 }} value={r.it.qty} onChange={e=>updDraftItem(r.idx,"qty",(e.target.value === "" ? "" : Number(e.target.value)))} />
-                          <input type="number" style={{ ...inputStyle, textAlign:"right" }} value={r.it.price} onChange={e=>updDraftItem(r.idx,"price",(e.target.value === "" ? "" : Number(e.target.value)))} />
-                        </>
+                        <input type="number" style={{ ...inputStyle, textAlign:"right" }} value={r.it.price} onChange={e=>updDraftItem(r.idx,"price",(e.target.value === "" ? "" : Number(e.target.value)))} />
                       ) : Number(r.it.price).toFixed(2)}
                     </td>
                     {editingNow && (
@@ -3168,6 +3180,8 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
                             onClick={()=>updDraft("items", moveArrayItem(src.items, r.idx, -1))}><ChevronUp size={12}/></button>
                           <button type="button" className="btn btn-sm btn-ghost" title="Move item down" disabled={r.idx===src.items.length-1} style={{padding:2}}
                             onClick={()=>updDraft("items", moveArrayItem(src.items, r.idx, 1))}><ChevronDown size={12}/></button>
+                          <button type="button" className="btn btn-sm btn-ghost" title="Insert item below" style={{padding:2}}
+                            onClick={()=>insertDraftItemAfter(r.idx)}><Plus size={12}/></button>
                           {src.items.length > 1 && (
                             <button type="button" className="btn btn-sm btn-ghost" title="Remove item" style={{ color:"var(--danger)", padding:2 }} onClick={()=>removeDraftItem(r.idx)}><X size={13}/></button>
                           )}
