@@ -49,6 +49,9 @@ CREATE TABLE IF NOT EXISTS users (
   mobile_n      VARCHAR(30),                        -- HR spreadsheet's "N Mobile" / "P Mobile" / "C Mobile" columns — kept under their
   mobile_p      VARCHAR(30),                        -- source labels since which is home/personal/company isn't documented anywhere
   mobile_c      VARCHAR(30),
+  -- One Google Cloud (Drive) folder link per person — distinct from staff_docs.cloud_link, which
+  -- is per individual document. Admin-tier and HR only (see PATCH /users/:id/cloud-link).
+  cloud_link    VARCHAR(500),
   created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 

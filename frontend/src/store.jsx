@@ -278,6 +278,7 @@ export function useApiStore(enabled) {
       case "UPDATE_EMPLOYEE_DOC": await api.users.updateDoc?.(action.employeeId, action.docId, action.payload); return refresh(["employees"]);
       case "DELETE_EMPLOYEE_DOC": await api.users.removeDoc?.(action.employeeId, action.docId); return refresh(["employees"]);
       case "SET_STAFF_DOC_CLOUD_LINK": await api.users.updateDoc?.(action.employeeId, action.docId, { cloudLink: action.url }); return refresh(["employees"]);
+      case "SET_USER_CLOUD_LINK": await api.users.setCloudLink(action.employeeId, action.url); return refresh(["employees"]);
 
       // --- Attendance / leave / punch ---------------------------------------------------------
       case "MARK_ATTENDANCE": {

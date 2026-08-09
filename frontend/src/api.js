@@ -104,6 +104,7 @@ export const api = {
     addDoc: (id, doc) => post(`/users/${id}/docs`, doc),
     updateDoc: (id, docId, payload) => patch(`/users/${id}/docs/${docId}`, payload),
     removeDoc: (id, docId) => del(`/users/${id}/docs/${docId}`),
+    setCloudLink: (id, url) => patch(`/users/${id}/cloud-link`, { url }),
   },
   leads: {
     list: () => get("/leads"),

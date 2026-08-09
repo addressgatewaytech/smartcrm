@@ -6128,6 +6128,17 @@ function EmployeeHrCard({ e, state, dispatch, isAdmin, userId, onOpenDocs, onOpe
         );
       })()}
 
+      <div style={{ marginTop:8, display:"flex", alignItems:"center", gap:8, background:"var(--page)", borderRadius:8, padding:"8px 10px" }}>
+        <div style={{ fontSize:10.5, color:"var(--ink-soft)", textTransform:"uppercase", letterSpacing:".03em", flexShrink:0 }}>Google Cloud</div>
+        {isAdmin ? (
+          <CloudLinkButton url={e.cloudLink} onSave={(url)=>dispatch({type:"SET_USER_CLOUD_LINK", employeeId:e.id, url})} />
+        ) : e.cloudLink ? (
+          <a href={e.cloudLink} target="_blank" rel="noreferrer" className="pill" style={{ display:"inline-flex", alignItems:"center", gap:4, color:"var(--info)", textDecoration:"none" }}>
+            <Link2 size={11}/> Cloud file
+          </a>
+        ) : <span style={{ fontSize:12, color:"var(--ink-soft)" }}>—</span>}
+      </div>
+
       <div style={{ display:"flex", gap:8, marginTop:12, flexWrap:"wrap" }}>
         <button className="btn btn-sm" style={{ flex:1 }} onClick={onOpenDocs}>
           Documents ({e.docs.length}{flagged.length>0 && <span style={{color:"var(--warning)"}}> · {flagged.length} flagged</span>})

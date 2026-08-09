@@ -21,6 +21,7 @@ export const mapUser = (u) => ({
   mobileN: u.mobile_n ?? u.mobileN ?? null,
   mobileP: u.mobile_p ?? u.mobileP ?? null,
   mobileC: u.mobile_c ?? u.mobileC ?? null,
+  cloudLink: u.cloud_link ?? u.cloudLink ?? null,
   docs: (u.docs || []).map(mapStaffDoc),
   attendance: [],
   dataActivity: { date: null, emailsSent: 0, whatsappsSent: 0, lastEmailAt: null, lastWhatsappAt: null },

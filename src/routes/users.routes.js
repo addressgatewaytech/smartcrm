@@ -30,7 +30,7 @@ router.use(requireAuth);
 // HR ("roles: all" in the nav) needs every authenticated user to see the roster — only
 // create/edit/delete of Users & Roles itself stays restricted to super_admin/admin below.
 router.get("/", async (req, res) => {
-  const rows = await query("SELECT id, name, email, roles, dept, initials, designation, category, photo_url, leave_balance, active, joined_date, date_of_birth, nationality, emp_code, qid_type, mobile_n, mobile_p, mobile_c FROM users ORDER BY name");
+  const rows = await query("SELECT id, name, email, roles, dept, initials, designation, category, photo_url, leave_balance, active, joined_date, date_of_birth, nationality, emp_code, qid_type, mobile_n, mobile_p, mobile_c, cloud_link FROM users ORDER BY name");
   const docs = await query("SELECT * FROM staff_docs");
   res.json(rows.map((r) => ({ ...r, docs: docs.filter((d) => d.user_id === r.id) })));
 });
@@ -84,6 +84,15 @@ router.patch("/:id", requireRole(["super_admin", "admin"]), async (req, res) => 
   if (!fields.length) return res.status(400).json({ error: "Nothing to update" });
   params.push(req.params.id);
   await query(`UPDATE users SET ${fields.join(", ")} WHERE id = ?`, params);
+  res.json({ ok: true });
+});
+
+// A person's own Google Cloud (Drive) folder link — separate from PATCH /:id above (which is
+// tightly restricted to Admin-tier only, since it can change roles/email) and from per-document
+// cloud links on staff_docs. HR needs to set this without needing full user-edit access.
+router.patch("/:id/cloud-link", requireRole(["super_admin", "admin", "admin_exec", "hr"]), async (req, res) => {
+  const { url } = req.body;
+  await query("UPDATE users SET cloud_link = ? WHERE id = ?", [url || null, req.params.id]);
   res.json({ ok: true });
 });
 
