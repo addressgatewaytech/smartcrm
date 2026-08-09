@@ -4677,6 +4677,7 @@ function InvoicesPage({ state, dispatch, role }) {
   const [pay, setPay] = useState(null);
   const [amount, setAmount] = useState(0);
   const [mode, setMode] = useState("Bank Transfer");
+  const [paidAt, setPaidAt] = useState(daysFromNow(0));
   const [history, setHistory] = useState(null);
   const [emailFor, setEmailFor] = useState(null);
   const [removeInvoice, setRemoveInvoice] = useState(null);
@@ -4721,7 +4722,7 @@ function InvoicesPage({ state, dispatch, role }) {
                   <td className="mono" style={{fontSize:12}}>{fmtDate(inv.dueDate)}</td>
                   <td><Stamp tone={statusTone(inv.status)}>{inv.status}</Stamp></td>
                   <td style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-                    {balance > 0 && canRecordPayment && <button className="btn btn-sm" onClick={()=>{ setPay(inv); setAmount(balance); }}>Record payment</button>}
+                    {balance > 0 && canRecordPayment && <button className="btn btn-sm" onClick={()=>{ setPay(inv); setAmount(balance); setPaidAt(daysFromNow(0)); }}>Record payment</button>}
                     {inv.payments.length > 0 && <button className="btn btn-sm btn-ghost" onClick={()=>setHistory(inv)}>Payments</button>}
                     <button className="btn btn-sm btn-ghost" onClick={()=>setEmailFor(inv)}>
                       {inv.emailedToClient ? <><BadgeCheck size={13}/> Emailed</> : <><Mail size={13}/> Email</>}
@@ -4761,9 +4762,10 @@ function InvoicesPage({ state, dispatch, role }) {
               </select>
             </div>
           </div>
+          <div className="field"><label>Payment date</label><input type="date" max={daysFromNow(0)} value={paidAt} onChange={e=>setPaidAt(e.target.value)} /></div>
           <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop: 16 }}>
             <button className="btn" onClick={()=>setPay(null)}>Cancel</button>
-            <button className="btn btn-primary" onClick={()=>{ dispatch({type:"RECORD_PAYMENT", invoiceId:pay.id, amount, mode, by:"Accounts"}); setPay(null); }}>Record payment</button>
+            <button className="btn btn-primary" disabled={!paidAt} onClick={()=>{ dispatch({type:"RECORD_PAYMENT", invoiceId:pay.id, amount, mode, paidAt, by:"Accounts"}); setPay(null); }}>Record payment</button>
           </div>
         </Modal>
       )}

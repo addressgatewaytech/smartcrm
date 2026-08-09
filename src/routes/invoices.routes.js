@@ -52,8 +52,11 @@ router.get("/:id/pdf", async (req, res) => {
 });
 
 router.post("/:id/payments", requireRole(["accounts", "admin_like"]), async (req, res) => {
-  const { amount, mode } = req.body;
-  await query("INSERT INTO invoice_payments (id, invoice_id, amount, mode, recorded_by) VALUES (?,?,?,?,?)", [nextId("PMT"), req.params.id, amount, mode, req.user.id]);
+  const { amount, mode, paidAt } = req.body;
+  // paidAt lets Accounts record when a payment was actually received (e.g. logging it a day or
+  // two late, or reconciling an older bank statement) instead of always stamping "now" — falls
+  // back to the current moment when not given, same as before this existed.
+  await query("INSERT INTO invoice_payments (id, invoice_id, amount, mode, recorded_by, paid_at) VALUES (?,?,?,?,?,COALESCE(?, NOW()))", [nextId("PMT"), req.params.id, amount, mode, req.user.id, paidAt || null]);
 
   const [invoice] = await query("SELECT amount FROM invoices WHERE id = ?", [req.params.id]);
   const [{ total_paid }] = await query("SELECT COALESCE(SUM(amount),0) AS total_paid FROM invoice_payments WHERE invoice_id = ?", [req.params.id]);

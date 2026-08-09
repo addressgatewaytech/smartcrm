@@ -163,7 +163,7 @@ export const api = {
   },
   invoices: {
     list: () => get("/invoices"),
-    recordPayment: (id, amount, mode) => post(`/invoices/${id}/payments`, { amount, mode }),
+    recordPayment: (id, amount, mode, paidAt) => post(`/invoices/${id}/payments`, { amount, mode, paidAt }),
     removePayment: (id, paymentId) => del(`/invoices/${id}/payments/${paymentId}`),
     markEmailed: (id, cc) => post(`/invoices/${id}/emailed`, { cc }),
     remove: (id) => del(`/invoices/${id}`),

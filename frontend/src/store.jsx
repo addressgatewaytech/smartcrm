@@ -205,7 +205,7 @@ export function useApiStore(enabled) {
       case "GENERATE_INVOICE": return; // superseded — GENERATE_INVOICE + ONBOARD_CLIENT are one atomic /onboard call on this backend
       case "ONBOARD_CLIENT": await api.salesOrders.onboard(action.salesOrderId); return refresh(["salesOrders", "invoices", "jobCards", "notifications"]);
       case "DELETE_SALES_ORDER": await api.salesOrders.remove(action.id); return refresh(["salesOrders"]);
-      case "RECORD_PAYMENT": await api.invoices.recordPayment(action.invoiceId, action.amount, action.mode); return refresh(["invoices"]);
+      case "RECORD_PAYMENT": await api.invoices.recordPayment(action.invoiceId, action.amount, action.mode, action.paidAt); return refresh(["invoices"]);
       case "REMOVE_PAYMENT": await api.invoices.removePayment(action.invoiceId, action.paymentId); return refresh(["invoices"]);
       case "DELETE_INVOICE": await api.invoices.remove(action.id); return refresh(["invoices"]);
 
