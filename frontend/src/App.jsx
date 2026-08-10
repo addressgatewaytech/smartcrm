@@ -615,6 +615,38 @@ function CloudLinkButton({ url, onSave }) {
   );
 }
 
+// Small "copy to clipboard" icon button — pairs with any piece of contact info (phone, email,
+// mobile) so it can be copied without selecting/retyping it. Briefly swaps to a checkmark as
+// its own feedback instead of relying on a separate toast.
+function CopyButton({ value }) {
+  const [copied, setCopied] = useState(false);
+  if (!value) return null;
+  return (
+    <button type="button" className="btn btn-sm btn-ghost" title={copied ? "Copied!" : `Copy ${value}`} style={{ padding:3 }}
+      onClick={(e)=>{
+        e.stopPropagation();
+        navigator.clipboard.writeText(value).then(()=>{ setCopied(true); setTimeout(()=>setCopied(false), 1500); });
+      }}>
+      {copied ? <Check size={12} style={{color:"var(--success)"}}/> : <Copy size={12}/>}
+    </button>
+  );
+}
+
+// A quotation's customer name, clickable through to that customer's profile card — matched by
+// name since quotations only store the customer as a text snapshot (same lookup used elsewhere,
+// e.g. QuoteDetailModal's customerEmail). Falls back to plain text if no matching customer record
+// exists (e.g. it was since removed) rather than rendering a dead link.
+function CustomerNameLink({ name, state, onOpen }) {
+  const cust = state?.customers.find(c => c.name === name);
+  if (!cust) return <>{name}</>;
+  return (
+    <button type="button" onClick={(e)=>{ e.stopPropagation(); onOpen(cust); }}
+      style={{ background:"none", border:"none", padding:0, font:"inherit", color:"var(--brand)", textDecoration:"underline", cursor:"pointer" }}>
+      {name}
+    </button>
+  );
+}
+
 /* ---------------------------------------------------------------------- */
 /* NAV CONFIG                                                             */
 /* ---------------------------------------------------------------------- */
@@ -629,7 +661,7 @@ const NAV = [
     { key: "deals", label: "Deals", icon: Handshake, roles: [...ADMIN_LIKE,"sales_manager","sales_exec","ops_manager","ops_member"] },
     { key: "quotations", label: "Quotations", icon: FileText, roles: [...ADMIN_LIKE,"sales_manager","sales_exec","ops_manager","ops_member"] },
     { key: "quotationTemplates", label: "Quotation Templates", icon: Files, roles: [...ADMIN_LIKE,"sales_manager"] },
-    { key: "customers", label: "Customers & KYC", icon: UserCheck, roles: [...ADMIN_LIKE,"sales_manager","sales_exec","accounts"] },
+    { key: "customers", label: "Customers & KYC", icon: UserCheck, roles: [...ADMIN_LIKE,"sales_manager","sales_exec","accounts","ops_manager"] },
   ]},
   { group: "Finance", items: [
     { key: "orders", label: "Sales Orders", icon: ShoppingCart, roles: [...ADMIN_LIKE,"sales_manager","accounts"] },
@@ -2590,6 +2622,7 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, onHighligh
   const [cloneFor, setCloneFor] = useState(null);
   const [removeQuote, setRemoveQuote] = useState(null);
   const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [viewingCustomer, setViewingCustomer] = useState(null);
 
   const [query, setQuery] = useState("");
   const { period, setPeriod, customFrom, setCustomFrom, customTo, setCustomTo, range } = usePeriod("all");
@@ -2662,7 +2695,7 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, onHighligh
                 </td>
                 <td className="mono">{q.id}</td>
                 <td className="mono" style={{fontSize:12}}>{fmtDate(q.createdAt)}</td>
-                <td>{q.customer}</td>
+                <td><CustomerNameLink name={q.customer} state={state} onOpen={setViewingCustomer} /></td>
                 <td style={{maxWidth:180}}>{q.items[0]?.service || "—"}</td>
                 <td>{state.employees.find(t=>t.id===q.owner)?.name || "—"}</td>
                 <td><Stamp tone={originTone(quotationOrigin(state, q))}>{quotationOrigin(state, q)}</Stamp></td>
@@ -2684,6 +2717,7 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, onHighligh
       {open && <QuoteDetailModal quotation={open} state={state} dispatch={dispatch} role={role} userId={userId} customerOptions={customerOptions} templates={state.quotationTemplates} startInEdit={openInEdit} onClose={()=>{ setOpenId(null); setOpenInEdit(false); }} />}
       {cloneFor && <CloneQuoteModal quotation={cloneFor} customerOptions={customerOptions} dispatch={dispatch} onClose={()=>setCloneFor(null)} />}
       {removeQuote && <ConfirmModal title={`Remove ${removeQuote.id}?`} body={`${removeQuote.customer} — this draft quotation can't be recovered once removed.`} onConfirm={()=>dispatch({type:"DELETE_QUOTATION", id:removeQuote.id})} onClose={()=>setRemoveQuote(null)} />}
+      {viewingCustomer && <CustomerDetailModal customer={viewingCustomer} state={state} dispatch={dispatch} role={role} userId={userId} onClose={()=>setViewingCustomer(null)} />}
     </div>
   );
 }
@@ -2722,6 +2756,7 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
   const [removing, setRemoving] = useState(false);
   const [emailing, setEmailing] = useState(false);
   const [revising, setRevising] = useState(false);
+  const [viewingCustomer, setViewingCustomer] = useState(null);
   const confirm = useConfirm();
   const editable = ["Draft","Pending Manager Approval"].includes(q.status);
   const isAdmin = ADMIN_LIKE.includes(role);
@@ -2821,7 +2856,7 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
   const removeDraftItem = (i) => setDraft(d => ({ ...d, items: d.items.filter((_,idx) => idx!==i) }));
 
   return (
-    <Modal title={q.id} sub={q.customer} onClose={onClose} width={960}>
+    <Modal title={q.id} sub={<CustomerNameLink name={q.customer} state={state} onOpen={setViewingCustomer} />} onClose={onClose} width={960}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
         <div className="tabbar" style={{ marginBottom:0, borderBottom:"none" }}>
           <button className={`tab ${view==="details"?"active":""}`} onClick={()=>setView("details")}>Current view</button>
@@ -3324,6 +3359,7 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
         </div>
         );
       })()}
+      {viewingCustomer && <CustomerDetailModal customer={viewingCustomer} state={state} dispatch={dispatch} role={role} userId={userId} onClose={()=>setViewingCustomer(null)} />}
     </Modal>
   );
 }
@@ -3504,12 +3540,16 @@ function CustomersPage({ state, dispatch, role, userId }) {
   const [editCustomer, setEditCustomer] = useState(null);
   const [removeCustomer, setRemoveCustomer] = useState(null);
   const isAdmin = ADMIN_LIKE.includes(role);
+  // Ops Manager can update a customer's profile alongside Admin-tier (services KYC/onboarding
+  // across every client operationally, not just ones they personally sourced) — Delete stays
+  // Admin-tier only regardless of role, since that's destructive and touches KYC records other
+  // people rely on (also enforced server-side: PATCH allows admin_like+ops_manager, DELETE admin_like only).
+  const canEditCustomer = isAdmin || role === "ops_manager";
   // Visibility (a sales_exec only sees their own customers) is enforced server-side in
   // GET /customers, since that's the only place with enough data to derive ownership correctly —
   // /leads itself is already scoped to the requesting user for a sales_exec, so state.leads here
-  // never contains enough to figure out who owns someone else's customer. Edit/Delete stay
-  // admin-only regardless of role, since a wrong edit or delete here touches KYC records other
-  // people rely on (also enforced server-side on PATCH/DELETE /customers/:id).
+  // never contains enough to figure out who owns someone else's customer. Ops Manager is the one
+  // exception that sees every customer (also enforced server-side), same as their Job Cards access.
   const visibleCustomers = state.customers;
 
   const filtered = visibleCustomers.filter(c => {
@@ -3574,7 +3614,7 @@ function CustomersPage({ state, dispatch, role, userId }) {
                     <td style={{fontSize:12.5}}>{c.email || "—"}</td>
                     <td>{c.companySize || "—"}</td>
                     <td>{flagged > 0 ? <Stamp tone="warning">{flagged} flagged</Stamp> : <Stamp tone="success">Clear</Stamp>}</td>
-                    <td><RowActions onEdit={isAdmin ? ()=>setEditCustomer(c) : null} onRemove={isAdmin ? ()=>setRemoveCustomer(c) : null} /></td>
+                    <td><RowActions onEdit={canEditCustomer ? ()=>setEditCustomer(c) : null} onRemove={isAdmin ? ()=>setRemoveCustomer(c) : null} /></td>
                   </tr>
                 );
               })}
@@ -3600,7 +3640,7 @@ function CustomersPage({ state, dispatch, role, userId }) {
                 </div>
                 <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                   {flagged > 0 ? <Stamp tone="warning">{flagged} doc{flagged>1?"s":""} flagged</Stamp> : <Stamp tone="success">KYC clear</Stamp>}
-                  <RowActions onEdit={isAdmin ? ()=>setEditCustomer(c) : null} onRemove={isAdmin ? ()=>setRemoveCustomer(c) : null} />
+                  <RowActions onEdit={canEditCustomer ? ()=>setEditCustomer(c) : null} onRemove={isAdmin ? ()=>setRemoveCustomer(c) : null} />
                 </div>
               </div>
               <div style={{ display:"flex", gap:6, marginTop: 12, flexWrap:"wrap" }}>
@@ -3777,8 +3817,10 @@ function CustomerDetailModal({ customer: c, state, dispatch, role, userId, onClo
       <>
       <div className="agw-grid" style={{ gridTemplateColumns: "repeat(3,1fr)", marginBottom: 16 }}>
         <div className="agw-card"><div className="kpi-label">Contact person</div><div style={{ fontSize:14, fontWeight:500, marginTop:4 }}>{c.contact || "—"}</div></div>
-        <div className="agw-card"><div className="kpi-label">Contact mobile</div><div style={{ fontSize:14, fontWeight:500, marginTop:4 }}>{c.contactMobile || "—"}</div></div>
-        <div className="agw-card"><div className="kpi-label">Landline</div><div style={{ fontSize:14, fontWeight:500, marginTop:4 }}>{c.landline || "—"}</div></div>
+        <div className="agw-card"><div className="kpi-label">Phone</div><div style={{ fontSize:14, fontWeight:500, marginTop:4, display:"flex", alignItems:"center", gap:4 }}>{c.phone || "—"}<CopyButton value={c.phone} /></div></div>
+        <div className="agw-card"><div className="kpi-label">Contact mobile</div><div style={{ fontSize:14, fontWeight:500, marginTop:4, display:"flex", alignItems:"center", gap:4 }}>{c.contactMobile || "—"}<CopyButton value={c.contactMobile} /></div></div>
+        <div className="agw-card"><div className="kpi-label">Landline</div><div style={{ fontSize:14, fontWeight:500, marginTop:4, display:"flex", alignItems:"center", gap:4 }}>{c.landline || "—"}<CopyButton value={c.landline} /></div></div>
+        <div className="agw-card"><div className="kpi-label">Email</div><div style={{ fontSize:14, fontWeight:500, marginTop:4, display:"flex", alignItems:"center", gap:4, wordBreak:"break-all" }}>{c.email || "—"}<CopyButton value={c.email} /></div></div>
       </div>
       <table className="agw-table">
         <thead><tr><th>Document</th><th>Number</th><th>Expiry</th><th>Status</th><th>Cloud copy</th><th></th></tr></thead>
@@ -3786,7 +3828,7 @@ function CustomerDetailModal({ customer: c, state, dispatch, role, userId, onClo
           {c.docs.map(d => {
             const st = docState(d.expiry);
             return <tr key={d.id}>
-              <td>{d.type}</td><td className="mono">{d.number}</td><td className="mono" style={{fontSize:12}}>{fmtDate(d.expiry)}</td>
+              <td>{d.type}</td><td className="mono" style={{display:"flex",alignItems:"center",gap:4}}>{d.number}<CopyButton value={d.number} /></td><td className="mono" style={{fontSize:12}}>{fmtDate(d.expiry)}</td>
               <td><Stamp tone={st.cls.replace("stamp-","")}>{st.label}</Stamp></td>
               <td><CloudLinkButton url={d.cloudLink} onSave={(url)=>dispatch({type:"SET_DOC_CLOUD_LINK", customerId:c.id, docId:d.id, url})} /></td>
               <td><RowActions onEdit={()=>startEditDoc(d)} onRemove={()=>setRemoveDoc(d)} /></td>
