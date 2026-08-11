@@ -7,7 +7,7 @@ import { useState } from "react";
 import { Plus, TrendingUp } from "lucide-react";
 import { ApiError } from "../api";
 import { Stamp, statusTone, Empty, money, ProgressRing, ADMIN_LIKE } from "../ui.jsx";
-import { todayStr, firstOfMonthStr, userTaskSnapshot } from "../salesTasksHelpers";
+import { todayStr, firstOfWeekStr, firstOfMonthStr, userTaskSnapshot } from "../salesTasksHelpers";
 
 const isManagerOrAdmin = (role) => ADMIN_LIKE.includes(role) || role === "sales_manager";
 
@@ -15,16 +15,18 @@ export function SalesDailyTasksTab({ state, dispatch, role, userId }) {
   const defs = state.salesTaskDefs || [];
   const data = { logs: state.salesTaskLogs || [], quotations: state.quotations, salesOrders: state.salesOrders, invoices: state.invoices };
   const today = todayStr();
+  const weekStart = firstOfWeekStr();
   const monthStart = firstOfMonthStr();
 
   if (defs.length === 0) return <Empty icon={TrendingUp} text="Sales Daily Tasks aren't set up yet — check back shortly." />;
 
   if (isManagerOrAdmin(role)) return <TeamView state={state} dispatch={dispatch} defs={defs} data={data} today={today} role={role} />;
-  return <SelfView defs={defs} data={data} today={today} monthStart={monthStart} userId={userId} dispatch={dispatch} />;
+  return <SelfView defs={defs} data={data} today={today} weekStart={weekStart} monthStart={monthStart} userId={userId} dispatch={dispatch} />;
 }
 
-function SelfView({ defs, data, today, monthStart, userId, dispatch }) {
+function SelfView({ defs, data, today, weekStart, monthStart, userId, dispatch }) {
   const todaySnap = userTaskSnapshot(defs, data, userId, today, today);
+  const weekSnap = userTaskSnapshot(defs, data, userId, weekStart, today);
   const monthSnap = userTaskSnapshot(defs, data, userId, monthStart, today);
 
   const [busyId, setBusyId] = useState(null);
@@ -52,13 +54,17 @@ function SelfView({ defs, data, today, monthStart, userId, dispatch }) {
         <div className="agw-card"><div className="kpi-label">Revenue achieved (today)</div><div className="kpi-value disp">{money(todaySnap.revenue)}</div></div>
         <div className="agw-card"><div className="kpi-label">Sales achieved (today)</div><div className="kpi-value disp">{money(todaySnap.sales)}</div></div>
       </div>
-      <div className="agw-grid" style={{ gridTemplateColumns: "repeat(2,1fr)", marginBottom: 16 }}>
+      <div className="agw-grid" style={{ gridTemplateColumns: "repeat(3,1fr)", marginBottom: 16 }}>
         <div className="agw-card" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 20, flexWrap: "wrap" }}>
-          <ProgressRing pct={todaySnap.completionPct} color="var(--brand)" label="Daily performance" />
+          <ProgressRing pct={todaySnap.completionPct} label="Daily performance" />
           <div style={{ fontSize: 12.5, color: "var(--ink-soft)" }}>{todaySnap.pendingCount} of {defs.length} activities still pending today</div>
         </div>
         <div className="agw-card" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 20, flexWrap: "wrap" }}>
-          <ProgressRing pct={monthSnap.completionPct} color="var(--gold)" label="Monthly performance" />
+          <ProgressRing pct={weekSnap.completionPct} label="Weekly performance" />
+          <div style={{ fontSize: 12.5, color: "var(--ink-soft)" }}>Week-to-date across all daily activities</div>
+        </div>
+        <div className="agw-card" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 20, flexWrap: "wrap" }}>
+          <ProgressRing pct={monthSnap.completionPct} label="Monthly performance" />
           <div style={{ fontSize: 12.5, color: "var(--ink-soft)" }}>Month-to-date across all daily activities</div>
         </div>
       </div>

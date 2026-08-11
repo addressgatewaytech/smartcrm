@@ -13,6 +13,16 @@ export function firstOfMonthStr(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
 }
 
+// Monday of the current week (ISO-style week start), for a "week-to-date" range the same way
+// firstOfMonthStr gives a "month-to-date" range.
+export function firstOfWeekStr(d = new Date()) {
+  const day = d.getDay(); // 0=Sun..6=Sat
+  const diffToMonday = day === 0 ? 6 : day - 1;
+  const monday = new Date(d);
+  monday.setDate(d.getDate() - diffToMonday);
+  return `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, "0")}-${String(monday.getDate()).padStart(2, "0")}`;
+}
+
 function manualCompletedInRange(logs, userId, taskDefId, from, to) {
   return logs
     .filter((l) => l.userId === userId && l.taskDefId === taskDefId && l.activityDate >= from && l.activityDate <= to)

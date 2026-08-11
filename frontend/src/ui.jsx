@@ -170,9 +170,19 @@ export function DonutChart({ data, size = 160, centerLabel }) {
   );
 }
 
+// Red under 25% (barely started), amber/yellow from 25% up to 70% (making progress), green from
+// 70% on (on track / done) — the same traffic-light convention across every completion gauge.
+export function progressColor(pct) {
+  if (pct < 25) return "var(--danger)";
+  if (pct < 70) return "var(--warning)";
+  return "var(--success)";
+}
+
 // A single-value % gauge — distinct from DonutChart, whose center label is always the summed
-// total rather than a percentage, which doesn't fit a "Daily/Monthly Performance" KPI.
-export function ProgressRing({ pct, size = 96, color = "var(--brand)", label }) {
+// total rather than a percentage, which doesn't fit a "Daily/Monthly Performance" KPI. Color
+// defaults to the red/amber/green scale above; pass color explicitly only to override it.
+export function ProgressRing({ pct, size = 96, color, label }) {
+  const ringColor = color || progressColor(pct);
   const clamped = Math.max(0, Math.min(100, pct));
   const r = size / 2;
   const stroke = size * 0.14;
@@ -184,7 +194,7 @@ export function ProgressRing({ pct, size = 96, color = "var(--brand)", label }) 
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
         <circle cx={r} cy={r} r={radius} fill="none" stroke="var(--hair)" strokeWidth={stroke} />
         {clamped > 0 && (
-          <circle cx={r} cy={r} r={radius} fill="none" stroke={color} strokeWidth={stroke}
+          <circle cx={r} cy={r} r={radius} fill="none" stroke={ringColor} strokeWidth={stroke}
             strokeDasharray={`${dash} ${circumference - dash}`} strokeLinecap="round"
             transform={`rotate(-90 ${r} ${r})`} />
         )}

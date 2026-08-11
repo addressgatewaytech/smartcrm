@@ -12,7 +12,7 @@ import {
   Sun, Moon, BookOpen
 } from "lucide-react";
 import { money, fmtDate, fmtDateDMY, Stamp, statusTone, Rail, DonutChart, LineChart, BarChart, SalesPersonBars, ProgressRing, Modal, Empty, ConfirmModal, RowActions, exportCSV, usePagination, PaginationBar, TableScrollHint, useConfirm, ADMIN_LIKE, ROLE_LABEL, isSalesRole, isAssignable } from "./ui.jsx";
-import { todayStr as salesTaskToday, firstOfMonthStr, userTaskSnapshot } from "./salesTasksHelpers";
+import { todayStr as salesTaskToday, firstOfWeekStr, firstOfMonthStr, userTaskSnapshot } from "./salesTasksHelpers";
 import { TasksPage } from "./pages/tasks.jsx";
 import { AttendanceSignButton, AttendancePage } from "./pages/attendance.jsx";
 import { LeadAssignmentManagerPage } from "./pages/leadAssignment.jsx";
@@ -1396,11 +1396,13 @@ function Dashboard({ state, dispatch, role, userId, setPage }) {
             {role === "sales_exec" ? (() => {
               const salesTaskToday_ = salesTaskToday();
               const todaySnap = userTaskSnapshot(state.salesTaskDefs, salesTaskData, userId, salesTaskToday_, salesTaskToday_);
+              const weekSnap = userTaskSnapshot(state.salesTaskDefs, salesTaskData, userId, firstOfWeekStr(), salesTaskToday_);
               const monthSnap = userTaskSnapshot(state.salesTaskDefs, salesTaskData, userId, firstOfMonthStr(), salesTaskToday_);
               return (
                 <div style={{ display:"flex", gap:28, flexWrap:"wrap", alignItems:"center" }}>
                   <ProgressRing pct={todaySnap.completionPct} label="Daily performance" />
-                  <ProgressRing pct={monthSnap.completionPct} color="var(--gold)" label="Monthly performance" />
+                  <ProgressRing pct={weekSnap.completionPct} label="Weekly performance" />
+                  <ProgressRing pct={monthSnap.completionPct} label="Monthly performance" />
                   <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
                     <div style={{ fontSize:12.5, color:"var(--ink-soft)" }}>Today's task completion: <strong style={{ color:"var(--ink)" }}>{todaySnap.completionPct}%</strong></div>
                     <div style={{ fontSize:12.5, color:"var(--ink-soft)" }}>Revenue achieved (today): <strong style={{ color:"var(--ink)" }}>{money(todaySnap.revenue)}</strong></div>
