@@ -3816,6 +3816,7 @@ function CustomerDetailModal({ customer: c, state, dispatch, role, userId, onClo
       {tab === "profile" && (
       <>
       <div className="agw-grid" style={{ gridTemplateColumns: "repeat(3,1fr)", marginBottom: 16 }}>
+        <div className="agw-card"><div className="kpi-label">Created</div><div style={{ fontSize:14, fontWeight:500, marginTop:4 }}>{fmtDate(c.createdAt)}</div></div>
         <div className="agw-card"><div className="kpi-label">Contact person</div><div style={{ fontSize:14, fontWeight:500, marginTop:4 }}>{c.contact || "—"}</div></div>
         <div className="agw-card"><div className="kpi-label">Phone</div><div style={{ fontSize:14, fontWeight:500, marginTop:4, display:"flex", alignItems:"center", gap:4 }}>{c.phone || "—"}<CopyButton value={c.phone} /></div></div>
         <div className="agw-card"><div className="kpi-label">Contact mobile</div><div style={{ fontSize:14, fontWeight:500, marginTop:4, display:"flex", alignItems:"center", gap:4 }}>{c.contactMobile || "—"}<CopyButton value={c.contactMobile} /></div></div>
