@@ -126,15 +126,16 @@ router.post("/:id/follow-up", async (req, res) => {
 });
 
 router.post("/:id/convert-to-deal", async (req, res) => {
-  const { value } = req.body;
+  // value always starts at 0 — no more manually-typed estimate. It's kept in sync with the
+  // deal's real quoted amount by quotations.routes.js once a quotation actually exists for it.
   const result = await withTransaction(async (conn) => {
     const [[lead]] = await conn.execute("SELECT * FROM leads WHERE id = ?", [req.params.id]);
     if (!lead) throw new Error("Lead not found");
     await conn.execute("UPDATE leads SET status = 'Converted' WHERE id = ?", [req.params.id]);
     const dealId = await nextSequentialId(conn, "AGBSDS", "deal");
     await conn.execute(
-      `INSERT INTO deals (id, lead_id, customer, service, value, owner, stage, expected_close, customer_id) VALUES (?,?,?,?,?,?,?,?,?)`,
-      [dealId, lead.id, lead.company, lead.service, value || 0, lead.owner, "Open", (() => { const d = new Date(); d.setDate(d.getDate() + 21); return d.toISOString().slice(0, 10); })(), lead.customer_id]
+      `INSERT INTO deals (id, lead_id, customer, service, value, owner, stage, expected_close, customer_id) VALUES (?,?,?,?,0,?,?,?,?)`,
+      [dealId, lead.id, lead.company, lead.service, lead.owner, "Open", (() => { const d = new Date(); d.setDate(d.getDate() + 21); return d.toISOString().slice(0, 10); })(), lead.customer_id]
     );
     return dealId;
   });

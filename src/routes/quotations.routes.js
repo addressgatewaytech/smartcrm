@@ -29,6 +29,20 @@ async function notifyQuotationApprovers(id, customer) {
 const router = express.Router();
 router.use(requireAuth);
 
+// Keeps deals.value honest: rather than a manually-typed estimate, a deal's value is always
+// whichever quotation was most recently created for it (its real Professional Fee total) — or 0
+// if it has no quotation yet. Called after any create/edit/delete that could change what "the
+// latest quotation" is or what it totals to.
+async function syncDealValue(dealId) {
+  if (!dealId) return;
+  const [latest] = await query(
+    "SELECT items, order_discount, fee_type FROM quotations WHERE deal_id = ? ORDER BY created_at DESC LIMIT 1",
+    [dealId]
+  );
+  const value = latest ? professionalFeeTotal(latest.items || [], latest.order_discount, latest.fee_type) : 0;
+  await query("UPDATE deals SET value = ? WHERE id = ?", [value, dealId]);
+}
+
 function parseRow(r) {
   return {
     ...r,
@@ -95,13 +109,16 @@ router.post("/", async (req, res) => {
     [id, b.dealId || null, b.customer, b.feeType || "Professional Fee", validTheme(b.theme), b.subject || null, JSON.stringify(b.items || []), b.orderDiscount || 0,
       b.bank || null, b.footerNote || null, b.notes || null, b.terms || null, status, daysFromNow(14), owner, customerId]
   );
-  if (b.dealId) await query("UPDATE deals SET stage = 'Quotation Sent' WHERE id = ?", [b.dealId]);
+  if (b.dealId) {
+    await query("UPDATE deals SET stage = 'Quotation Sent' WHERE id = ?", [b.dealId]);
+    await syncDealValue(b.dealId);
+  }
   if (status === "Pending Manager Approval") await notifyQuotationApprovers(id, b.customer);
   res.status(201).json({ id, status });
 });
 
 router.patch("/:id", async (req, res) => {
-  const [row] = await query("SELECT customer, fee_type, theme, status FROM quotations WHERE id = ?", [req.params.id]);
+  const [row] = await query("SELECT customer, fee_type, theme, status, deal_id FROM quotations WHERE id = ?", [req.params.id]);
   if (!row) return res.status(404).json({ error: "Not found" });
   if (!["Draft", "Pending Manager Approval"].includes(row.status)) {
     return res.status(400).json({ error: "Only Draft or Pending Manager Approval quotations can be edited" });
@@ -128,13 +145,18 @@ router.patch("/:id", async (req, res) => {
   if (newStatus === "Pending Manager Approval" && row.status !== "Pending Manager Approval") {
     await notifyQuotationApprovers(req.params.id, customer);
   }
+  // Re-derives the deal's value from whichever quotation is actually latest for it — usually
+  // this one, but syncDealValue re-queries rather than assuming, so it's correct either way.
+  await syncDealValue(row.deal_id);
   res.json({ ok: true });
 });
 
 router.delete("/:id", requireRole(["admin_like"]), async (req, res) => {
-  const [row] = await query("SELECT status FROM quotations WHERE id = ?", [req.params.id]);
+  const [row] = await query("SELECT status, deal_id FROM quotations WHERE id = ?", [req.params.id]);
   if (row?.status !== "Draft") return res.status(400).json({ error: "Only Draft quotations can be removed" });
   await query("DELETE FROM quotations WHERE id = ?", [req.params.id]);
+  // Falls back to the next-latest quotation for this deal, or 0 if that was the only one.
+  await syncDealValue(row.deal_id);
   res.json({ ok: true });
 });
 
@@ -249,6 +271,9 @@ router.post("/:id/clone", async (req, res) => {
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'Draft',?,?,0,?)`,
     [id, dealId, customer, src.fee_type, src.theme, src.subject, src.items, src.order_discount, src.bank, src.footer_note, src.notes, src.terms, daysFromNow(14), req.user.id, customerId]
   );
+  // Only meaningful when the clone kept the same deal (customer unchanged) — dealId is null
+  // otherwise, and syncDealValue is a no-op for that.
+  await syncDealValue(dealId);
   res.status(201).json({ id });
 });
 

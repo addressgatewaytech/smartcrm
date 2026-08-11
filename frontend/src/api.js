@@ -111,7 +111,7 @@ export const api = {
     create: (payload) => post("/leads", payload),
     update: (id, payload) => patch(`/leads/${id}`, payload),
     followUp: (id, payload) => post(`/leads/${id}/follow-up`, payload),
-    convertToDeal: (id, value) => post(`/leads/${id}/convert-to-deal`, { value }),
+    convertToDeal: (id) => post(`/leads/${id}/convert-to-deal`, {}),
     assign: (id, userId) => post(`/leads/${id}/assign`, { userId }),
     remove: (id) => del(`/leads/${id}`),
   },

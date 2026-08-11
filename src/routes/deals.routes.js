@@ -35,9 +35,12 @@ router.post("/", async (req, res) => {
   if (!customerId) {
     ({ customerId } = await findOrCreateCustomer(query, { name: b.customer, ownerId: owner }));
   }
+  // value always starts at 0 — it's no longer a manually-typed estimate. It's kept in sync with
+  // the deal's latest quotation's real Professional Fee total by quotations.routes.js instead
+  // (0 here since a brand-new deal has no quotation yet).
   await query(
-    `INSERT INTO deals (id, lead_id, customer, service, value, owner, stage, expected_close, customer_id) VALUES (?,?,?,?,?,?,?,?,?)`,
-    [id, b.leadId || null, b.customer, b.service || null, b.value || 0, owner, b.stage || "Open", b.expectedClose || null, customerId]
+    `INSERT INTO deals (id, lead_id, customer, service, value, owner, stage, expected_close, customer_id) VALUES (?,?,?,?,0,?,?,?,?)`,
+    [id, b.leadId || null, b.customer, b.service || null, owner, b.stage || "Open", b.expectedClose || null, customerId]
   );
   res.status(201).json({ id });
 });
@@ -59,7 +62,9 @@ router.patch("/:id", async (req, res) => {
   const b = req.body;
   const fields = [];
   const params = [];
-  for (const [col, key] of [["customer", "customer"], ["service", "service"], ["value", "value"], ["stage", "stage"], ["expected_close", "expectedClose"]]) {
+  // "value" is deliberately not editable here — it's always synced from the deal's latest
+  // quotation (see quotations.routes.js), never a manually-typed figure.
+  for (const [col, key] of [["customer", "customer"], ["service", "service"], ["stage", "stage"], ["expected_close", "expectedClose"]]) {
     if (b[key] !== undefined) { fields.push(`${col} = ?`); params.push(b[key]); }
   }
   // Reassigning ownership is an admin-only correction — a sales_exec editing their own deal must

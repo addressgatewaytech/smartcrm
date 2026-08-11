@@ -1747,7 +1747,6 @@ function LeadsPage({ state, dispatch, userId, role }) {
   const [fuNote, setFuNote] = useState("");
   const [fuStatus, setFuStatus] = useState("Contacted");
   const [fuNext, setFuNext] = useState(daysFromNow(3));
-  const [dealValue, setDealValue] = useState(15000);
 
   const [query, setQuery] = useState("");
   const { period, setPeriod, customFrom, setCustomFrom, customTo, setCustomTo, range } = usePeriod("all");
@@ -1845,7 +1844,7 @@ function LeadsPage({ state, dispatch, userId, role }) {
                 <td style={{ display:"flex", gap:6, alignItems:"center", flexWrap:"wrap", minWidth:200 }}>
                   <button className="btn btn-sm" onClick={()=>openFollowUp(l)}>Log follow-up</button>
                   {l.status !== "Unqualified" && !state.deals.find(d=>d.leadId===l.id) &&
-                    <button className="btn btn-sm" onClick={()=>{ setConvert(l); setDealValue(15000); }}>Convert</button>}
+                    <button className="btn btn-sm" onClick={()=>setConvert(l)}>Convert</button>}
                   <RowActions onEdit={()=>openEdit(l)} onRemove={()=>setRemoveLead(l)} />
                 </td>
               </tr>
@@ -1892,7 +1891,7 @@ function LeadsPage({ state, dispatch, userId, role }) {
                   <div style={{ display:"flex", gap:6, marginTop:8 }}>
                     <button className="btn btn-sm" style={{ flex:1 }} onClick={()=>openFollowUp(l)}>Log follow-up</button>
                     {l.status !== "Unqualified" && !state.deals.find(d=>d.leadId===l.id) &&
-                      <button className="btn btn-sm" style={{ flex:1 }} onClick={()=>{ setConvert(l); setDealValue(15000); }}>Convert</button>}
+                      <button className="btn btn-sm" style={{ flex:1 }} onClick={()=>setConvert(l)}>Convert</button>}
                   </div>
                 </div>
               ))}
@@ -1982,7 +1981,7 @@ function LeadsPage({ state, dispatch, userId, role }) {
                 <div style={{ display:"flex", gap:8, marginTop:10 }} onClick={e=>e.stopPropagation()}>
                   <button className="btn btn-sm" style={{ flex:1 }} onClick={()=>openFollowUp(l)}>Log follow-up</button>
                   {l.status !== "Unqualified" && !state.deals.find(d=>d.leadId===l.id) &&
-                    <button className="btn btn-sm" style={{ flex:1 }} onClick={()=>{ setConvert(l); setDealValue(15000); }}>Convert</button>}
+                    <button className="btn btn-sm" style={{ flex:1 }} onClick={()=>setConvert(l)}>Convert</button>}
                 </div>
               </div>
             ))}
@@ -2030,12 +2029,10 @@ function LeadsPage({ state, dispatch, userId, role }) {
 
       {convert && (
         <Modal title={`Convert ${convert.id} to a deal`} sub={`${convert.company} — ${convert.service}`} onClose={()=>setConvert(null)}>
-          <div className="field"><label>Estimated deal value (QAR)</label>
-            <input type="number" inputMode="numeric" className="no-spinner" value={dealValue} onChange={e=>setDealValue((e.target.value === "" ? "" : Number(e.target.value)))} />
-          </div>
+          <div className="side-note" style={{ marginTop:0 }}>The deal's value will reflect its actual quotation once one is created — there's nothing to estimate up front.</div>
           <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop: 16 }}>
             <button className="btn" onClick={()=>setConvert(null)}>Cancel</button>
-            <button className="btn btn-primary" onClick={()=>{ dispatch({type:"CONVERT_LEAD_TO_DEAL", id:convert.id, value:dealValue}); setConvert(null); }}>Create deal</button>
+            <button className="btn btn-primary" onClick={()=>{ dispatch({type:"CONVERT_LEAD_TO_DEAL", id:convert.id}); setConvert(null); }}>Create deal</button>
           </div>
         </Modal>
       )}
@@ -2266,7 +2263,7 @@ function DealsPage({ state, dispatch, setPage, onViewQuotation, role, userId }) 
 // Deals normally come from converting a Lead — this is the direct path for a customer who's
 // already in the system and doesn't need to go through the lead pipeline again.
 function NewDealModal({ state, dispatch, userId, initialCustomer=null, onClose }) {
-  const [form, setForm] = useState({ customer: initialCustomer || "", service: state.services[0] || "", value: 0, expectedClose: daysFromNow(21) });
+  const [form, setForm] = useState({ customer: initialCustomer || "", service: state.services[0] || "", expectedClose: daysFromNow(21) });
   const [saveError, setSaveError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -2295,9 +2292,9 @@ function NewDealModal({ state, dispatch, userId, initialCustomer=null, onClose }
             {state.services.map(s=><option key={s}>{s}</option>)}
           </select>
         </div>
-        <div className="field"><label>Estimated value (QAR)</label><input type="number" inputMode="numeric" className="no-spinner" value={form.value} onChange={e=>setForm({...form,value:(e.target.value === "" ? "" : Number(e.target.value))})} /></div>
+        <div className="field"><label>Expected close date</label><input type="date" value={form.expectedClose} onChange={e=>setForm({...form,expectedClose:e.target.value})} /></div>
       </div>
-      <div className="field"><label>Expected close date</label><input type="date" value={form.expectedClose} onChange={e=>setForm({...form,expectedClose:e.target.value})} /></div>
+      <div className="side-note" style={{ marginTop:0 }}>This deal's value will reflect its actual quotation once one is created — there's nothing to estimate up front.</div>
       {saveError && <div className="side-note" style={{ color:"var(--danger)" }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{saveError}</div>}
       <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop: 16 }}>
         <button className="btn" onClick={onClose}>Cancel</button>
@@ -2308,7 +2305,7 @@ function NewDealModal({ state, dispatch, userId, initialCustomer=null, onClose }
 }
 
 function EditDealModal({ deal: d, state, dispatch, onClose }) {
-  const [form, setForm] = useState({ customer: d.customer, service: d.service, value: d.value, stage: d.stage, expectedClose: d.expectedClose });
+  const [form, setForm] = useState({ customer: d.customer, service: d.service, stage: d.stage, expectedClose: d.expectedClose });
   return (
     <Modal title={`Edit ${d.id}`} onClose={onClose}>
       <div className="field"><label>Customer</label><input value={form.customer} onChange={e=>setForm({...form,customer:e.target.value})} /></div>
@@ -2318,7 +2315,7 @@ function EditDealModal({ deal: d, state, dispatch, onClose }) {
             {state.services.map(s=><option key={s}>{s}</option>)}
           </select>
         </div>
-        <div className="field"><label>Estimated value (QAR)</label><input type="number" value={form.value} onChange={e=>setForm({...form,value:(e.target.value === "" ? "" : Number(e.target.value))})} /></div>
+        <div className="field"><label>Value (QAR)</label><input value={money(d.value)} disabled title="Reflects this deal's latest quotation — not editable here" /></div>
       </div>
       <div className="row2">
         <div className="field"><label>Stage</label>
@@ -2349,9 +2346,9 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
   const [templateService, setTemplateService] = useState(defaultService);
   const [theme, setTheme] = useState("teal");
   const [subject, setSubject] = useState("");
-  // Deliberately starts at 0, not the deal's estimated value — that figure is just a sales-stage
-  // guess entered when converting the lead, not the real fee, which should come from loading the
-  // service's fee template below (or be typed in manually) so it's never mistaken for one.
+  // Starts at 0 — the deal has no value of its own to seed from (it's the other way around now:
+  // the deal's value is derived from this quotation once it's saved, via syncDealValue on the
+  // backend). Real pricing comes from loading the service's fee template below, or typing it in.
   const [items, setItems] = useState([{ category: "", service: defaultService, description: "", note: "", qty: 1, price: 0, discountPct: 0 }]);
   const [orderDiscount, setOrderDiscount] = useState(0);
   const [bank, setBank] = useState("");
@@ -6027,7 +6024,7 @@ function EditHrDetailsModal({ employee: e, dispatch, onClose }) {
 
 const WORKFLOW_STAGES = [
   { icon: Users, label: "Lead", desc: "A new prospect comes in — from a campaign, referral, or website enquiry." },
-  { icon: Handshake, label: "Deal", desc: "The lead is qualified and converted into a deal with an estimated value." },
+  { icon: Handshake, label: "Deal", desc: "The lead is qualified and converted into a deal, ready for a quotation." },
   { icon: FileText, label: "Quotation", desc: "A price quote is built and sent to the customer for approval." },
   { icon: ShoppingCart, label: "Sales Order", desc: "Once approved, the quotation becomes a confirmed sales order." },
   { icon: Receipt, label: "Invoice", desc: "The customer is billed against the sales order." },
