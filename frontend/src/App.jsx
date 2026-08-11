@@ -1110,7 +1110,7 @@ export default function App() {
             {page === "templates" && <TemplatesPage {...ctx} />}
             {page === "reports" && <ReportsPage {...ctx} />}
             {page === "notifications" && <NotificationsPage {...ctx} myNotifs={myNotifs} />}
-            {page === "settings" && <SettingsPage {...ctx} />}
+            {page === "settings" && <SettingsPage {...ctx} setPage={setPage} />}
           </div>
         </main>
       </div>
@@ -6939,7 +6939,7 @@ function NotificationsPage({ state, dispatch, myNotifs }) {
 /* SETTINGS                                                                */
 /* ---------------------------------------------------------------------- */
 
-function SettingsPage({ state, dispatch }) {
+function SettingsPage({ state, dispatch, setPage }) {
   const enabled = state.appSettings.emailNotificationsEnabled;
   const [backingUp, setBackingUp] = useState(false);
   const [backupError, setBackupError] = useState("");
@@ -6967,6 +6967,29 @@ function SettingsPage({ state, dispatch }) {
         </label>
         <div className="side-note" style={{ marginTop:10 }}>
           Turning this off stops all outgoing emails except password-reset codes — those always send, so nobody ever gets locked out of their account.
+        </div>
+      </div>
+
+      <div className="agw-card">
+        <strong style={{ fontSize:14 }}>Templates</strong>
+        <div className="modal-sub" style={{ marginTop:4, marginBottom:12 }}>
+          Manage the reusable starting points used elsewhere in the app.
+        </div>
+        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 12px", border:"1px solid var(--hair)", borderRadius:8 }}>
+            <div>
+              <div style={{ fontSize:13, fontWeight:500 }}><Files size={13} style={{verticalAlign:-2,marginRight:6}}/>Quotation Templates</div>
+              <div style={{ fontSize:11.5, color:"var(--ink-soft)", marginTop:2 }}>A reusable starting point for each service's quotation.</div>
+            </div>
+            <button className="btn btn-sm" onClick={()=>setPage("quotationTemplates")}>Manage <ChevronRight size={14}/></button>
+          </div>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 12px", border:"1px solid var(--hair)", borderRadius:8 }}>
+            <div>
+              <div style={{ fontSize:13, fontWeight:500 }}><ListChecks size={13} style={{verticalAlign:-2,marginRight:6}}/>Checklist Templates</div>
+              <div style={{ fontSize:11.5, color:"var(--ink-soft)", marginTop:2 }}>Default job card checklist steps, per service.</div>
+            </div>
+            <button className="btn btn-sm" onClick={()=>setPage("templates")}>Manage <ChevronRight size={14}/></button>
+          </div>
         </div>
       </div>
 
