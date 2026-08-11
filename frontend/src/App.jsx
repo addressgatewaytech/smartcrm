@@ -5304,6 +5304,26 @@ function JobDetailModal({ job, dispatch, role, userId, employees, approvalTypes=
   const [newComment, setNewComment] = useState("");
   const [downloading, setDownloading] = useState(false);
   const confirm = useConfirm();
+  const isAdmin = ADMIN_LIKE.includes(role);
+  // Admin-only override: the normal action row below disappears once a job card is Completed or
+  // Cancelled (those are meant to be terminal for everyone else), but Admin needs to be able to
+  // correct a wrong status regardless — including reopening a Cancelled or Completed job card.
+  const JOB_STATUSES = ["Created","Assigned","In Progress","On Hold","Completed","Cancelled"];
+  const [adminStatus, setAdminStatus] = useState(job.status);
+  const [adminCancelReason, setAdminCancelReason] = useState("");
+  const [adminStatusBusy, setAdminStatusBusy] = useState(false);
+  const [adminStatusError, setAdminStatusError] = useState("");
+  const changeStatusAdmin = async () => {
+    setAdminStatusBusy(true);
+    setAdminStatusError("");
+    try {
+      await dispatch({ type:"SET_JOB_STATUS", id:job.id, status:adminStatus, reason: adminStatus==="Cancelled" ? (adminCancelReason.trim() || "Changed by admin") : undefined, by:"Admin override" });
+    } catch (err) {
+      setAdminStatusError(err instanceof ApiError ? err.message : "Couldn't change status — please try again.");
+    } finally {
+      setAdminStatusBusy(false);
+    }
+  };
   const canManage = role === "ops_manager" || role === "ops_member" || ADMIN_LIKE.includes(role);
   const canApproveJob = role === "accounts" || ADMIN_LIKE.includes(role);
   // Marking a job card Completed needs Operations Manager sign-off — narrower than canManage,
@@ -5433,6 +5453,26 @@ function JobDetailModal({ job, dispatch, role, userId, employees, approvalTypes=
             <span className="side-note" style={{marginTop:0}}>Checklist done — ask your Operations Manager to mark this complete.</span>
           )}
           <button className="btn" style={{ color:"var(--danger)" }} onClick={()=>setShowCancel(true)}>Cancel job</button>
+        </div>
+      )}
+
+      {isAdmin && !pendingApproval && (
+        <div className="agw-card" style={{ marginTop: 14 }}>
+          <strong style={{ fontSize:13 }}>Admin: change status</strong>
+          <p className="modal-sub" style={{ marginTop:4, marginBottom:8 }}>Overrides the normal workflow directly — including reopening a Completed or Cancelled job card.</p>
+          <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"center" }}>
+            <select value={adminStatus} onChange={e=>setAdminStatus(e.target.value)} style={{ maxWidth:160 }}>
+              {JOB_STATUSES.map(s=><option key={s}>{s}</option>)}
+            </select>
+            {adminStatus === "Cancelled" && (
+              <input style={{ flex:1, minWidth:180, border:"1px solid var(--hair)", borderRadius:8, padding:"7px 10px", fontSize:13 }}
+                placeholder="Cancellation reason (optional)" value={adminCancelReason} onChange={e=>setAdminCancelReason(e.target.value)} />
+            )}
+            <button className="btn btn-primary" disabled={adminStatusBusy || adminStatus===job.status} onClick={changeStatusAdmin}>
+              {adminStatusBusy ? "Changing…" : "Change status"}
+            </button>
+          </div>
+          {adminStatusError && <div className="side-note" style={{ color:"var(--danger)", marginTop:8, marginBottom:0 }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{adminStatusError}</div>}
         </div>
       )}
 
