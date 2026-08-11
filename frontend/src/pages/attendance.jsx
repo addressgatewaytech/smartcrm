@@ -60,6 +60,56 @@ export function AttendanceWidget() {
   );
 }
 
+// Compact standalone Sign in/out control for the Dashboard header (top-right) — same self-service
+// action as AttendanceWidget above, just without the card chrome, and color-coded (red = not
+// signed in yet, green = signed in) so today's status reads at a glance without opening the card.
+// Kept as its own component with its own fetch rather than sharing AttendanceWidget's state, since
+// the two never render on the same page (this is Dashboard-only; AttendanceWidget also lives on
+// the dedicated Attendance page).
+export function AttendanceSignButton() {
+  const [today, setToday] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    try { setToday(await api.hr.attendanceToday()); } catch { /* ignore — widget just stays blank */ }
+    finally { setLoading(false); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const signIn = async () => {
+    setBusy(true); setError("");
+    try { await api.hr.signIn(); await load(); }
+    catch (err) { setError(err instanceof ApiError ? err.message : "Couldn't sign in — please try again."); }
+    finally { setBusy(false); }
+  };
+  const signOut = async () => {
+    setBusy(true); setError("");
+    try { await api.hr.signOut(); await load(); }
+    catch (err) { setError(err instanceof ApiError ? err.message : "Couldn't sign out — please try again."); }
+    finally { setBusy(false); }
+  };
+
+  if (loading) return null;
+  const signedIn = !!today?.in_time;
+  const doneForToday = signedIn && today?.out_time;
+
+  return (
+    <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+      {doneForToday ? (
+        <Stamp tone="neutral">Signed out</Stamp>
+      ) : (
+        <button className="btn btn-sm" disabled={busy} onClick={signedIn ? signOut : signIn}
+          style={{ background: signedIn ? "var(--success)" : "var(--danger)", borderColor: signedIn ? "var(--success)" : "var(--danger)", color: "#fff" }}>
+          {signedIn ? <LogOut size={13} /> : <LogIn size={13} />} {busy ? "…" : signedIn ? "Sign out" : "Sign in"}
+        </button>
+      )}
+      {error && <span style={{ fontSize: 11, color: "var(--danger)" }}>{error}</span>}
+    </span>
+  );
+}
+
 // Self-service history for a regular employee; a team-wide monthly hours/lateness report for
 // Admin-tier/HR. Both are the same table shape, driven by the same backend endpoint — it self-
 // scopes to the caller unless the requester is admin/hr, matching every other report in this app.

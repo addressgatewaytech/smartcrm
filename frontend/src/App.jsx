@@ -14,7 +14,7 @@ import {
 import { money, fmtDate, fmtDateDMY, Stamp, statusTone, Rail, DonutChart, LineChart, BarChart, SalesPersonBars, ProgressRing, Modal, Empty, ConfirmModal, RowActions, exportCSV, usePagination, PaginationBar, TableScrollHint, useConfirm, ADMIN_LIKE, ROLE_LABEL, isSalesRole, isAssignable } from "./ui.jsx";
 import { todayStr as salesTaskToday, firstOfMonthStr, userTaskSnapshot } from "./salesTasksHelpers";
 import { TasksPage } from "./pages/tasks.jsx";
-import { AttendanceWidget, AttendancePage } from "./pages/attendance.jsx";
+import { AttendanceSignButton, AttendancePage } from "./pages/attendance.jsx";
 import { LeadAssignmentManagerPage } from "./pages/leadAssignment.jsx";
 import { OnboardingFormTab, PublicOnboardingPage } from "./pages/onboardingForm.jsx";
 
@@ -1381,11 +1381,59 @@ function Dashboard({ state, dispatch, role, userId, setPage }) {
           <button className={`tab ${chartTab==="overview"?"active":""}`} onClick={()=>setChartTab("overview")}>Overview</button>
           <button className={`tab ${chartTab==="charts"?"active":""}`} onClick={()=>setChartTab("charts")}>Charts</button>
         </div>
-        {canQuickAddLead && <button className="btn btn-primary" onClick={()=>setShowQuickAddLead(true)}><Plus size={15}/> Log a lead</button>}
+        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+          {canQuickAddLead && <button className="btn btn-primary" onClick={()=>setShowQuickAddLead(true)}><Plus size={15}/> Log a lead</button>}
+          <AttendanceSignButton />
+        </div>
       </div>
       {showQuickAddLead && <LeadFormModal state={state} dispatch={dispatch} userId={userId} editLead={null} onClose={()=>setShowQuickAddLead(false)} />}
 
       {chartTab === "overview" && <>
+      {isSalesTeamRole && state.salesTaskDefs?.length > 0 && (
+        <div className="agw-card" style={{ marginBottom: 20 }}>
+          <strong style={{ fontSize: 14 }}>{role === "sales_exec" ? "My Sales Daily Tasks" : "Sales Daily Tasks — team"}</strong>
+          <div style={{ marginTop: 10 }}>
+            {role === "sales_exec" ? (() => {
+              const salesTaskToday_ = salesTaskToday();
+              const todaySnap = userTaskSnapshot(state.salesTaskDefs, salesTaskData, userId, salesTaskToday_, salesTaskToday_);
+              const monthSnap = userTaskSnapshot(state.salesTaskDefs, salesTaskData, userId, firstOfMonthStr(), salesTaskToday_);
+              return (
+                <div style={{ display:"flex", gap:28, flexWrap:"wrap", alignItems:"center" }}>
+                  <ProgressRing pct={todaySnap.completionPct} label="Daily performance" />
+                  <ProgressRing pct={monthSnap.completionPct} color="var(--gold)" label="Monthly performance" />
+                  <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                    <div style={{ fontSize:12.5, color:"var(--ink-soft)" }}>Today's task completion: <strong style={{ color:"var(--ink)" }}>{todaySnap.completionPct}%</strong></div>
+                    <div style={{ fontSize:12.5, color:"var(--ink-soft)" }}>Revenue achieved (today): <strong style={{ color:"var(--ink)" }}>{money(todaySnap.revenue)}</strong></div>
+                    <div style={{ fontSize:12.5, color:"var(--ink-soft)" }}>Sales achieved (today): <strong style={{ color:"var(--ink)" }}>{money(todaySnap.sales)}</strong></div>
+                    <div style={{ fontSize:12.5, color:"var(--ink-soft)" }}>Pending tasks: <strong style={{ color:"var(--ink)" }}>{todaySnap.pendingCount}</strong></div>
+                  </div>
+                </div>
+              );
+            })() : (
+              <div style={{ overflowX:"auto" }}>
+              <table className="agw-table">
+                <thead><tr><th>Employee</th><th>Task completion %</th><th>Revenue</th><th>Sales</th><th>Current status</th></tr></thead>
+                <tbody>
+                  {salesOwners.map(owner => {
+                    const salesTaskToday_ = salesTaskToday();
+                    const snap = userTaskSnapshot(state.salesTaskDefs, salesTaskData, owner.id, salesTaskToday_, salesTaskToday_);
+                    return (
+                      <tr key={owner.id}>
+                        <td style={{display:"flex",alignItems:"center",gap:8}}><span className="avatar">{owner.initials}</span>{owner.name}</td>
+                        <td className="mono">{snap.completionPct}%</td>
+                        <td className="mono">{money(snap.revenue)}</td>
+                        <td className="mono">{money(snap.sales)}</td>
+                        <td><Stamp tone={statusTone(snap.overallStatus)}>{snap.overallStatus}</Stamp></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       {showPeriod && (
         <div style={{ marginBottom: 16 }}>
           <PeriodFilter period={period} setPeriod={setPeriod} customFrom={customFrom} setCustomFrom={setCustomFrom} customTo={customTo} setCustomTo={setCustomTo} />
@@ -1405,27 +1453,24 @@ function Dashboard({ state, dispatch, role, userId, setPage }) {
         ))}
       </div>
 
-      <div className="agw-grid" style={{ gridTemplateColumns: "1fr 1fr", marginBottom: 20 }}>
-        <AttendanceWidget />
-        <div className="agw-card">
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 10 }}>
-            <strong style={{ fontSize: 14 }}>My tasks</strong>
-            <button className="btn btn-sm btn-ghost" onClick={()=>setPage("tasks")}>View all <ChevronRight size={14}/></button>
-          </div>
-          {(() => {
-            const myTasks = state.tasks.filter(t => t.assignedTo === userId && !["Completed","Rejected","Cancelled"].includes(t.status));
-            return myTasks.length === 0 ? <Empty icon={ListChecks} text="No open tasks assigned to you." /> : (
-              <div>
-                {myTasks.slice(0,5).map(t => (
-                  <div key={t.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom:"1px solid var(--hair)" }}>
-                    <div style={{ fontSize:13, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", maxWidth:220 }}>{t.title}</div>
-                    <Stamp tone={statusTone(t.status)}>{t.status}</Stamp>
-                  </div>
-                ))}
-              </div>
-            );
-          })()}
+      <div className="agw-card" style={{ marginBottom: 20 }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 10 }}>
+          <strong style={{ fontSize: 14 }}>My tasks</strong>
+          <button className="btn btn-sm btn-ghost" onClick={()=>setPage("tasks")}>View all <ChevronRight size={14}/></button>
         </div>
+        {(() => {
+          const myTasks = state.tasks.filter(t => t.assignedTo === userId && !["Completed","Rejected","Cancelled"].includes(t.status));
+          return myTasks.length === 0 ? <Empty icon={ListChecks} text="No open tasks assigned to you." /> : (
+            <div>
+              {myTasks.slice(0,5).map(t => (
+                <div key={t.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom:"1px solid var(--hair)" }}>
+                  <div style={{ fontSize:13, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", maxWidth:220 }}>{t.title}</div>
+                  <Stamp tone={statusTone(t.status)}>{t.status}</Stamp>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
       </div>
 
       {closedOwners.length > 0 && (
@@ -1536,52 +1581,6 @@ function Dashboard({ state, dispatch, role, userId, setPage }) {
                       <td>{r.pendingCollection > 0 ? <span className="mono" style={{color:"var(--danger)"}}>{money(r.pendingCollection)}</span> : "—"}</td>
                     </tr>
                   ))}
-                </tbody>
-              </table>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {isSalesTeamRole && state.salesTaskDefs?.length > 0 && (
-        <div className="agw-card" style={{ marginTop: 16 }}>
-          <strong style={{ fontSize: 14 }}>{role === "sales_exec" ? "My Sales Daily Tasks" : "Sales Daily Tasks — team"}</strong>
-          <div style={{ marginTop: 10 }}>
-            {role === "sales_exec" ? (() => {
-              const salesTaskToday_ = salesTaskToday();
-              const todaySnap = userTaskSnapshot(state.salesTaskDefs, salesTaskData, userId, salesTaskToday_, salesTaskToday_);
-              const monthSnap = userTaskSnapshot(state.salesTaskDefs, salesTaskData, userId, firstOfMonthStr(), salesTaskToday_);
-              return (
-                <div style={{ display:"flex", gap:28, flexWrap:"wrap", alignItems:"center" }}>
-                  <ProgressRing pct={todaySnap.completionPct} label="Daily performance" />
-                  <ProgressRing pct={monthSnap.completionPct} color="var(--gold)" label="Monthly performance" />
-                  <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-                    <div style={{ fontSize:12.5, color:"var(--ink-soft)" }}>Today's task completion: <strong style={{ color:"var(--ink)" }}>{todaySnap.completionPct}%</strong></div>
-                    <div style={{ fontSize:12.5, color:"var(--ink-soft)" }}>Revenue achieved (today): <strong style={{ color:"var(--ink)" }}>{money(todaySnap.revenue)}</strong></div>
-                    <div style={{ fontSize:12.5, color:"var(--ink-soft)" }}>Sales achieved (today): <strong style={{ color:"var(--ink)" }}>{money(todaySnap.sales)}</strong></div>
-                    <div style={{ fontSize:12.5, color:"var(--ink-soft)" }}>Pending tasks: <strong style={{ color:"var(--ink)" }}>{todaySnap.pendingCount}</strong></div>
-                  </div>
-                </div>
-              );
-            })() : (
-              <div style={{ overflowX:"auto" }}>
-              <table className="agw-table">
-                <thead><tr><th>Employee</th><th>Task completion %</th><th>Revenue</th><th>Sales</th><th>Current status</th></tr></thead>
-                <tbody>
-                  {salesOwners.map(owner => {
-                    const salesTaskToday_ = salesTaskToday();
-                    const snap = userTaskSnapshot(state.salesTaskDefs, salesTaskData, owner.id, salesTaskToday_, salesTaskToday_);
-                    return (
-                      <tr key={owner.id}>
-                        <td style={{display:"flex",alignItems:"center",gap:8}}><span className="avatar">{owner.initials}</span>{owner.name}</td>
-                        <td className="mono">{snap.completionPct}%</td>
-                        <td className="mono">{money(snap.revenue)}</td>
-                        <td className="mono">{money(snap.sales)}</td>
-                        <td><Stamp tone={statusTone(snap.overallStatus)}>{snap.overallStatus}</Stamp></td>
-                      </tr>
-                    );
-                  })}
                 </tbody>
               </table>
               </div>
