@@ -660,7 +660,6 @@ const NAV = [
     { key: "leads", label: "Leads", icon: Users, roles: [...ADMIN_LIKE,"sales_manager","sales_exec","ops_manager","ops_member"] },
     { key: "deals", label: "Deals", icon: Handshake, roles: [...ADMIN_LIKE,"sales_manager","sales_exec","ops_manager","ops_member"] },
     { key: "quotations", label: "Quotations", icon: FileText, roles: [...ADMIN_LIKE,"sales_manager","sales_exec","ops_manager","ops_member"] },
-    { key: "quotationTemplates", label: "Quotation Templates", icon: Files, roles: [...ADMIN_LIKE,"sales_manager"] },
     { key: "customers", label: "Customers & KYC", icon: UserCheck, roles: [...ADMIN_LIKE,"sales_manager","sales_exec","accounts","ops_manager"] },
   ]},
   { group: "Finance", items: [
@@ -680,7 +679,6 @@ const NAV = [
     { key: "attendance", label: "Attendance", icon: Clock, roles: "all" },
     { key: "knowledgeBase", label: "Knowledge Base", icon: BookOpen, roles: "all" },
     { key: "users", label: "Users & Roles", icon: UserCog, roles: ["super_admin","admin"] },
-    { key: "templates", label: "Checklist Templates", icon: ListChecks, roles: [...ADMIN_LIKE,"ops_manager"] },
   ]},
   { group: "Data Manager", items: [
     { key: "dataManager", label: "Data Manager", icon: Database, roles: [...ADMIN_LIKE,"data_manager","sales_manager","sales_exec"] },
@@ -692,6 +690,8 @@ const NAV = [
     // Open to every role — every department gets company performance visibility, not just
     // Admin-tier/Sales Manager/Accounts/Executive as before.
     { key: "reports", label: "Reports", icon: BarChart3, roles: "all" },
+    { key: "quotationTemplates", label: "Quotation Templates", icon: Files, roles: [...ADMIN_LIKE,"sales_manager"] },
+    { key: "templates", label: "Checklist Templates", icon: ListChecks, roles: [...ADMIN_LIKE,"ops_manager"] },
   ]},
   { group: "", items: [
     { key: "notifications", label: "Notifications", icon: Bell, roles: "all" },
