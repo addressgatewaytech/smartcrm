@@ -1437,11 +1437,11 @@ function Dashboard({ state, dispatch, role, userId, setPage }) {
           )}
         </div>
       )}
-      {isSalesTeamRole && state.salesTaskDefs?.length > 0 && (
+      {role === "sales_exec" && state.salesTaskDefs?.length > 0 && (
         <div className="agw-card" style={{ marginBottom: 20 }}>
-          <strong style={{ fontSize: 14 }}>{role === "sales_exec" ? "My Sales Daily Tasks" : "Sales Daily Tasks — team"}</strong>
+          <strong style={{ fontSize: 14 }}>My Sales Daily Tasks</strong>
           <div style={{ marginTop: 10 }}>
-            {role === "sales_exec" ? (() => {
+            {(() => {
               const salesTaskToday_ = salesTaskToday();
               const todaySnap = userTaskSnapshot(state.salesTaskDefs, salesTaskData, userId, salesTaskToday_, salesTaskToday_);
               const weekSnap = userTaskSnapshot(state.salesTaskDefs, salesTaskData, userId, firstOfWeekStr(), salesTaskToday_);
@@ -1459,28 +1459,7 @@ function Dashboard({ state, dispatch, role, userId, setPage }) {
                   </div>
                 </div>
               );
-            })() : (
-              <div style={{ overflowX:"auto" }}>
-              <table className="agw-table">
-                <thead><tr><th>Employee</th><th>Task completion %</th><th>Revenue</th><th>Sales</th><th>Current status</th></tr></thead>
-                <tbody>
-                  {salesOwners.map(owner => {
-                    const salesTaskToday_ = salesTaskToday();
-                    const snap = userTaskSnapshot(state.salesTaskDefs, salesTaskData, owner.id, salesTaskToday_, salesTaskToday_);
-                    return (
-                      <tr key={owner.id}>
-                        <td style={{display:"flex",alignItems:"center",gap:8}}><span className="avatar">{owner.initials}</span>{owner.name}</td>
-                        <td className="mono">{snap.completionPct}%</td>
-                        <td className="mono">{money(snap.revenue)}</td>
-                        <td className="mono">{money(snap.sales)}</td>
-                        <td><Stamp tone={statusTone(snap.overallStatus)}>{snap.overallStatus}</Stamp></td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              </div>
-            )}
+            })()}
           </div>
         </div>
       )}
@@ -1635,6 +1614,32 @@ function Dashboard({ state, dispatch, role, userId, setPage }) {
               </table>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {isSalesTeamRole && role !== "sales_exec" && state.salesTaskDefs?.length > 0 && (
+        <div className="agw-card" style={{ marginTop: 16 }}>
+          <strong style={{ fontSize: 14 }}>Sales Daily Tasks — team</strong>
+          <div style={{ marginTop: 10, overflowX:"auto" }}>
+            <table className="agw-table">
+              <thead><tr><th>Employee</th><th>Task completion %</th><th>Revenue</th><th>Sales</th><th>Current status</th></tr></thead>
+              <tbody>
+                {salesOwners.map(owner => {
+                  const salesTaskToday_ = salesTaskToday();
+                  const snap = userTaskSnapshot(state.salesTaskDefs, salesTaskData, owner.id, salesTaskToday_, salesTaskToday_);
+                  return (
+                    <tr key={owner.id}>
+                      <td style={{display:"flex",alignItems:"center",gap:8}}><span className="avatar">{owner.initials}</span>{owner.name}</td>
+                      <td className="mono">{snap.completionPct}%</td>
+                      <td className="mono">{money(snap.revenue)}</td>
+                      <td className="mono">{money(snap.sales)}</td>
+                      <td><Stamp tone={statusTone(snap.overallStatus)}>{snap.overallStatus}</Stamp></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
