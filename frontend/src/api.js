@@ -243,6 +243,9 @@ export const api = {
     approve: (id) => post(`/tasks/${id}/approve`),
     reject: (id, reason) => post(`/tasks/${id}/reject`, { reason }),
     remove: (id) => del(`/tasks/${id}`),
+    setContentStageTarget: (id, idx, targetDate) => patch(`/tasks/${id}/content-stages/${idx}/target`, { targetDate }),
+    advanceContentStage: (id) => post(`/tasks/${id}/content-stages/advance`),
+    adminOverrideContentStage: (id, idx, completedAt) => post(`/tasks/${id}/content-stages/${idx}/override`, { completedAt }),
   },
   todos: {
     list: () => get("/todos"),

@@ -9,6 +9,7 @@ const { requireRole, isAdminLike } = require("../middleware/roles");
 const { nextId, nextSequentialId } = require("../utils/helpers");
 const { withTransaction } = require("../config/db");
 const { requireRoleOrApprovalTypeDesignation, approverAudience } = require("../utils/designationApproval");
+const { CONTENT_STAGES } = require("../utils/contentStages");
 
 const router = express.Router();
 router.use(requireAuth);
@@ -24,7 +25,12 @@ const MANAGER_ROLES = ["admin_like", "sales_manager", "ops_manager", "hr"];
 router.get("/", async (req, res) => {
   const rows = await query("SELECT * FROM tasks ORDER BY created_at DESC");
   const logs = await query("SELECT * FROM task_status_log ORDER BY at ASC");
-  let out = rows.map((r) => ({ ...r, statusLog: logs.filter((l) => l.task_id === r.id) }));
+  const stages = await query("SELECT * FROM task_content_stages ORDER BY task_id ASC, stage_index ASC");
+  let out = rows.map((r) => ({
+    ...r,
+    statusLog: logs.filter((l) => l.task_id === r.id),
+    contentStages: stages.filter((s) => s.task_id === r.id),
+  }));
   if (!isAdminLike(req.user.roles)) {
     out = out.filter((t) => t.assigned_to === req.user.id || t.created_by === req.user.id);
   }
@@ -41,6 +47,14 @@ router.post("/", requireRole(MANAGER_ROLES), async (req, res) => {
     [id, title.trim(), description || null, priority || "Normal", dueDate || null, assignedTo, department || null, req.user.id]
   );
   await query("INSERT INTO task_status_log (task_id, status, by_user) VALUES (?, 'Assigned', ?)", [id, req.user.id]);
+  // A Content Creator's task automatically gets the 9-stage production tracker — runs alongside
+  // the status workflow above, not instead of it. No opt-in checkbox: every task assigned to this
+  // role is tracked this way.
+  const [assignee] = await query("SELECT roles FROM users WHERE id = ?", [assignedTo]);
+  if (assignee?.roles?.includes("content_creator")) {
+    const params = CONTENT_STAGES.flatMap((_, i) => [id, i]);
+    await query(`INSERT INTO task_content_stages (task_id, stage_index) VALUES ${CONTENT_STAGES.map(() => "(?,?)").join(",")}`, params);
+  }
   await query("INSERT INTO notifications (id, type, title, body, audience) VALUES (?, 'task_assigned', ?, ?, ?)",
     [nextId("NT"), "New task assigned", `${id} — ${title.trim()} — due ${dueDate || "no due date"}.`, JSON.stringify([assignedTo])]);
   res.status(201).json({ id });
@@ -126,7 +140,54 @@ router.post("/:id/reject", requireRoleOrApprovalTypeDesignation(MANAGER_ROLES, "
   res.json({ ok: true });
 });
 
-// Admin-only hard delete — for cleaning up test/mistaken tasks. task_status_log cascades via FK.
+// --- Content Creator 9-stage production tracker -------------------------------------------
+// Runs alongside the status workflow above — a task still goes through Assigned/Accepted/.../
+// Completed independently of how far along its content-production stages are.
+
+// Target dates are the content creator's own production schedule (e.g. stage 4, "Location &
+// Schedule", is literally where the shoot date gets set) — the assignee sets them, or a manager/
+// admin can on their behalf. Deliberately not restricted to MANAGER_ROLES only.
+router.patch("/:id/content-stages/:idx/target", async (req, res) => {
+  const idx = Number(req.params.idx);
+  if (!Number.isInteger(idx) || idx < 0 || idx >= CONTENT_STAGES.length) return res.status(400).json({ error: "Invalid stage" });
+  const { targetDate } = req.body;
+  const [task] = await query("SELECT assigned_to FROM tasks WHERE id = ?", [req.params.id]);
+  if (!task) return res.status(404).json({ error: "Not found" });
+  const canSet = task.assigned_to === req.user.id || isAdminLike(req.user.roles) || MANAGER_ROLES.some((r) => r !== "admin_like" && req.user.roles.includes(r));
+  if (!canSet) return res.status(403).json({ error: "You don't have permission to set this stage's schedule" });
+  await query("UPDATE task_content_stages SET target_date = ? WHERE task_id = ? AND stage_index = ?", [targetDate || null, req.params.id, idx]);
+  res.json({ ok: true });
+});
+
+// Advances the tracker by completing the current (lowest incomplete) stage — sequential and
+// assignee-only, mirroring /accept and /progress above. Admin-tier bypasses sequencing via the
+// override endpoint below instead of this one.
+router.post("/:id/content-stages/advance", async (req, res) => {
+  const [task] = await query("SELECT assigned_to FROM tasks WHERE id = ?", [req.params.id]);
+  if (!task) return res.status(404).json({ error: "Not found" });
+  if (task.assigned_to !== req.user.id && !isAdminLike(req.user.roles)) return res.status(403).json({ error: "Only the assignee can advance this task's stage" });
+  const [current] = await query(
+    "SELECT stage_index FROM task_content_stages WHERE task_id = ? AND completed_at IS NULL ORDER BY stage_index ASC LIMIT 1",
+    [req.params.id]
+  );
+  if (!current) return res.status(400).json({ error: "All stages are already complete" });
+  await query("UPDATE task_content_stages SET completed_at = NOW(), completed_by = ? WHERE task_id = ? AND stage_index = ?", [req.user.id, req.params.id, current.stage_index]);
+  res.json({ ok: true, stageIndex: current.stage_index });
+});
+
+// Admin-only bypass — sets or clears any stage's completion directly, out of sequence, to correct
+// a mistake (same reasoning as the Job Card admin status override).
+router.post("/:id/content-stages/:idx/override", requireRole(["admin_like"]), async (req, res) => {
+  const idx = Number(req.params.idx);
+  if (!Number.isInteger(idx) || idx < 0 || idx >= CONTENT_STAGES.length) return res.status(400).json({ error: "Invalid stage" });
+  const { completedAt } = req.body; // ISO date string, or null/undefined to clear
+  await query("UPDATE task_content_stages SET completed_at = ?, completed_by = ? WHERE task_id = ? AND stage_index = ?",
+    [completedAt || null, completedAt ? req.user.id : null, req.params.id, idx]);
+  res.json({ ok: true });
+});
+
+// Admin-only hard delete — for cleaning up test/mistaken tasks. task_status_log/task_content_stages
+// cascade via FK.
 router.delete("/:id", requireRole(["admin_like"]), async (req, res) => {
   await query("DELETE FROM tasks WHERE id = ?", [req.params.id]);
   res.json({ ok: true });

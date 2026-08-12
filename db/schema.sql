@@ -451,6 +451,23 @@ CREATE TABLE IF NOT EXISTS task_templates (
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
+-- Per-stage production tracker for Content Creator tasks — runs alongside the tasks.status
+-- workflow above (Assigned/Accepted/.../Completed), not a replacement for it. Stage names are not
+-- stored here; stage_index 0-8 maps to CONTENT_STAGES in src/utils/contentStages.js (backend) and
+-- frontend/src/contentStagesHelpers.js (frontend) — keep both arrays in sync, same convention as
+-- ROLE_LABEL across roles.js/ui.jsx. Rows are created automatically (all 9 at once) when a task is
+-- assigned to a user holding the content_creator role — see POST /tasks in tasks.routes.js.
+CREATE TABLE IF NOT EXISTS task_content_stages (
+  task_id       VARCHAR(20) NOT NULL,
+  stage_index   TINYINT UNSIGNED NOT NULL,   -- 0-8, fixed order
+  target_date   DATE NULL,
+  completed_at  TIMESTAMP NULL,
+  completed_by  VARCHAR(20) NULL,
+  PRIMARY KEY (task_id, stage_index),
+  FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+  FOREIGN KEY (completed_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
 -- ---------------------------------------------------------------------------
 -- SALES DAILY TASKS (Sales department only — separate from the generic Tasks above)
 -- ---------------------------------------------------------------------------

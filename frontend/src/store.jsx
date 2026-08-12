@@ -231,6 +231,9 @@ export function useApiStore(enabled) {
       case "APPROVE_TASK": await api.tasks.approve(action.id); return refresh(["tasks"]);
       case "REJECT_TASK": await api.tasks.reject(action.id, action.reason); return refresh(["tasks"]);
       case "DELETE_TASK": await api.tasks.remove(action.id); return refresh(["tasks"]);
+      case "SET_CONTENT_STAGE_TARGET": await api.tasks.setContentStageTarget(action.id, action.stageIndex, action.targetDate); return refresh(["tasks"]);
+      case "ADVANCE_CONTENT_STAGE": await api.tasks.advanceContentStage(action.id); return refresh(["tasks"]);
+      case "ADMIN_OVERRIDE_CONTENT_STAGE": await api.tasks.adminOverrideContentStage(action.id, action.stageIndex, action.completedAt); return refresh(["tasks"]);
 
       // --- Task Templates ------------------------------------------------------------------
       case "CREATE_TASK_TEMPLATE": await api.taskTemplates.create(action.payload); return refresh(["taskTemplates"]);

@@ -6,9 +6,10 @@
 import { useState } from "react";
 import { Search, Download, Plus, Trash2, ListChecks, Check, Pencil, Bell, BellOff } from "lucide-react";
 import { ApiError } from "../api";
-import { Modal, ConfirmModal, Stamp, statusTone, Rail, Empty, exportCSV, fmtDate, ADMIN_LIKE, isSalesRole, isAssignable } from "../ui.jsx";
+import { Modal, ConfirmModal, Stamp, statusTone, Rail, Empty, exportCSV, fmtDate, ADMIN_LIKE, isSalesRole, isAssignable, progressColor } from "../ui.jsx";
 import { SalesDailyTasksTab } from "./salesDailyTasks.jsx";
 import { TaskTemplatesTab } from "./taskTemplates.jsx";
+import { CONTENT_STAGES, contentStageSnapshot } from "../contentStagesHelpers";
 
 const TASK_MANAGER_ROLES = ["sales_manager", "ops_manager", "hr"];
 const canManageTasks = (role) => ADMIN_LIKE.includes(role) || TASK_MANAGER_ROLES.includes(role);
@@ -416,6 +417,10 @@ function TaskDetailModal({ task, dispatch, role, userId, employees, approvalType
           </div>
         </div>
 
+        {task.contentStages?.length > 0 && (
+          <ContentStagesTracker task={task} dispatch={dispatch} userId={userId} role={role} manager={manager} />
+        )}
+
         {task.statusLog?.length > 0 && (
           <div style={{ marginTop: 16 }}>
             <strong style={{ fontSize: 13 }}>History</strong>
@@ -483,5 +488,120 @@ function TaskDetailModal({ task, dispatch, role, userId, employees, approvalType
           confirmLabel="Delete" onConfirm={handleDelete} onClose={() => setConfirmDelete(false)} />
       )}
     </>
+  );
+}
+
+// The 9-stage content-production tracker — runs alongside the task's own status above, not
+// instead of it. Only present when the task's assignee holds the content_creator role (the
+// backend only ever creates task_content_stages rows for those tasks).
+function ContentStagesTracker({ task, dispatch, userId, role, manager }) {
+  const isMine = task.assignedTo === userId;
+  const isAdmin = ADMIN_LIKE.includes(role);
+  // Target dates are the content creator's own production schedule — they set them, or a
+  // manager/admin can on their behalf.
+  const canSetTarget = isMine || manager || isAdmin;
+  const snap = contentStageSnapshot(task.contentStages);
+  const [savingIdx, setSavingIdx] = useState(null);
+  const [advancing, setAdvancing] = useState(false);
+  const [showAdminOverride, setShowAdminOverride] = useState(false);
+
+  const setTarget = async (idx, value) => {
+    setSavingIdx(idx);
+    try { await dispatch({ type: "SET_CONTENT_STAGE_TARGET", id: task.id, stageIndex: idx, targetDate: value || null }); }
+    catch (err) { alert(err instanceof ApiError ? err.message : "Couldn't save that date — please try again."); }
+    finally { setSavingIdx(null); }
+  };
+
+  const advance = async () => {
+    setAdvancing(true);
+    try { await dispatch({ type: "ADVANCE_CONTENT_STAGE", id: task.id }); }
+    catch (err) { alert(err instanceof ApiError ? err.message : "Couldn't advance — please try again."); }
+    finally { setAdvancing(false); }
+  };
+
+  return (
+    <div className="agw-card" style={{ marginTop: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+        <strong style={{ fontSize: 13 }}>Content production</strong>
+        <span style={{ fontSize: 12, color: "var(--ink-soft)" }}>{snap.completedCount} of {CONTENT_STAGES.length} stages</span>
+      </div>
+      <div style={{ background: "var(--page)", borderRadius: 4, height: 8, overflow: "hidden", marginBottom: 14 }}>
+        <div style={{ width: `${snap.completionPct}%`, height: "100%", background: progressColor(snap.completionPct), borderRadius: 4 }} />
+      </div>
+      {snap.stages.map((s) => (
+        <div key={s.index} className="checklist-item" style={{ alignItems: "flex-start", padding: "8px 0" }}>
+          <span className={`checkbox ${s.status === "done" ? "checked" : ""}`} style={{ marginTop: 2 }}>{s.status === "done" && <Check size={12} />}</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 13, fontWeight: s.status === "current" ? 600 : 400, color: s.status === "locked" ? "var(--ink-soft)" : "var(--ink)" }}>
+                {s.index + 1}. {s.name}
+              </span>
+              {s.status === "current" && isMine && (
+                <button className="btn btn-sm btn-primary" disabled={advancing} onClick={advance}>{advancing ? "…" : "Mark done"}</button>
+              )}
+            </div>
+            <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 4, flexWrap: "wrap" }}>
+              {s.status !== "done" && canSetTarget ? (
+                <input type="date" value={s.targetDate || ""} disabled={savingIdx === s.index}
+                  onChange={(e) => setTarget(s.index, e.target.value)}
+                  style={{ fontSize: 11.5, border: "1px solid var(--hair)", borderRadius: 6, padding: "2px 6px" }} />
+              ) : s.status !== "done" && s.targetDate ? (
+                <span style={{ fontSize: 11.5, color: "var(--ink-soft)" }}>Target: {fmtDate(s.targetDate)}</span>
+              ) : null}
+              {s.status === "done" && (
+                <>
+                  <span style={{ fontSize: 11.5, color: "var(--ink-soft)" }}>Done {fmtDate(s.completedAt)}</span>
+                  {s.onTime !== null && <Stamp tone={s.onTime ? "success" : "danger"}>{s.onTime ? "On time" : "Late"}</Stamp>}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      ))}
+      {isAdmin && (
+        <div style={{ marginTop: 10 }}>
+          <button className="btn btn-sm btn-ghost" onClick={() => setShowAdminOverride((v) => !v)}>
+            {showAdminOverride ? "Hide admin override" : "Admin: override a stage"}
+          </button>
+          {showAdminOverride && <AdminStageOverride task={task} dispatch={dispatch} />}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Admin-only bypass — sets or clears any stage's completion directly, out of the normal
+// forward-only sequence, to correct a mistake.
+function AdminStageOverride({ task, dispatch }) {
+  const [idx, setIdx] = useState(0);
+  const [date, setDate] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const apply = async (clear) => {
+    setBusy(true);
+    try {
+      await dispatch({
+        type: "ADMIN_OVERRIDE_CONTENT_STAGE", id: task.id, stageIndex: Number(idx),
+        completedAt: clear ? null : (date || new Date().toISOString().slice(0, 10)),
+      });
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : "Couldn't update that stage — please try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="agw-card" style={{ marginTop: 8 }}>
+      <p className="modal-sub" style={{ marginTop: 0 }}>Sets or clears a stage's completion directly, out of the normal sequence.</p>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <select value={idx} onChange={(e) => setIdx(e.target.value)} style={{ fontSize: 12.5 }}>
+          {CONTENT_STAGES.map((name, i) => <option key={i} value={i}>{i + 1}. {name}</option>)}
+        </select>
+        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ fontSize: 12.5 }} />
+        <button className="btn btn-sm" disabled={busy} onClick={() => apply(false)}>Set complete</button>
+        <button className="btn btn-sm btn-ghost" disabled={busy} onClick={() => apply(true)}>Clear</button>
+      </div>
+    </div>
   );
 }

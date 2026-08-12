@@ -181,12 +181,18 @@ export const mapTodo = (t) => ({
   createdAt: t.created_at,
 });
 
+export const mapContentStage = (s) => ({
+  taskId: s.task_id, stageIndex: s.stage_index, targetDate: s.target_date,
+  completedAt: s.completed_at, completedBy: s.completed_by,
+});
+
 export const mapTask = (t) => ({
   id: t.id, title: t.title, description: t.description || "", priority: t.priority, status: t.status,
   dueDate: t.due_date, assignedTo: t.assigned_to, department: t.department, createdBy: t.created_by,
   progressPct: t.progress_pct ?? 0, submittedAt: t.submitted_at,
   decidedBy: t.decided_by, decidedAt: t.decided_at, rejectionReason: t.rejection_reason,
   createdAt: t.created_at, statusLog: (t.statusLog || []).map(mapStatusLogEntry),
+  contentStages: (t.contentStages || []).map(mapContentStage),
 });
 
 export const mapTaskTemplate = (t) => ({

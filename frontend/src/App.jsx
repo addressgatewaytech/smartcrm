@@ -11,8 +11,9 @@ import {
   Database, Upload, MessageCircle, Recycle, ArchiveX, ShieldAlert, Settings as SettingsIcon,
   Sun, Moon, BookOpen
 } from "lucide-react";
-import { money, fmtDate, fmtDateDMY, Stamp, statusTone, Rail, DonutChart, LineChart, BarChart, SalesPersonBars, ProgressRing, Modal, Empty, ConfirmModal, RowActions, exportCSV, usePagination, PaginationBar, TableScrollHint, useConfirm, ADMIN_LIKE, ROLE_LABEL, isSalesRole, isAssignable } from "./ui.jsx";
+import { money, fmtDate, fmtDateDMY, Stamp, statusTone, Rail, DonutChart, LineChart, BarChart, SalesPersonBars, ProgressRing, progressColor, Modal, Empty, ConfirmModal, RowActions, exportCSV, usePagination, PaginationBar, TableScrollHint, useConfirm, ADMIN_LIKE, ROLE_LABEL, isSalesRole, isAssignable } from "./ui.jsx";
 import { todayStr as salesTaskToday, firstOfWeekStr, firstOfMonthStr, userTaskSnapshot } from "./salesTasksHelpers";
+import { CONTENT_STAGES, contentStageSnapshot } from "./contentStagesHelpers";
 import { TasksPage } from "./pages/tasks.jsx";
 import { AttendanceSignButton, AttendancePage } from "./pages/attendance.jsx";
 import { LeadAssignmentManagerPage } from "./pages/leadAssignment.jsx";
@@ -1279,6 +1280,17 @@ function Dashboard({ state, dispatch, role, userId, setPage }) {
   // (this Dashboard block, the Reports tab, and the Sales Daily Tasks page itself).
   const salesTaskData = { logs: state.salesTaskLogs || [], quotations: state.quotations, salesOrders: state.salesOrders, invoices: state.invoices };
 
+  // Content Creator's own tasks and their 9-stage production progress — only ever computed for
+  // that role, but cheap enough (own tasks are already scoped server-side) to just build unconditionally.
+  const myContentTasks = role === "content_creator"
+    ? state.tasks.filter(t => t.assignedTo === userId && t.contentStages?.length > 0).map(t => ({ task: t, snap: contentStageSnapshot(t.contentStages) }))
+    : [];
+  const myContentActive = myContentTasks.filter(({ task: t }) => !["Completed","Rejected","Cancelled"].includes(t.status));
+  const myContentOnTime = myContentTasks.reduce((a,{snap})=>a+snap.onTimeCount, 0);
+  const myContentLate = myContentTasks.reduce((a,{snap})=>a+snap.lateCount, 0);
+  const myContentOnTimePct = (myContentOnTime + myContentLate) > 0 ? Math.round((myContentOnTime / (myContentOnTime + myContentLate)) * 100) : 100;
+  const myContentStagesDone = myContentTasks.reduce((a,{snap})=>a+snap.completedCount, 0);
+
   // --- Charts tab data -------------------------------------------------------------------------
   const [chartTab, setChartTab] = useState("overview");
   // A lightweight "log a lead" action for roles that don't get the full Leads page (only
@@ -1365,6 +1377,10 @@ function Dashboard({ state, dispatch, role, userId, setPage }) {
     { label: "Unassigned leads", value: state.leads.filter(l=>!l.owner).length, page: "leadAssignment" },
     ...myLeadKpis,
     ...valueKpis,
+  ] : role === "content_creator" ? [
+    { label: "Active tasks", value: myContentActive.length, page: "tasks" },
+    { label: "Stages completed", value: myContentStagesDone, page: "tasks" },
+    { label: "On-time delivery", value: `${myContentOnTimePct}%`, page: "tasks" },
   ] : [
     { label: "New leads this period", value: periodLeads, page: "leads" },
     { label: "Pipeline value", value: money(pipelineValue), page: "deals" },
@@ -1389,6 +1405,38 @@ function Dashboard({ state, dispatch, role, userId, setPage }) {
       {showQuickAddLead && <LeadFormModal state={state} dispatch={dispatch} userId={userId} editLead={null} onClose={()=>setShowQuickAddLead(false)} />}
 
       {chartTab === "overview" && <>
+      {role === "content_creator" && (
+        <div className="agw-card" style={{ marginBottom: 20 }}>
+          <strong style={{ fontSize: 14 }}>My Content Production</strong>
+          <div style={{ marginTop: 10, display:"flex", gap:28, flexWrap:"wrap", alignItems:"center" }}>
+            <ProgressRing pct={myContentOnTimePct} label="On-time delivery" />
+            <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+              <div style={{ fontSize:12.5, color:"var(--ink-soft)" }}>Active tasks: <strong style={{ color:"var(--ink)" }}>{myContentActive.length}</strong></div>
+              <div style={{ fontSize:12.5, color:"var(--ink-soft)" }}>Stages completed: <strong style={{ color:"var(--ink)" }}>{myContentStagesDone}</strong></div>
+              <div style={{ fontSize:12.5, color:"var(--ink-soft)" }}>On time / Late: <strong style={{ color:"var(--ink)" }}>{myContentOnTime} / {myContentLate}</strong></div>
+            </div>
+          </div>
+          {myContentActive.length === 0 ? (
+            <div className="side-note" style={{ marginTop:14 }}>No active content tasks right now.</div>
+          ) : (
+            <div style={{ marginTop:14 }}>
+              {myContentActive.map(({ task: t, snap }) => (
+                <div key={t.id} style={{ padding:"8px 0", borderBottom:"1px solid var(--hair)" }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:8 }}>
+                    <span style={{ fontSize:13, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{t.title}</span>
+                    <span style={{ fontSize:11.5, color:"var(--ink-soft)", flexShrink:0 }}>
+                      {snap.currentIndex < CONTENT_STAGES.length ? CONTENT_STAGES[snap.currentIndex] : "Delivered"}
+                    </span>
+                  </div>
+                  <div style={{ background:"var(--page)", borderRadius:4, height:6, overflow:"hidden", marginTop:4 }}>
+                    <div style={{ width:`${snap.completionPct}%`, height:"100%", background: progressColor(snap.completionPct), borderRadius:4 }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       {isSalesTeamRole && state.salesTaskDefs?.length > 0 && (
         <div className="agw-card" style={{ marginBottom: 20 }}>
           <strong style={{ fontSize: 14 }}>{role === "sales_exec" ? "My Sales Daily Tasks" : "Sales Daily Tasks — team"}</strong>

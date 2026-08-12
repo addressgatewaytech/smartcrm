@@ -17,6 +17,9 @@ export const ROLE_LABEL = {
   // enforced read-only at the API level (src/middleware/auth.js) regardless of any page's own
   // gating. Deliberately distinct from "executive" (Dashboard + Reports only).
   viewer: "Viewer",
+  // Tasks assigned to this role get the 9-stage production tracker (Discussion...Final Out) — see
+  // contentStagesHelpers.js and the ContentStagesTracker section of TaskDetailModal (tasks.jsx).
+  content_creator: "Content Creator",
 };
 
 // Super Admin / Admin / Admin Executive all get elevated (admin-tier) access.

@@ -14,6 +14,7 @@ const ROLE_LABEL = {
   executive: "Executive",       // read-only: Dashboard + Reports only — see routes/reports.routes.js gating
   data_manager: "Data Manager",
   lead_manager: "Lead Manager", // Lead Assignment Manager module — assigns/reassigns leads, monitors SLA
+  content_creator: "Content Creator", // Tasks assigned to this role get the 9-stage production tracker — see task_content_stages
   // Sees every business module read-only (not just Dashboard+Reports like "executive") — never
   // assignable as a lead/task/job-card owner, never in Sales Daily Task scope, and enforced
   // read-only at the API level regardless of any individual route's own gating — see requireAuth
