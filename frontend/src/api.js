@@ -246,6 +246,16 @@ export const api = {
     setContentStageTarget: (id, idx, targetDate) => patch(`/tasks/${id}/content-stages/${idx}/target`, { targetDate }),
     advanceContentStage: (id) => post(`/tasks/${id}/content-stages/advance`),
     adminOverrideContentStage: (id, idx, completedAt) => post(`/tasks/${id}/content-stages/${idx}/override`, { completedAt }),
+    addComment: (id, note) => post(`/tasks/${id}/comment`, { note }),
+    // Same reasoning as quotations.downloadPdf: needs the Bearer auth header a plain <a href>
+    // can't send, so fetch as a blob and let the caller turn it into a download.
+    downloadPdf: async (id) => {
+      const headers = {};
+      if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
+      const res = await fetch(`/api/tasks/${id}/pdf`, { headers, cache: "no-store" });
+      if (!res.ok) throw new ApiError("Failed to generate PDF", res.status);
+      return res.blob();
+    },
   },
   todos: {
     list: () => get("/todos"),

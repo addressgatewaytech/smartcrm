@@ -4,8 +4,8 @@
 // drag-and-drop here only covers the employee-driven moves; manager decisions (approve/reject) and
 // delete happen from the detail modal.
 import { useState } from "react";
-import { Search, Download, Plus, Trash2, ListChecks, Check, Pencil, Bell, BellOff } from "lucide-react";
-import { ApiError } from "../api";
+import { Search, Download, Plus, Trash2, ListChecks, Check, Pencil, Bell, BellOff, MessageCircle, ClipboardList } from "lucide-react";
+import { api, ApiError } from "../api";
 import { Modal, ConfirmModal, Stamp, statusTone, Rail, Empty, exportCSV, fmtDate, ADMIN_LIKE, isSalesRole, isAssignable, progressColor } from "../ui.jsx";
 import { SalesDailyTasksTab } from "./salesDailyTasks.jsx";
 import { TaskTemplatesTab } from "./taskTemplates.jsx";
@@ -16,6 +16,14 @@ const canManageTasks = (role) => ADMIN_LIKE.includes(role) || TASK_MANAGER_ROLES
 const daysFromNow = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
 
 const KANBAN_COLS = ["Assigned", "Accepted", "In Progress", "Pending Approval", "Completed", "Rejected"];
+
+function downloadBlob(filename, blob) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 
 export function TasksPage({ state, dispatch, role, userId }) {
   const [view, setView] = useState("kanban");
@@ -363,6 +371,8 @@ function TaskDetailModal({ task, dispatch, role, userId, employees, approvalType
   const [showReject, setShowReject] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [newComment, setNewComment] = useState("");
+  const [downloading, setDownloading] = useState(false);
 
   const isMine = task.assignedTo === userId;
   const myDesignation = employees.find((e) => e.id === userId)?.designation;
@@ -393,11 +403,22 @@ function TaskDetailModal({ task, dispatch, role, userId, employees, approvalType
   return (
     <>
       <Modal title={task.id} sub={`${task.title} — assigned to ${assignee?.name || task.assignedTo}`} onClose={onClose} width={600}>
-        {ADMIN_LIKE.includes(role) && (
-          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: -6, marginBottom: 6 }}>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: -6, marginBottom: 6 }}>
+          <button className="btn btn-sm" disabled={downloading} onClick={async () => {
+            setDownloading(true);
+            try {
+              const blob = await api.tasks.downloadPdf(task.id);
+              downloadBlob(`Task-${task.id}.pdf`, blob);
+            } catch (err) {
+              alert(err instanceof ApiError ? err.message : "Couldn't generate the PDF — please try again.");
+            } finally {
+              setDownloading(false);
+            }
+          }}><Download size={13} /> {downloading ? "Generating…" : "Download PDF"}</button>
+          {ADMIN_LIKE.includes(role) && (
             <button className="btn btn-sm btn-ghost" style={{ color: "var(--danger)" }} onClick={() => setConfirmDelete(true)}><Trash2 size={13} /> Delete task</button>
-          </div>
-        )}
+          )}
+        </div>
         <Rail steps={["Assigned", "Accepted", "In Progress", "Pending Approval", "Completed"]}
           current={["Completed", "Rejected", "Cancelled"].includes(task.status) ? "Completed" : task.status} />
 
@@ -421,19 +442,34 @@ function TaskDetailModal({ task, dispatch, role, userId, employees, approvalType
           <ContentStagesTracker task={task} dispatch={dispatch} userId={userId} role={role} manager={manager} />
         )}
 
-        {task.statusLog?.length > 0 && (
-          <div style={{ marginTop: 16 }}>
-            <strong style={{ fontSize: 13 }}>History</strong>
-            <div style={{ marginTop: 6 }}>
-              {task.statusLog.map((l, i) => (
-                <div key={i} className="checklist-item" style={{ borderBottom: i === task.statusLog.length - 1 ? "none" : undefined }}>
-                  <span style={{ flex: 1 }}><strong>{l.status}</strong>{l.note && ` — ${l.note}`}</span>
-                  <span style={{ fontSize: 11, color: "var(--ink-soft)" }}>{fmtDate(l.at)}</span>
-                </div>
-              ))}
-            </div>
+        <div style={{ marginTop: 16 }}>
+          <strong style={{ fontSize: 13 }}>History</strong>
+          <div style={{ marginTop: 8, maxHeight: 260, overflowY: "auto" }}>
+            {(!task.statusLog || task.statusLog.length === 0) ? <div className="side-note">No activity recorded yet.</div> : (
+              [...task.statusLog].reverse().map((l, i) => {
+                const Icon = l.status === "Comment" ? MessageCircle : l.status === "Completed" ? Check : ClipboardList;
+                const by = employees.find((e) => e.id === l.by)?.name || l.by || "System";
+                return (
+                  <div key={i} style={{ display: "flex", gap: 10, padding: "8px 0", borderBottom: i === task.statusLog.length - 1 ? "none" : "1px solid var(--hair)" }}>
+                    <Icon size={14} style={{ marginTop: 2, color: "var(--ink-soft)", flexShrink: 0 }} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13 }}>{l.note || l.status}</div>
+                      <div style={{ fontSize: 11, color: "var(--ink-soft)" }}>{by} · {fmtDate(l.at)}</div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
-        )}
+          <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+            <input style={{ flex: 1, border: "1px solid var(--hair)", borderRadius: 8, padding: "7px 10px", fontSize: 13 }} placeholder="Add a comment"
+              value={newComment} onChange={(e) => setNewComment(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && newComment.trim()) { dispatch({ type: "ADD_TASK_COMMENT", id: task.id, note: newComment.trim() }); setNewComment(""); } }} />
+            <button className="btn btn-sm" onClick={() => { if (newComment.trim()) { dispatch({ type: "ADD_TASK_COMMENT", id: task.id, note: newComment.trim() }); setNewComment(""); } }}>
+              <MessageCircle size={13} /> Comment
+            </button>
+          </div>
+        </div>
 
         {isMine && task.status === "Assigned" && (
           <div style={{ marginTop: 16 }}>

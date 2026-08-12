@@ -10,6 +10,7 @@ const { nextId, nextSequentialId } = require("../utils/helpers");
 const { withTransaction } = require("../config/db");
 const { requireRoleOrApprovalTypeDesignation, approverAudience } = require("../utils/designationApproval");
 const { CONTENT_STAGES } = require("../utils/contentStages");
+const { generateTaskPdf } = require("../utils/taskPdf");
 
 const router = express.Router();
 router.use(requireAuth);
@@ -184,6 +185,35 @@ router.post("/:id/content-stages/:idx/override", requireRole(["admin_like"]), as
   await query("UPDATE task_content_stages SET completed_at = ?, completed_by = ? WHERE task_id = ? AND stage_index = ?",
     [completedAt || null, completedAt ? req.user.id : null, req.params.id, idx]);
   res.json({ ok: true });
+});
+
+// Free-text notes any user with visibility into this task can add — keeps a running, documented
+// history alongside the automatic status/content-stage entries. Same pattern as Job Cards' comment
+// endpoint: no dedicated comments table, just a task_status_log row with status='Comment'.
+router.post("/:id/comment", async (req, res) => {
+  const { note } = req.body;
+  if (!note?.trim()) return res.status(400).json({ error: "Comment can't be empty" });
+  await query("INSERT INTO task_status_log (task_id, status, by_user, note) VALUES (?, 'Comment', ?, ?)", [req.params.id, req.user.id, note.trim()]);
+  res.status(201).json({ ok: true });
+});
+
+// Real server-side A4 PDF (PDFKit, branded like every other document PDF in the app) — full
+// details, the content-production tracker if this task has one, and the complete activity log.
+router.get("/:id/pdf", async (req, res) => {
+  const [task] = await query("SELECT * FROM tasks WHERE id = ?", [req.params.id]);
+  if (!task) return res.status(404).json({ error: "Not found" });
+  const statusLog = await query("SELECT * FROM task_status_log WHERE task_id = ? ORDER BY at ASC", [req.params.id]);
+  const contentStages = await query("SELECT * FROM task_content_stages WHERE task_id = ? ORDER BY stage_index ASC", [req.params.id]);
+  const [assignee] = task.assigned_to ? await query("SELECT name FROM users WHERE id = ?", [task.assigned_to]) : [null];
+  const byUserIds = [...new Set(statusLog.map((l) => l.by_user).filter(Boolean))];
+  const byUsers = byUserIds.length ? await query(`SELECT id, name FROM users WHERE id IN (${byUserIds.map(() => "?").join(",")})`, byUserIds) : [];
+  const nameOf = (id) => byUsers.find((u) => u.id === id)?.name || null;
+  generateTaskPdf({
+    ...task,
+    assigneeName: assignee?.name || null,
+    statusLog: statusLog.map((l) => ({ ...l, byName: nameOf(l.by_user) })),
+    contentStages,
+  }, res);
 });
 
 // Admin-only hard delete — for cleaning up test/mistaken tasks. task_status_log/task_content_stages
