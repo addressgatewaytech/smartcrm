@@ -2757,7 +2757,7 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, onHighligh
                 <td onClick={e=>e.stopPropagation()}>
                   <RowActions
                     onEdit={["Draft","Pending Manager Approval"].includes(q.status) ? ()=>{ setOpenId(q.id); setOpenInEdit(true); if (highlightId) onHighlightHandled(); } : null}
-                    onRemove={q.status==="Draft" && isAdmin ? ()=>setRemoveQuote(q) : null} />
+                    onRemove={isAdmin ? ()=>setRemoveQuote(q) : null} />
                 </td>
               </tr>
             ))}
@@ -2767,7 +2767,9 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, onHighligh
       </div>
       {open && <QuoteDetailModal quotation={open} state={state} dispatch={dispatch} role={role} userId={userId} customerOptions={customerOptions} templates={state.quotationTemplates} startInEdit={openInEdit} onClose={()=>{ setOpenId(null); setOpenInEdit(false); }} />}
       {cloneFor && <CloneQuoteModal quotation={cloneFor} customerOptions={customerOptions} dispatch={dispatch} onClose={()=>setCloneFor(null)} />}
-      {removeQuote && <ConfirmModal title={`Remove ${removeQuote.id}?`} body={`${removeQuote.customer} — this draft quotation can't be recovered once removed.`} onConfirm={()=>dispatch({type:"DELETE_QUOTATION", id:removeQuote.id})} onClose={()=>setRemoveQuote(null)} />}
+      {removeQuote && <ConfirmModal title={`Remove ${removeQuote.id}?`} body={`${removeQuote.customer} — ${removeQuote.status}. This can't be undone. Blocked if it already has a Sales Order.`}
+        onConfirm={async ()=>{ try { await dispatch({type:"DELETE_QUOTATION", id:removeQuote.id}); } catch (err) { alert(err instanceof ApiError ? err.message : "Couldn't delete — please try again."); } }}
+        onClose={()=>setRemoveQuote(null)} />}
       {viewingCustomer && <CustomerDetailModal customer={viewingCustomer} state={state} dispatch={dispatch} role={role} userId={userId} onClose={()=>setViewingCustomer(null)} />}
     </div>
   );
@@ -2918,7 +2920,7 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
             onClick={()=>dispatch({type:"TOGGLE_QUOTATION_FAVORITE", id:q.id})}>
             <Star size={14} style={{ color: q.favorite ? "var(--gold)" : "var(--ink-soft)" }} fill={q.favorite ? "var(--gold)" : "none"} />
           </button>
-          <RowActions onRemove={q.status==="Draft" && isAdmin ? ()=>setRemoving(true) : null} />
+          <RowActions onRemove={isAdmin ? ()=>setRemoving(true) : null} />
         </div>
       </div>
       <div style={{ borderBottom:"1px solid var(--hair)", marginBottom:18 }} />
@@ -3080,7 +3082,12 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
             }}><Download size={13}/> {downloading ? "Generating…" : "Download PDF"}</button>
           </div>
           {cloning && <CloneQuoteModal quotation={q} customerOptions={customerOptions} dispatch={dispatch} onClose={()=>setCloning(false)} onCloned={onClose} />}
-          {removing && <ConfirmModal title={`Remove ${q.id}?`} body={`${q.customer} — this draft quotation can't be recovered once removed.`} onConfirm={()=>{ dispatch({type:"DELETE_QUOTATION", id:q.id}); onClose(); }} onClose={()=>setRemoving(false)} />}
+          {removing && <ConfirmModal title={`Remove ${q.id}?`} body={`${q.customer} — ${q.status}. This can't be undone. Blocked if it already has a Sales Order.`}
+            onConfirm={async ()=>{
+              try { await dispatch({type:"DELETE_QUOTATION", id:q.id}); onClose(); }
+              catch (err) { alert(err instanceof ApiError ? err.message : "Couldn't delete — please try again."); }
+            }}
+            onClose={()=>setRemoving(false)} />}
           {emailing && (
             <EmailCustomerModal
               customerName={q.customer} customerEmail={customerEmail} employees={state?.employees || []}

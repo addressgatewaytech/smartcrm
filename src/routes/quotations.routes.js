@@ -151,9 +151,16 @@ router.patch("/:id", async (req, res) => {
   res.json({ ok: true });
 });
 
+// Admin can delete a quotation regardless of status — the one thing still blocked is a quotation
+// that already has a Sales Order, since sales_orders.quotation_id cascades on delete and would
+// silently take real downstream records (invoices, payments, job cards) with it. Every other
+// status (Sent, Rejected, Expired, Client Accepted before conversion, an Approved Government Fee
+// quotation, ...) has nothing hanging off it and is safe to remove outright.
 router.delete("/:id", requireRole(["admin_like"]), async (req, res) => {
   const [row] = await query("SELECT status, deal_id FROM quotations WHERE id = ?", [req.params.id]);
-  if (row?.status !== "Draft") return res.status(400).json({ error: "Only Draft quotations can be removed" });
+  if (!row) return res.status(404).json({ error: "Not found" });
+  const [so] = await query("SELECT id FROM sales_orders WHERE quotation_id = ? LIMIT 1", [req.params.id]);
+  if (so) return res.status(400).json({ error: "This quotation already has a Sales Order — remove that first (it cascades to any invoices/job cards)." });
   await query("DELETE FROM quotations WHERE id = ?", [req.params.id]);
   // Falls back to the next-latest quotation for this deal, or 0 if that was the only one.
   await syncDealValue(row.deal_id);
