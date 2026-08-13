@@ -7093,8 +7093,50 @@ const REPORT_TABS = [
 // Data Manager, Lead Manager) sees only their own contributions in every report.
 const FULL_REPORT_ACCESS_ROLES = [...ADMIN_LIKE, "sales_manager", "accounts", "viewer", "executive"];
 
+// Multi-select "salespeople" filter — shown only on reports with a salesperson dimension
+// (Business Volume, Sales by Person, Sales Daily Tasks, Lead Performance). Empty selection means
+// "everyone", matching how the underlying reports behaved before this filter existed.
+const SALES_FILTER_TABS = ["volume", "salespeople", "salesDailyTasks", "leadPerformance"];
+function SalesPeopleFilter({ people, selected, setSelected }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+  const toggle = (id) => setSelected(sel => sel.includes(id) ? sel.filter(x=>x!==id) : [...sel, id]);
+  const label = selected.length === 0 ? "All salespeople"
+    : selected.length === 1 ? (people.find(p=>p.id===selected[0])?.name || "1 selected")
+    : `${selected.length} salespeople`;
+
+  return (
+    <div ref={ref} style={{ position:"relative" }}>
+      <button type="button" className="btn btn-sm btn-ghost" onClick={()=>setOpen(o=>!o)}>
+        <Users size={13}/> {label} <ChevronDown size={13}/>
+      </button>
+      {open && (
+        <div className="agw-card" style={{ position:"absolute", top:"100%", right:0, marginTop:4, zIndex:50, width:230, maxHeight:300, overflowY:"auto", padding:8 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6, gap:6 }}>
+            <button type="button" className="btn btn-sm btn-ghost" onClick={()=>setSelected([])}>Clear</button>
+            <button type="button" className="btn btn-sm btn-ghost" onClick={()=>setSelected(people.map(p=>p.id))}>Select all</button>
+          </div>
+          {people.length === 0 && <div style={{ fontSize:12, color:"var(--ink-soft)", padding:"4px 2px" }}>No salespeople configured.</div>}
+          {people.map(p => (
+            <label key={p.id} style={{ display:"flex", alignItems:"center", gap:8, padding:"4px 2px", fontSize:13, cursor:"pointer" }}>
+              <input type="checkbox" checked={selected.includes(p.id)} onChange={()=>toggle(p.id)} />
+              {p.name}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ReportsPage({ state, role, userId }) {
   const [tab, setTab] = useState("volume");
+  const [salesFilter, setSalesFilter] = useState([]);
   const { period, setPeriod, customFrom, setCustomFrom, customTo, setCustomTo, range } = usePeriod("month");
 
   // Scoped once here (not inside each report component) so every tab automatically only ever sees
@@ -7132,11 +7174,18 @@ function ReportsPage({ state, role, userId }) {
         <div className="tabbar" style={{ marginBottom:0, borderBottom:"none" }}>
           {REPORT_TABS.map(t => <button key={t.key} className={`tab ${tab===t.key?"active":""}`} onClick={()=>setTab(t.key)}>{t.label}</button>)}
         </div>
-        <PeriodFilter period={period} setPeriod={setPeriod} customFrom={customFrom} setCustomFrom={setCustomFrom} customTo={customTo} setCustomTo={setCustomTo} />
+        <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+          {SALES_FILTER_TABS.includes(tab) && (
+            <SalesPeopleFilter
+              people={reportState.employees.filter(e => e.roles.includes("sales_exec") || e.roles.includes("sales_manager"))}
+              selected={salesFilter} setSelected={setSalesFilter} />
+          )}
+          <PeriodFilter period={period} setPeriod={setPeriod} customFrom={customFrom} setCustomFrom={setCustomFrom} customTo={customTo} setCustomTo={setCustomTo} />
+        </div>
       </div>
 
-      {tab === "volume" && <VolumeReport state={reportState} range={range} />}
-      {tab === "salespeople" && <SalesPersonReport state={reportState} range={range} />}
+      {tab === "volume" && <VolumeReport state={reportState} range={range} salesFilter={salesFilter} />}
+      {tab === "salespeople" && <SalesPersonReport state={reportState} range={range} salesFilter={salesFilter} />}
       {tab === "collections" && <CollectionsReport state={reportState} range={range} />}
       {tab === "customers" && <CustomersReport state={reportState} range={range} />}
       {tab === "users" && <UsersReport state={reportState} range={range} />}
@@ -7144,8 +7193,8 @@ function ReportsPage({ state, role, userId }) {
       {tab === "incentives" && <IncentivesReport state={reportState} range={range} />}
       {tab === "operations" && <OperationsReport state={reportState} range={range} />}
       {tab === "tasks" && <EmployeeTasksReport state={reportState} range={range} />}
-      {tab === "salesDailyTasks" && <SalesDailyTasksReport state={reportState} range={range} />}
-      {tab === "leadPerformance" && <LeadPerformanceReport state={reportState} range={range} />}
+      {tab === "salesDailyTasks" && <SalesDailyTasksReport state={reportState} range={range} salesFilter={salesFilter} />}
+      {tab === "leadPerformance" && <LeadPerformanceReport state={reportState} range={range} salesFilter={salesFilter} />}
       {tab === "attendanceHours" && <AttendanceHoursReport state={reportState} range={range} userId={canSeeAllReports ? undefined : userId} />}
     </div>
   );
@@ -7199,12 +7248,26 @@ async function exportPdf(title, subtitle, columns, rows) {
 // professionalFeeAmount above (handles quotations that mix Professional + Government Fee items).
 const quoteAmount = (q) => professionalFeeAmount(q.items, q.orderDiscount, q.feeType);
 
-function VolumeReport({ state, range }) {
-  const quotes = state.quotations.filter(q => q.feeType !== "Government Fee" && inRange(q.createdAt, range));
+function VolumeReport({ state, range, salesFilter = [] }) {
+  const dealOwners = new Map(state.deals.map(d => [d.id, d.owner]));
+  const ownerOf = (q) => q.owner || (q.dealId ? dealOwners.get(q.dealId) : undefined);
+
+  const quotesInRange = state.quotations.filter(q => q.feeType !== "Government Fee" && inRange(q.createdAt, range));
+  const quotes = salesFilter.length ? quotesInRange.filter(q => salesFilter.includes(ownerOf(q))) : quotesInRange;
   const approved = quotes.filter(q => q.status === "Approved");
   const totalQuoted = quotes.reduce((a,q)=>a+quoteAmount(q),0);
   const totalApproved = approved.reduce((a,q)=>a+quoteAmount(q),0);
   const winRate = quotes.length > 0 ? Math.round((approved.length/quotes.length)*100) : 0;
+
+  const salesUsers = state.employees.filter(e => e.roles.includes("sales_exec") || e.roles.includes("sales_manager"));
+  const visibleSalesUsers = salesFilter.length ? salesUsers.filter(u => salesFilter.includes(u.id)) : salesUsers;
+  const perPerson = visibleSalesUsers.map(owner => {
+    const q = quotesInRange.filter(q => ownerOf(q) === owner.id);
+    const won = q.filter(x => x.status === "Approved");
+    const quotedVal = q.reduce((a,x)=>a+quoteAmount(x),0);
+    const approvedVal = won.reduce((a,x)=>a+quoteAmount(x),0);
+    return { owner, count: q.length, quotedVal, approvedVal, winRate: q.length ? Math.round((won.length/q.length)*100) : 0 };
+  }).sort((a,b) => b.quotedVal - a.quotedVal);
 
   return (
     <div>
@@ -7214,8 +7277,31 @@ function VolumeReport({ state, range }) {
         { label:"Approved value", value: money(totalApproved) },
         { label:"Win rate", value: `${winRate}%` },
       ]} />
+
+      <ReportTableCard title="Business volume by salesperson" empty={perPerson.length===0 ? "No sales roles configured yet." : null} emptyIcon={Users}
+        onExportExcel={perPerson.length ? ()=>exportExcel("business-volume-by-salesperson.xlsx",
+          ["Salesperson","Quotations","Total Quoted (QAR)","Approved Value (QAR)","Win Rate"],
+          perPerson.map(r=>[r.owner.name, r.count, r.quotedVal, r.approvedVal, `${r.winRate}%`])) : null}>
+        <table className="agw-table">
+          <thead><tr><th>Salesperson</th><th>Quotations</th><th>Total quoted</th><th>Approved value</th><th>Win rate</th></tr></thead>
+          <tbody>
+            {perPerson.map(r => (
+              <tr key={r.owner.id}>
+                <td style={{display:"flex",alignItems:"center",gap:8}}><span className="avatar">{r.owner.initials}</span>{r.owner.name}</td>
+                <td>{r.count}</td>
+                <td className="mono">{money(r.quotedVal)}</td>
+                <td className="mono" style={{color:"var(--gold)"}}>{money(r.approvedVal)}</td>
+                <td>{r.winRate}%</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </ReportTableCard>
+
       <ReportTableCard title="Professional Fee quotations" empty={quotes.length===0 ? "No Professional Fee quotations in this period." : null}
         onExport={quotes.length ? ()=>exportCSV("business-volume.csv", ["Quotation","Customer","Service","Amount (QAR)","Status","Date"],
+          quotes.map(q=>[q.id, q.customer, q.items[0]?.service||"", quoteAmount(q), q.status, fmtDate(q.createdAt)])) : null}
+        onExportExcel={quotes.length ? ()=>exportExcel("business-volume.xlsx", ["Quotation","Customer","Service","Amount (QAR)","Status","Date"],
           quotes.map(q=>[q.id, q.customer, q.items[0]?.service||"", quoteAmount(q), q.status, fmtDate(q.createdAt)])) : null}>
         <table className="agw-table">
           <thead><tr><th>Quotation</th><th>Customer</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead>
@@ -7235,9 +7321,10 @@ function VolumeReport({ state, range }) {
   );
 }
 
-function SalesPersonReport({ state, range }) {
+function SalesPersonReport({ state, range, salesFilter = [] }) {
   const [view, setView] = useState("table");
-  const owners = state.employees.filter(e => e.roles.includes("sales_exec") || e.roles.includes("sales_manager"));
+  const allOwners = state.employees.filter(e => e.roles.includes("sales_exec") || e.roles.includes("sales_manager"));
+  const owners = salesFilter.length ? allOwners.filter(o => salesFilter.includes(o.id)) : allOwners;
 
   const rows = owners.map(owner => {
     const leads = state.leads.filter(l => l.owner===owner.id && inRange(l.createdAt, range));
@@ -7283,6 +7370,9 @@ function SalesPersonReport({ state, range }) {
       {view === "table" ? (
         <ReportTableCard title="Performance by salesperson" empty={rows.length===0 ? "No sales roles configured yet." : null} emptyIcon={Users}
           onExport={rows.length ? ()=>exportCSV("sales-by-person.csv",
+            ["Salesperson","Leads","Pending leads","Deals","Deals won","Quotations","Pending quotations","Invoices","Invoiced (QAR)","Collected (QAR)","Business volume (QAR)"],
+            rows.map(r=>[r.owner.name, r.leadsCount, r.pendingLeads, r.dealsCount, r.dealsWon, r.quotesCount, r.pendingQuotes, r.invoicesCount, r.invoicedAmount, r.collected, r.businessVolume])) : null}
+          onExportExcel={rows.length ? ()=>exportExcel("sales-by-person.xlsx",
             ["Salesperson","Leads","Pending leads","Deals","Deals won","Quotations","Pending quotations","Invoices","Invoiced (QAR)","Collected (QAR)","Business volume (QAR)"],
             rows.map(r=>[r.owner.name, r.leadsCount, r.pendingLeads, r.dealsCount, r.dealsWon, r.quotesCount, r.pendingQuotes, r.invoicesCount, r.invoicedAmount, r.collected, r.businessVolume])) : null}>
           <table className="agw-table">
@@ -7330,6 +7420,8 @@ function CollectionsReport({ state, range }) {
       ]} />
       <ReportTableCard title="Professional Fee invoices" empty={invoices.length===0 ? "No Professional Fee invoices in this period." : null}
         onExport={invoices.length ? ()=>exportCSV("collections.csv", ["Invoice","Customer","Amount","Paid","Balance","Status","Date"],
+          invoices.map(inv=>{ const paid=inv.payments.reduce((a,p)=>a+p.amount,0); return [inv.id, inv.customer, inv.amount, paid, inv.amount-paid, inv.status, fmtDate(inv.createdAt)]; })) : null}
+        onExportExcel={invoices.length ? ()=>exportExcel("collections.xlsx", ["Invoice","Customer","Amount","Paid","Balance","Status","Date"],
           invoices.map(inv=>{ const paid=inv.payments.reduce((a,p)=>a+p.amount,0); return [inv.id, inv.customer, inv.amount, paid, inv.amount-paid, inv.status, fmtDate(inv.createdAt)]; })) : null}>
         <table className="agw-table">
           <thead><tr><th>Invoice</th><th>Customer</th><th>Amount</th><th>Paid</th><th>Balance</th><th>Status</th><th>Date</th></tr></thead>
@@ -7368,6 +7460,8 @@ function CustomersReport({ state, range }) {
   return (
     <ReportTableCard title="Business volume by customer" empty={rows.length===0 ? "No customer activity in this period." : null} emptyIcon={UserCheck}
       onExport={rows.length ? ()=>exportCSV("customers.csv", ["Customer","Approved Quoted (QAR)","Invoiced (QAR)","Paid (QAR)","Balance (QAR)","Job Cards"],
+        rows.map(r=>[r.customer, r.quotedValue, r.invoiced, r.paid, r.balance, r.jobCards])) : null}
+      onExportExcel={rows.length ? ()=>exportExcel("customers.xlsx", ["Customer","Approved Quoted (QAR)","Invoiced (QAR)","Paid (QAR)","Balance (QAR)","Job Cards"],
         rows.map(r=>[r.customer, r.quotedValue, r.invoiced, r.paid, r.balance, r.jobCards])) : null}>
       <table className="agw-table">
         <thead><tr><th>Customer</th><th>Approved quoted</th><th>Invoiced</th><th>Paid</th><th>Balance</th><th>Job cards</th></tr></thead>
@@ -7425,6 +7519,8 @@ function UsersReport({ state, range }) {
 
       <ReportTableCard title="Team members" empty={rows.length===0 ? "No users yet." : null} emptyIcon={UserCog}
         onExport={rows.length ? ()=>exportCSV("user-base.csv", ["Name","Roles","Department","Status","Joined","Present days (period)","Absent days (period)","Leave/Vacation days (period)","Leave requests (period)","Incentive earned (QAR)"],
+          rows.map(r=>[r.e.name, r.e.roles.map(x=>ROLE_LABEL[x]).join(" + "), r.e.dept, r.e.active===false?"Deactivated":"Active", fmtDate(r.e.joined), r.present, r.absent, r.onLeaveDays, r.leaveRequests, r.incentive])) : null}
+        onExportExcel={rows.length ? ()=>exportExcel("user-base.xlsx", ["Name","Roles","Department","Status","Joined","Present days (period)","Absent days (period)","Leave/Vacation days (period)","Leave requests (period)","Incentive earned (QAR)"],
           rows.map(r=>[r.e.name, r.e.roles.map(x=>ROLE_LABEL[x]).join(" + "), r.e.dept, r.e.active===false?"Deactivated":"Active", fmtDate(r.e.joined), r.present, r.absent, r.onLeaveDays, r.leaveRequests, r.incentive])) : null}>
         <table className="agw-table">
           <thead><tr><th>User</th><th>Roles</th><th>Department</th><th>Status</th><th>Joined</th><th>Present</th><th>Absent</th><th>Leave/Vacation</th><th>Leave requests</th><th>Incentive</th></tr></thead>
@@ -7480,6 +7576,8 @@ function AttendanceHRReport({ state, range }) {
 
       <ReportTableCard title="Attendance & HR standing by team member"
         onExport={()=>exportCSV("attendance-hr.csv", ["Name","Department","Attendance rate","Present","Absent","Leave/Vacation","Leave balance","Pending leave requests","Documents flagged"],
+          rows.map(r=>[r.e.name, r.e.dept, r.rate!==null?`${r.rate}%`:"—", r.present, r.absent, r.leaveVacation, r.leaveBalance, r.pendingLeave, r.flaggedDocs]))}
+        onExportExcel={()=>exportExcel("attendance-hr.xlsx", ["Name","Department","Attendance rate","Present","Absent","Leave/Vacation","Leave balance","Pending leave requests","Documents flagged"],
           rows.map(r=>[r.e.name, r.e.dept, r.rate!==null?`${r.rate}%`:"—", r.present, r.absent, r.leaveVacation, r.leaveBalance, r.pendingLeave, r.flaggedDocs]))}>
         <table className="agw-table">
           <thead><tr><th>User</th><th>Department</th><th>Attendance rate</th><th>Present</th><th>Absent</th><th>Leave/Vacation</th><th>Leave balance</th><th>Pending requests</th><th>Docs flagged</th></tr></thead>
@@ -7516,6 +7614,8 @@ function IncentivesReport({ state, range }) {
       ]} />
       <ReportTableCard title="Incentive earned by employee" empty={rows.length===0 ? "No incentive rules configured yet." : null} emptyIcon={Coins}
         onExport={rows.length ? ()=>exportCSV("incentives.csv", ["Employee","Roles","Department","Incentive (QAR)"],
+          rows.map(r=>[r.e.name, r.e.roles.map(x=>ROLE_LABEL[x]).join(" + "), r.e.dept, r.incentive])) : null}
+        onExportExcel={rows.length ? ()=>exportExcel("incentives.xlsx", ["Employee","Roles","Department","Incentive (QAR)"],
           rows.map(r=>[r.e.name, r.e.roles.map(x=>ROLE_LABEL[x]).join(" + "), r.e.dept, r.incentive])) : null}>
         <table className="agw-table">
           <thead><tr><th>Employee</th><th>Roles</th><th>Department</th><th>Incentive earned</th></tr></thead>
@@ -7556,6 +7656,8 @@ function OperationsReport({ state, range }) {
       </div>
       <ReportTableCard title="Job cards" empty={jobs.length===0 ? "No job cards created in this period." : null} emptyIcon={ClipboardList}
         onExport={jobs.length ? ()=>exportCSV("operations.csv", ["Job Card","Customer","Service","Priority","Status","Created"],
+          jobs.map(j=>[j.id, j.customer, j.service, j.priority, j.status, fmtDate(j.statusLog[0].at)])) : null}
+        onExportExcel={jobs.length ? ()=>exportExcel("operations.xlsx", ["Job Card","Customer","Service","Priority","Status","Created"],
           jobs.map(j=>[j.id, j.customer, j.service, j.priority, j.status, fmtDate(j.statusLog[0].at)])) : null}>
         <table className="agw-table">
           <thead><tr><th>Job card</th><th>Customer</th><th>Service</th><th>Priority</th><th>Status</th><th>Created</th></tr></thead>
@@ -7625,7 +7727,7 @@ function EmployeeTasksReport({ state, range }) {
 // period picker — all computed client-side from state via the shared salesTasksHelpers, same as
 // every other report tab here filters already-loaded state instead of calling a dedicated backend
 // report endpoint.
-function SalesDailyTasksReport({ state, range }) {
+function SalesDailyTasksReport({ state, range, salesFilter = [] }) {
   const defs = state.salesTaskDefs || [];
   if (defs.length === 0) return <Empty icon={ListChecks} text="Sales Daily Tasks aren't set up yet." />;
 
@@ -7634,7 +7736,8 @@ function SalesDailyTasksReport({ state, range }) {
   const from = range[0] || "2000-01-01";
   const to = range[1] || today;
   const monthStart = firstOfMonthStr();
-  const salesUsers = state.employees.filter(e => e.roles.includes("sales_exec") || e.roles.includes("sales_manager"));
+  const allSalesUsers = state.employees.filter(e => e.roles.includes("sales_exec") || e.roles.includes("sales_manager"));
+  const salesUsers = salesFilter.length ? allSalesUsers.filter(u => salesFilter.includes(u.id)) : allSalesUsers;
 
   const rows = salesUsers.map(owner => ({
     owner,
@@ -7691,8 +7794,8 @@ function SalesDailyTasksReport({ state, range }) {
   );
 }
 
-function LeadPerformanceReport({ state, range }) {
-  const leads = state.leads.filter(l => l.assignedAt && inRange(l.assignedAt, range));
+function LeadPerformanceReport({ state, range, salesFilter = [] }) {
+  const leads = state.leads.filter(l => l.assignedAt && inRange(l.assignedAt, range) && (salesFilter.length === 0 || salesFilter.includes(l.owner)));
   const slaOf = (l) => {
     const met = (l.followUps||[]).some(f => f.at && new Date(f.at) >= new Date(l.assignedAt));
     if (met) return "Met";
