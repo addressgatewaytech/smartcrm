@@ -2748,6 +2748,7 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, onHighligh
   const favoriteCount = ownerFiltered.filter(q => q.favorite).length;
   const pg = usePagination(rows);
   const total = q => Math.max(0, q.items.reduce((a,it)=>a+it.qty*it.price*(1-(it.discountPct||0)/100),0) - (q.orderDiscount||0));
+  const profFees = q => professionalFeeAmount(q.items, q.orderDiscount, q.feeType);
   const customerOptions = state.customers.map(c=>c.name);
   const isAdmin = ADMIN_LIKE.includes(role);
 
@@ -2783,8 +2784,8 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, onHighligh
               style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:8, padding:"7px 12px 7px 34px", fontSize:13, background:"var(--surface)" }} />
           </div>
           <button className="btn btn-sm" onClick={()=>exportCSV("quotations.csv",
-            ["Quotation ID","Created","Customer","Service","Sales Person","Lead Type","Fee Type","Amount (QAR)","Valid Till","Status"],
-            rows.map(q=>[q.id, q.createdAt, q.customer, q.items[0]?.service||"", state.employees.find(t=>t.id===q.owner)?.name||"", quotationOrigin(state, q), quotationFeeTypeLabel(q), total(q), q.validTill, q.status]))}>
+            ["Quotation ID","Created","Customer","Service","Sales Person","Lead Type","Fee Type","Amount (QAR)","Professional Fees (QAR)","Valid Till","Status"],
+            rows.map(q=>[q.id, q.createdAt, q.customer, q.items[0]?.service||"", state.employees.find(t=>t.id===q.owner)?.name||"", quotationOrigin(state, q), quotationFeeTypeLabel(q), total(q), profFees(q), q.validTill, q.status]))}>
             <Download size={13}/> Export
           </button>
         </div>
@@ -2792,7 +2793,7 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, onHighligh
       <div className="agw-card" style={{ padding: 0 }}>
         {rows.length === 0 ? <Empty icon={favoritesOnly ? Star : FileText} text={favoritesOnly ? "No favorite quotations yet — star a quotation to use it as a go-to format." : "No quotations yet — create one from an open Deal's \"Create quotation\" button."} /> : (
         <table className="agw-table">
-          <thead><tr><th></th><th>Quotation</th><th>Created</th><th>Customer</th><th>Service</th><th>Sales person</th><th>Lead type</th><th>Amount (QAR)</th><th>Valid till</th><th>Status</th><th></th><th></th></tr></thead>
+          <thead><tr><th></th><th>Quotation</th><th>Created</th><th>Customer</th><th>Service</th><th>Sales person</th><th>Lead type</th><th>Amount (QAR)</th><th>Professional fees (QAR)</th><th>Valid till</th><th>Status</th><th></th><th></th></tr></thead>
           <tbody>
             {pg.pageRows.map(q => (
               <tr key={q.id} id={`quote-row-${q.id}`}
@@ -2811,6 +2812,7 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, onHighligh
                 <td>{state.employees.find(t=>t.id===q.owner)?.name || "—"}</td>
                 <td><Stamp tone={originTone(quotationOrigin(state, q))}>{quotationOrigin(state, q)}</Stamp></td>
                 <td className="mono">{money(total(q))}</td>
+                <td className="mono">{money(profFees(q))}</td>
                 <td className="mono" style={{fontSize:12}}>{fmtDate(q.validTill)}</td>
                 <td><Stamp tone={statusTone(q.status)}>{quotationStatusLabel(q.status, role)}</Stamp></td>
                 <td><button className="btn btn-sm btn-ghost" title="Clone" onClick={(e)=>{ e.stopPropagation(); setCloneFor(q); }}><Copy size={13}/></button></td>
