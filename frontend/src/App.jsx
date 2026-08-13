@@ -1,11 +1,11 @@
-import React, { useState, useMemo, useEffect, useRef } from "react";
+import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import * as XLSX from "xlsx";
 import { api, setToken, getToken, ApiError, isImpersonating, beginImpersonation, endImpersonation, clearAllTokens } from "./api";
 import { useApiStore } from "./store";
 import {
   LayoutDashboard, Users, Handshake, FileText, UserCheck, ShoppingCart,
   Receipt, ClipboardList, Bell, Coins, UserCog, ListChecks, Building2,
-  Plus, X, Check, ChevronRight, ChevronUp, ChevronDown, AlertTriangle, CircleDollarSign,
+  Plus, X, Check, ChevronRight, ChevronUp, ChevronDown, AlertTriangle, CircleDollarSign, RefreshCw,
   UserPlus, ShieldCheck, Ban, Clock, ArrowRight, Search, Mail, Phone,
   BadgeCheck, CalendarClock, Briefcase, Copy, Files, Link2, Pencil, Trash2, Repeat, BarChart3, Download, MoreHorizontal, ChevronsLeft, ChevronsRight, Camera, Star,
   Database, Upload, MessageCircle, Recycle, ArchiveX, ShieldAlert, Settings as SettingsIcon,
@@ -312,6 +312,9 @@ const CSS = `
   .theme-toggle { width: 34px; height: 34px; border-radius: 50%; background: rgba(255,255,255,.18); border: none;
     color: #fff; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
   .theme-toggle:hover { background: rgba(255,255,255,.3); }
+  .theme-toggle:disabled { opacity: .6; cursor: default; }
+  @keyframes agw-spin { to { transform: rotate(360deg); } }
+  .agw-spin { animation: agw-spin 0.8s linear infinite; }
 `;
 
 /* ---------------------------------------------------------------------- */
@@ -840,6 +843,51 @@ function Login({ onLogin }) {
   );
 }
 
+// Keeps every list page's data fresh without a full reload, but never fights the user mid-task:
+// it only fires once the user has gone quiet for a while, and skips entirely while the tab is in
+// the background. It also catches up immediately when the user comes back to a tab that's been
+// hidden long enough for its data to be stale, matching how most SPAs refetch-on-focus.
+const AUTO_REFRESH_IDLE_MS = 60_000;
+const AUTO_REFRESH_INTERVAL_MS = 120_000;
+function useAutoRefresh(runRefresh, enabled) {
+  const lastActivityRef = useRef(Date.now());
+  const lastRefreshRef = useRef(Date.now());
+
+  useEffect(() => {
+    if (!enabled) return;
+    const markActive = () => { lastActivityRef.current = Date.now(); };
+    const activityEvents = ["mousemove", "mousedown", "keydown", "touchstart", "wheel"];
+    activityEvents.forEach(ev => window.addEventListener(ev, markActive, { passive: true }));
+
+    const tick = () => {
+      if (document.visibilityState !== "visible") return;
+      const now = Date.now();
+      const idleFor = now - lastActivityRef.current;
+      const sinceRefresh = now - lastRefreshRef.current;
+      if (idleFor >= AUTO_REFRESH_IDLE_MS && sinceRefresh >= AUTO_REFRESH_INTERVAL_MS) {
+        lastRefreshRef.current = now;
+        runRefresh();
+      }
+    };
+    const timer = setInterval(tick, 15_000);
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible" && Date.now() - lastRefreshRef.current >= AUTO_REFRESH_INTERVAL_MS) {
+        lastActivityRef.current = Date.now();
+        lastRefreshRef.current = Date.now();
+        runRefresh();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      activityEvents.forEach(ev => window.removeEventListener(ev, markActive));
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [runRefresh, enabled]);
+}
+
 /* ---------------------------------------------------------------------- */
 /* MAIN APP                                                                */
 /* ---------------------------------------------------------------------- */
@@ -888,10 +936,19 @@ export default function App() {
   };
   const returnToMyAccount = () => { endImpersonation(); window.location.reload(); };
 
-  const { state, dispatch, loading: dataLoading } = useApiStore(!!currentUser);
+  const { state, dispatch, loading: dataLoading, refresh } = useApiStore(!!currentUser);
   const [page, setPage] = useState("dashboard");
   const [showMore, setShowMore] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  // Manual + idle-triggered refresh share this one path so every list page (all fed from the
+  // same client-side `state`) gets fresh data without a full page reload.
+  const [refreshing, setRefreshing] = useState(false);
+  const runRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try { await refresh(); } finally { setRefreshing(false); }
+  }, [refresh]);
+  useAutoRefresh(runRefresh, !!currentUser);
   // Set when "View quotation" is clicked from Deals, so QuotationsPage can highlight and
   // scroll to that specific row instead of leaving the user to hunt for it in the full list.
   const [highlightQuotationId, setHighlightQuotationId] = useState(null);
@@ -1066,6 +1123,9 @@ export default function App() {
               <div className="agw-topbar-sub">{titles[page][1]}</div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+              <button className="theme-toggle" onClick={runRefresh} disabled={refreshing} title="Refresh data">
+                <RefreshCw size={16} className={refreshing ? "agw-spin" : ""} />
+              </button>
               <button className="theme-toggle" onClick={toggleTheme} title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}>
                 {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
               </button>
