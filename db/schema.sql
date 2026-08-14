@@ -135,6 +135,23 @@ CREATE TABLE IF NOT EXISTS services (
   name VARCHAR(150) PRIMARY KEY
 ) ENGINE=InnoDB;
 
+-- Reusable line items for building quotations (e.g. "Issue New CR", "Add Signing Authority") —
+-- picking one prefills description/note/price/feeType on a quotation line, still fully editable
+-- per quotation. Optional `service` scopes an item to only show when that service is selected;
+-- left null it shows everywhere. Soft-deleted (active=0), not hard-deleted, since it's a price
+-- list staff build up over time — unlike `services` above, nothing else references these by FK.
+CREATE TABLE IF NOT EXISTS item_catalog (
+  id          VARCHAR(20) PRIMARY KEY,
+  name        VARCHAR(200) NOT NULL,
+  description VARCHAR(300) NOT NULL,
+  note        VARCHAR(300),
+  fee_type    ENUM('Professional Fee','Government Fee') NOT NULL DEFAULT 'Government Fee',
+  price       DECIMAL(10,2) NOT NULL DEFAULT 0,
+  service     VARCHAR(150),
+  active      TINYINT(1) NOT NULL DEFAULT 1,
+  created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
 CREATE TABLE IF NOT EXISTS checklist_templates (
   service VARCHAR(150) PRIMARY KEY,
   steps   JSON NOT NULL,   -- array of strings

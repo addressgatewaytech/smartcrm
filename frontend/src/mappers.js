@@ -163,6 +163,11 @@ export const mapQuotationTemplates = (raw) => {
 
 export const mapIncentiveRule = (r) => ({ id: r.id, role: r.role, period: r.period, metric: r.metric, amount: Number(r.amount) });
 
+export const mapItemCatalogEntry = (r) => ({
+  id: r.id, name: r.name, description: r.description, note: r.note || "",
+  feeType: r.fee_type, price: Number(r.price), service: r.service || "",
+});
+
 export const mapLeaveRequest = (r) => ({
   id: r.id, employeeId: r.user_id, type: r.type, startDate: r.start_date, endDate: r.end_date,
   reason: r.reason, status: r.status, requestedAt: r.requested_at, decidedBy: r.decided_by,

@@ -2,6 +2,7 @@ const express = require("express");
 const { query } = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
 const { requireRole } = require("../middleware/roles");
+const { nextId } = require("../utils/helpers");
 
 const router = express.Router();
 router.use(requireAuth);
@@ -22,6 +23,37 @@ router.post("/services", requireRole(["admin_like", "sales_manager", "ops_manage
 
 router.delete("/services/:name", requireRole(["admin_like"]), async (req, res) => {
   await query("DELETE FROM services WHERE name = ?", [req.params.name]);
+  res.json({ ok: true });
+});
+
+// --- Item catalog (reusable quotation line items — pick one instead of retyping) ----------
+router.get("/item-catalog", async (req, res) => {
+  const rows = await query("SELECT * FROM item_catalog WHERE active = 1 ORDER BY name");
+  res.json(rows);
+});
+
+router.post("/item-catalog", requireRole(["admin_like", "sales_manager", "ops_manager", "hr", "data_manager"]), async (req, res) => {
+  const { name, description, note, feeType, price, service } = req.body;
+  if (!name?.trim() || !description?.trim()) return res.status(400).json({ error: "Name and description are required" });
+  const id = nextId("IC");
+  await query(
+    "INSERT INTO item_catalog (id, name, description, note, fee_type, price, service) VALUES (?,?,?,?,?,?,?)",
+    [id, name.trim(), description.trim(), note || null, feeType || "Government Fee", price || 0, service || null]
+  );
+  res.status(201).json({ id });
+});
+
+router.patch("/item-catalog/:id", requireRole(["admin_like", "sales_manager", "ops_manager", "hr", "data_manager"]), async (req, res) => {
+  const { name, description, note, feeType, price, service } = req.body;
+  await query(
+    "UPDATE item_catalog SET name=?, description=?, note=?, fee_type=?, price=?, service=? WHERE id=?",
+    [name.trim(), description.trim(), note || null, feeType || "Government Fee", price || 0, service || null, req.params.id]
+  );
+  res.json({ ok: true });
+});
+
+router.delete("/item-catalog/:id", requireRole(["admin_like"]), async (req, res) => {
+  await query("UPDATE item_catalog SET active = 0 WHERE id = ?", [req.params.id]);
   res.json({ ok: true });
 });
 

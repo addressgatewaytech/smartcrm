@@ -4,11 +4,11 @@ import {
   mapUser, mapLead, mapDeal, mapQuotation, mapCustomer, mapSalesOrder, mapInvoice, mapJobCard,
   mapNotification, mapDataRecord, mapDataSettings, mapDataActivity, mapExportHistoryEntry, mapSubscriptionPlans,
   mapSubscription, mapQuotationTemplates, mapIncentiveRule, mapLeaveRequest, mapPunchRequest, mapAttendance,
-  mapAppSettings, mapTask, mapTodo, mapTaskTemplate, mapSalesTaskDef, mapSalesTaskLog,
+  mapAppSettings, mapTask, mapTodo, mapTaskTemplate, mapSalesTaskDef, mapSalesTaskLog, mapItemCatalogEntry,
 } from "./mappers";
 
 const emptyState = () => ({
-  services: [], employees: [], leads: [], deals: [], quotations: [], customers: [],
+  services: [], itemCatalog: [], employees: [], leads: [], deals: [], quotations: [], customers: [],
   salesOrders: [], invoices: [], jobCards: [], tasks: [], todos: [], notifications: [], quotationTemplates: {},
   taskTemplates: [], salesTaskDefs: [], salesTaskLogs: [],
   checklistTemplates: {}, incentiveRules: [], leaveRequests: [], punchRequests: [],
@@ -35,6 +35,7 @@ export function useApiStore(enabled) {
   const refresh = useCallback(async (keys) => {
     const tasks = {
       services: async () => ({ services: await api.services.list() }),
+      itemCatalog: async () => ({ itemCatalog: (await api.itemCatalog.list()).map(mapItemCatalogEntry) }),
       employees: async () => ({ employees: (await api.users.list()).map(mapUser) }),
       leads: async () => ({ leads: (await api.leads.list()).map(mapLead) }),
       deals: async () => ({ deals: (await api.deals.list()).map(mapDeal) }),
@@ -168,6 +169,11 @@ export function useApiStore(enabled) {
       // --- Services ----------------------------------------------------------------------
       case "ADD_SERVICE_OPTION": await api.services.add(action.name); return refresh(["services", "checklistTemplates", "quotationTemplates"]);
       case "REMOVE_SERVICE_OPTION": await api.services.remove(action.name); return refresh(["services"]);
+
+      // --- Item catalog (reusable quotation line items) -----------------------------------
+      case "ADD_ITEM_CATALOG_ENTRY": await api.itemCatalog.create(action.payload); return refresh(["itemCatalog"]);
+      case "UPDATE_ITEM_CATALOG_ENTRY": await api.itemCatalog.update(action.id, action.payload); return refresh(["itemCatalog"]);
+      case "REMOVE_ITEM_CATALOG_ENTRY": await api.itemCatalog.remove(action.id); return refresh(["itemCatalog"]);
 
       // --- Customers -----------------------------------------------------------------------
       case "ADD_CUSTOMER": await api.customers.create(action.payload); return refresh(["customers"]);

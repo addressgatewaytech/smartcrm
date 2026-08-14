@@ -2365,7 +2365,7 @@ function DealsPage({ state, dispatch, setPage, onViewQuotation, role, userId }) 
         </div>
       )}
 
-      {quoteFor && <QuoteBuilderModal dealId={quoteFor.id} customerName={quoteFor.customer} defaultService={quoteFor.service} services={state.services} dispatch={dispatch} templates={state.quotationTemplates} role={role} employees={state.employees} defaultOwner={quoteFor.owner} onClose={()=>setQuoteFor(null)} />}
+      {quoteFor && <QuoteBuilderModal dealId={quoteFor.id} customerName={quoteFor.customer} defaultService={quoteFor.service} services={state.services} itemCatalog={state.itemCatalog} dispatch={dispatch} templates={state.quotationTemplates} role={role} employees={state.employees} defaultOwner={quoteFor.owner} onClose={()=>setQuoteFor(null)} />}
       {editDeal && <EditDealModal deal={editDeal} state={state} dispatch={dispatch} onClose={()=>setEditDeal(null)} />}
       {removeDeal && <ConfirmModal title={`Remove deal ${removeDeal.id}?`} body={`${removeDeal.customer} — ${money(removeDeal.value)}. This can't be undone.`} onConfirm={()=>dispatch({type:"DELETE_DEAL", id:removeDeal.id})} onClose={()=>setRemoveDeal(null)} />}
       {newDeal && <NewDealModal state={state} dispatch={dispatch} userId={userId} onClose={()=>setNewDeal(false)} />}
@@ -2446,7 +2446,130 @@ function EditDealModal({ deal: d, state, dispatch, onClose }) {
   );
 }
 
-function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVICES[0], editableCustomer=false, customerOptions=[], services=SERVICES, dispatch, templates, role=null, employees=[], defaultOwner="", onClose }) {
+// Type to search the item catalog (scoped to this section's fee type, and to `service` when a
+// catalog row has one set) or just type a one-off description and press Enter — either way it
+// calls onAdd with { description, note, price }. Shared by every item-adding surface below.
+function AddItemControl({ catalog, feeType, service, onAdd, label }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const options = catalog.filter(c => c.feeType === feeType && (!c.service || c.service === service));
+  const matches = query.trim() ? options.filter(c => `${c.name} ${c.description}`.toLowerCase().includes(query.trim().toLowerCase())) : options;
+
+  if (!open) return <button type="button" className="btn btn-sm" onClick={()=>setOpen(true)}><Plus size={13}/> {label}</button>;
+
+  const commitFreeText = () => {
+    if (query.trim()) onAdd({ description: query.trim(), note: "", price: 0 });
+    setQuery(""); setOpen(false);
+  };
+
+  return (
+    <div style={{ position:"relative", maxWidth:360 }}>
+      <input autoFocus value={query} onChange={e=>setQuery(e.target.value)}
+        onKeyDown={e=>{ if (e.key==="Enter") { e.preventDefault(); commitFreeText(); } if (e.key==="Escape") { setQuery(""); setOpen(false); } }}
+        onBlur={()=>setTimeout(()=>setOpen(false), 150)}
+        placeholder="Search items or type a new one — Enter to add" style={{ width:"100%" }} />
+      {matches.length > 0 && (
+        <div className="agw-card" style={{ position:"absolute", zIndex:20, width:"100%", maxHeight:220, overflowY:"auto", padding:4, marginTop:2 }}>
+          {matches.map(m => (
+            <div key={m.id} onMouseDown={()=>{ onAdd({ description:m.description, note:m.note, price:m.price }); setQuery(""); setOpen(false); }}
+              style={{ padding:"6px 8px", fontSize:12.5, cursor:"pointer", borderRadius:6, display:"flex", justifyContent:"space-between", gap:8 }}
+              onMouseEnter={e=>e.currentTarget.style.background="var(--brand-tint)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+              <span>{m.name}</span><span className="mono" style={{ color:"var(--ink-soft)", flexShrink:0 }}>{money(m.price)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// One fee-type section (Government Fee or Professional Fee) within QuoteItemsEditor — its own
+// light-tinted block, its own item rows, its own "add item" control. Adding here always sets
+// the new item's feeType to this section's, so there's no more relying on category text or a
+// per-item dropdown to classify a line correctly.
+function ItemSection({ title, bg, feeType, items, setItems, service, catalog, readOnly }) {
+  const update = (i, field, val) => setItems(items.map((it,idx) => idx===i ? { ...it, [field]: val } : it));
+  const remove = (i) => setItems(items.filter((_,idx) => idx!==i));
+  const move = (i, dir) => setItems(moveArrayItem(items, i, dir));
+  const addEntry = ({ description, note, price }) => {
+    const lastCategory = items.length ? items[items.length-1].category || "" : "";
+    setItems([...items, { category: lastCategory, service, description, note, qty: 1, price, discountPct: 0, feeType }]);
+  };
+  const subtotal = items.reduce((a,it)=>a+it.qty*it.price*(1-(it.discountPct||0)/100), 0);
+  if (readOnly && items.length === 0) return null;
+
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", background:bg, borderRadius:8, padding:"8px 12px", marginBottom:8 }}>
+        <strong style={{ fontSize:13 }}>{title}</strong>
+        <span className="mono" style={{ fontSize:12.5, color:"var(--ink-soft)" }}>{money(subtotal)}</span>
+      </div>
+      {items.length === 0 && <div style={{ fontSize:12, color:"var(--ink-soft)", padding:"0 4px 10px" }}>No {title.toLowerCase()} items yet.</div>}
+      {items.map((it, i) => readOnly ? (
+        <div key={i} style={{ background:bg, borderRadius:8, padding:"8px 12px", marginBottom:6, display:"flex", justifyContent:"space-between", gap:12 }}>
+          <div>
+            {it.category && <div style={{ fontSize:11, color:"var(--ink-soft)" }}>{it.category}</div>}
+            <div style={{ fontSize:13 }}>{it.description || it.service}</div>
+            {it.note && <div style={{ fontSize:11.5, color:"var(--ink-soft)" }}>{it.note}</div>}
+          </div>
+          <div style={{ textAlign:"right", flexShrink:0 }}>
+            <div className="mono" style={{ fontSize:13 }}>{money(it.qty*it.price*(1-(it.discountPct||0)/100))}</div>
+            <div style={{ fontSize:11, color:"var(--ink-soft)" }}>{it.qty} × {money(it.price)}{it.discountPct > 0 ? ` (-${it.discountPct}%)` : ""}</div>
+          </div>
+        </div>
+      ) : (
+        <div key={i} style={{ background:bg, borderRadius:8, padding:"10px 12px", marginBottom:8 }}>
+          <div className="row2">
+            <div className="field"><label>Category / stage (optional)</label>
+              <input value={it.category || ""} onChange={e=>update(i,"category",e.target.value)} placeholder="e.g. STAGE - 1" />
+            </div>
+            <div className="field"><label>Item & description</label>
+              <input value={it.description || ""} onChange={e=>update(i,"description",e.target.value)} placeholder="e.g. Issue New CR" />
+            </div>
+          </div>
+          <div className="field"><label>Note (optional)</label>
+            <input value={it.note || ""} onChange={e=>update(i,"note",e.target.value)} placeholder="e.g. 50 QAR per partner" />
+          </div>
+          <div className="row3">
+            <div className="field"><label>Qty</label><input type="number" min={1} value={it.qty} onChange={e=>update(i,"qty",(e.target.value === "" ? "" : Number(e.target.value)))} /></div>
+            <div className="field"><label>Rate (QAR)</label><input type="number" value={it.price} onChange={e=>update(i,"price",(e.target.value === "" ? "" : Number(e.target.value)))} /></div>
+            <div className="field"><label>Discount %</label><input type="number" min={0} max={100} value={it.discountPct} onChange={e=>update(i,"discountPct",(e.target.value === "" ? "" : Number(e.target.value)))} /></div>
+          </div>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+            <span className="mono" style={{ fontSize:12, color:"var(--ink-soft)" }}>{money(it.qty*it.price*(1-(it.discountPct||0)/100))}</span>
+            <div style={{ display:"flex", gap:2 }}>
+              <button type="button" className="btn btn-sm btn-ghost" title="Move up" disabled={i===0} onClick={()=>move(i,-1)}><ChevronUp size={13}/></button>
+              <button type="button" className="btn btn-sm btn-ghost" title="Move down" disabled={i===items.length-1} onClick={()=>move(i,1)}><ChevronDown size={13}/></button>
+              <button type="button" className="btn btn-sm btn-ghost" style={{color:"var(--danger)"}} title="Remove" onClick={()=>remove(i)}><X size={13}/></button>
+            </div>
+          </div>
+        </div>
+      ))}
+      {!readOnly && <AddItemControl catalog={catalog} feeType={feeType} service={service} onAdd={addEntry} label={`Add ${title.toLowerCase()} item`} />}
+    </div>
+  );
+}
+
+// Two fixed sections — Government Fee, then Professional Fee — replacing the old single list of
+// per-item cards that repeated a Fee Type + Service Type dropdown on every row. `items` is still
+// one flat array in storage (professionalFeeAmount/govProfSplit/isGovFeeLine/quotationPdf.js all
+// keep working unchanged) — this only splits it for editing and re-concatenates gov+prof on save.
+// `readOnly` renders a plain summary (no inputs/add/remove) — used for Current View before "Edit
+// items" is clicked, where items are still shown but not being edited.
+function QuoteItemsEditor({ items, onChange, service, catalog = [], quotationFeeType, readOnly = false }) {
+  const govItems = items.filter(it => isGovFeeLine(it, quotationFeeType));
+  const profItems = items.filter(it => !isGovFeeLine(it, quotationFeeType));
+  return (
+    <div>
+      <ItemSection title="Government Fee" bg={GOV_FEE_BG} feeType="Government Fee" items={govItems} service={service} catalog={catalog} readOnly={readOnly}
+        setItems={(next)=>onChange([...next, ...profItems])} />
+      <ItemSection title="Professional Fee" bg={PROF_FEE_BG} feeType="Professional Fee" items={profItems} service={service} catalog={catalog} readOnly={readOnly}
+        setItems={(next)=>onChange([...govItems, ...next])} />
+    </div>
+  );
+}
+
+function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVICES[0], editableCustomer=false, customerOptions=[], services=SERVICES, itemCatalog=[], dispatch, templates, role=null, employees=[], defaultOwner="", onClose }) {
   const [showNewService, setShowNewService] = useState(false);
   const [customer, setCustomer] = useState(customerName);
   // Admin-only: lets whoever is building the quotation attribute it to a different salesperson
@@ -2475,8 +2598,6 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
   // template, tagged per item — see quotation_templates in schema.sql), so there's no fee-type
   // keying to do here anymore.
   const tpl = templates[templateService];
-
-  const update = (i, field, val) => setItems(items.map((it,idx) => idx===i ? { ...it, [field]: val } : it));
 
   // "Activity Fees" is the one template line that's genuinely different per quotation — it's
   // priced per business activity, not a flat fee — so loading a template that has it pauses to
@@ -2530,14 +2651,6 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
     });
     applyTemplate(pendingTpl, newItems);
     setActivityPrompt(null);
-  };
-
-  const addItem = () => {
-    const lastCategory = items.length ? items[items.length-1].category || "" : "";
-    setItems([...items, { category: lastCategory, service: templateService, description: "", note: "", qty: 1, price: 0, discountPct: 0 }]);
-  };
-  const addCategory = () => {
-    setItems([...items, { category: "", service: templateService, description: "", note: "", qty: 1, price: 0, discountPct: 0 }]);
   };
 
   const [saving, setSaving] = useState(false);
@@ -2627,54 +2740,7 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
       )}
       <div className="field"><label>Subject</label><input value={subject} onChange={e=>setSubject(e.target.value)} placeholder="e.g. 100% FOREIGN OWNERSHIP COMPANY FORMATION - Government Fees" /></div>
 
-      {items.map((it, i) => (
-        <div key={i} className="agw-card" style={{ marginBottom: 10, padding: 12, background: isGovFeeLine(it) ? GOV_FEE_BG : PROF_FEE_BG }}>
-          <div style={{ display:"flex", justifyContent:"flex-end", gap:4, marginBottom: 6 }}>
-            <button type="button" className="btn btn-sm btn-ghost" title="Move category up" disabled={i===0}
-              onClick={()=>setItems(moveCategoryBlock(items, i, -1))}><ChevronUp size={13}/><ChevronUp size={13} style={{marginLeft:-8}}/></button>
-            <button type="button" className="btn btn-sm btn-ghost" title="Move category down" disabled={i===items.length-1}
-              onClick={()=>setItems(moveCategoryBlock(items, i, 1))}><ChevronDown size={13}/><ChevronDown size={13} style={{marginLeft:-8}}/></button>
-            <button type="button" className="btn btn-sm btn-ghost" title="Move item up" disabled={i===0}
-              onClick={()=>setItems(moveArrayItem(items, i, -1))}><ChevronUp size={13}/></button>
-            <button type="button" className="btn btn-sm btn-ghost" title="Move item down" disabled={i===items.length-1}
-              onClick={()=>setItems(moveArrayItem(items, i, 1))}><ChevronDown size={13}/></button>
-          </div>
-          <div className="row2">
-            <div className="field"><label>Category / stage</label>
-              <input value={it.category || ""} onChange={e=>update(i,"category",e.target.value)} placeholder="e.g. STAGE - 1 : GOVERNMENT FEES" />
-            </div>
-            <div className="field"><label>Service type (internal tag)</label>
-              <select value={it.service} onChange={e=>update(i,"service",e.target.value)}>
-                {services.map(s=><option key={s}>{s}</option>)}
-              </select>
-            </div>
-          </div>
-          <div className="row2">
-            <div className="field"><label>Item & description</label>
-              <input value={it.description || ""} onChange={e=>update(i,"description",e.target.value)} placeholder="e.g. Issue New CR" />
-            </div>
-            <div className="field"><label>Fee type</label>
-              <select value={it.feeType || ""} onChange={e=>update(i,"feeType",e.target.value)}>
-                <option value="">Auto (from category text)</option>
-                {FEE_TYPES.map(ft=><option key={ft} value={ft}>{ft}</option>)}
-              </select>
-            </div>
-          </div>
-          <div className="field"><label>Note (optional — small text under the item)</label>
-            <input value={it.note || ""} onChange={e=>update(i,"note",e.target.value)} placeholder="e.g. 50 QAR per partner" />
-          </div>
-          <div className="row3">
-            <div className="field"><label>Qty</label><input type="number" min={1} value={it.qty} onChange={e=>update(i,"qty",(e.target.value === "" ? "" : Number(e.target.value)))} /></div>
-            <div className="field"><label>Rate (QAR)</label><input type="number" value={it.price} onChange={e=>update(i,"price",(e.target.value === "" ? "" : Number(e.target.value)))} /></div>
-            <div className="field"><label>Discount %</label><input type="number" min={0} max={100} value={it.discountPct} onChange={e=>update(i,"discountPct",(e.target.value === "" ? "" : Number(e.target.value)))} /></div>
-          </div>
-          {items.length > 1 && <button className="btn btn-ghost btn-sm" onClick={()=>setItems(items.filter((_,idx)=>idx!==i))}><X size={13}/> Remove line</button>}
-        </div>
-      ))}
-      <div style={{ display:"flex", gap:8 }}>
-        <button className="btn btn-sm" onClick={addItem}><Plus size={13}/> Add item</button>
-        <button className="btn btn-sm btn-ghost" onClick={addCategory}><Plus size={13}/> Add category</button>
-      </div>
+      <QuoteItemsEditor items={items} onChange={setItems} service={templateService} catalog={itemCatalog} />
 
       <div className="row2" style={{ marginTop: 14 }}>
         <div className="field"><label>Notes (shown as-is on the quotation)</label><textarea rows={4} value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Looking forward for your business..." /></div>
@@ -2957,13 +3023,15 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
   const updDraftItem = (i, field, val) => setDraft(d => ({ ...d, items: d.items.map((it,idx) => idx===i ? { ...it, [field]: val } : it) }));
   const addDraftItem = () => setDraft(d => {
     const last = d.items[d.items.length-1];
-    return { ...d, items: [...d.items, { category: last?.category || "", service: last?.service || q.items[0]?.service || "", description: "", note: "", qty: 1, price: 0, discountPct: 0 }] };
+    const feeType = last ? (isGovFeeLine(last, q.feeType) ? "Government Fee" : "Professional Fee") : (q.feeType || "Professional Fee");
+    return { ...d, items: [...d.items, { category: last?.category || "", service: last?.service || q.items[0]?.service || "", description: "", note: "", qty: 1, price: 0, discountPct: 0, feeType }] };
   });
   // Inserts a blank line right after item `i`, not at the end — so a missed line can be dropped
   // in between two existing ones instead of appended then moved up one row at a time.
   const insertDraftItemAfter = (i) => setDraft(d => {
     const ref = d.items[i];
-    const blank = { category: ref?.category || "", service: ref?.service || q.items[0]?.service || "", description: "", note: "", qty: 1, price: 0, discountPct: 0 };
+    const feeType = ref ? (isGovFeeLine(ref, q.feeType) ? "Government Fee" : "Professional Fee") : (q.feeType || "Professional Fee");
+    const blank = { category: ref?.category || "", service: ref?.service || q.items[0]?.service || "", description: "", note: "", qty: 1, price: 0, discountPct: 0, feeType };
     const items = d.items.slice();
     items.splice(i + 1, 0, blank);
     return { ...d, items };
@@ -3030,86 +3098,7 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
             </div>
           )}
           {visualSaveError && <div className="side-note" style={{ color:"var(--danger)", marginTop:0, marginBottom:10 }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{visualSaveError}</div>}
-          {(() => {
-            let lastCategory = null;
-            const editInputStyle = { border:"none", borderBottom:"1px dashed var(--hair)", background:"var(--gold-tint)", font:"inherit", color:"inherit", padding:"1px 2px", width:"100%", textAlign:"inherit" };
-            return (
-            <div style={{ overflowX:"auto" }}>
-            <table className="agw-table" style={{ marginTop: 12 }}>
-              <thead><tr><th>Category</th><th>Item & description</th><th>Qty</th><th>Rate</th><th>Disc.</th><th>Amount</th>{editingNow && <th style={{width:100}}></th>}</tr></thead>
-              <tbody>
-                {cq.items.map((it,i) => {
-                  const bg = isGovFeeLine(it, q.feeType) ? GOV_FEE_BG : PROF_FEE_BG;
-                  const showHeader = (it.category || "") !== lastCategory && it.category;
-                  lastCategory = it.category || lastCategory;
-                  return (
-                    <React.Fragment key={i}>
-                      {showHeader && (
-                        <tr style={{ background: bg }}>
-                          <td colSpan={editingNow ? 7 : 6} style={{ fontWeight:600, fontSize:11.5 }}>
-                            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                              <span>{it.category}</span>
-                              {editingNow && (
-                                <span style={{ display:"flex", gap:2 }}>
-                                  <button type="button" className="btn btn-sm btn-ghost" title="Move category up" disabled={i===0} style={{padding:2}}
-                                    onClick={()=>updDraft("items", moveCategoryBlock(src.items, i, -1))}><ChevronUp size={12}/><ChevronUp size={12} style={{marginLeft:-8}}/></button>
-                                  <button type="button" className="btn btn-sm btn-ghost" title="Move category down" disabled={i===src.items.length-1} style={{padding:2}}
-                                    onClick={()=>updDraft("items", moveCategoryBlock(src.items, i, 1))}><ChevronDown size={12}/><ChevronDown size={12} style={{marginLeft:-8}}/></button>
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                      <tr style={{ background: bg }}>
-                        <td style={{fontSize:11.5, color:"var(--ink-soft)"}}>{it.category || "—"}</td>
-                        <td>
-                          {editingNow ? (
-                            <>
-                              <input style={{ ...editInputStyle, marginBottom:4 }} value={it.description || ""} onChange={e=>updDraftItem(i,"description",e.target.value)} placeholder={it.service} />
-                              <input style={{ ...editInputStyle, fontSize:11, color:"var(--ink-soft)" }} value={it.note || ""} onChange={e=>updDraftItem(i,"note",e.target.value)} placeholder="Note (optional)" />
-                            </>
-                          ) : (
-                            <>{it.description || it.service}{it.note && <div style={{fontSize:11, color:"var(--ink-soft)"}}>{it.note}</div>}</>
-                          )}
-                        </td>
-                        <td className="mono">
-                          {editingNow ? <input type="number" style={editInputStyle} value={it.qty} onChange={e=>updDraftItem(i,"qty",(e.target.value === "" ? "" : Number(e.target.value)))} /> : it.qty}
-                        </td>
-                        <td className="mono">
-                          {editingNow ? <input type="number" style={editInputStyle} value={it.price} onChange={e=>updDraftItem(i,"price",(e.target.value === "" ? "" : Number(e.target.value)))} /> : money(it.price)}
-                        </td>
-                        <td>
-                          {editingNow ? <input type="number" min={0} max={100} style={editInputStyle} value={it.discountPct||0} onChange={e=>updDraftItem(i,"discountPct",(e.target.value === "" ? "" : Number(e.target.value)))} /> : `${it.discountPct||0}%`}
-                        </td>
-                        <td className="mono">{money(it.qty*it.price*(1-(it.discountPct||0)/100))}</td>
-                        {editingNow && (
-                          <td>
-                            <div style={{ display:"flex", gap:2 }}>
-                              <button type="button" className="btn btn-sm btn-ghost" title="Move item up" disabled={i===0} style={{padding:2}}
-                                onClick={()=>updDraft("items", moveArrayItem(src.items, i, -1))}><ChevronUp size={12}/></button>
-                              <button type="button" className="btn btn-sm btn-ghost" title="Move item down" disabled={i===src.items.length-1} style={{padding:2}}
-                                onClick={()=>updDraft("items", moveArrayItem(src.items, i, 1))}><ChevronDown size={12}/></button>
-                              <button type="button" className="btn btn-sm btn-ghost" title="Insert item below" style={{padding:2}}
-                                onClick={()=>insertDraftItemAfter(i)}><Plus size={12}/></button>
-                              {src.items.length > 1 && (
-                                <button type="button" className="btn btn-sm btn-ghost" title="Remove item" style={{ color:"var(--danger)", padding:2 }} onClick={()=>removeDraftItem(i)}><X size={13}/></button>
-                              )}
-                            </div>
-                          </td>
-                        )}
-                      </tr>
-                    </React.Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
-            </div>
-            );
-          })()}
-          {editingNow && (
-            <button type="button" className="btn btn-sm" style={{ marginBottom:16 }} onClick={addDraftItem}><Plus size={13}/> Add item</button>
-          )}
+          <QuoteItemsEditor items={cq.items} onChange={(next)=>updDraft("items", next)} service={cq.items[0]?.service} catalog={state?.itemCatalog || []} quotationFeeType={q.feeType} readOnly={!editingNow} />
           {govProfSplitCq.govTotal > 0 && govProfSplitCq.profTotal > 0 && (govProfSplitCq.govFirst ? (
             <>
               <div style={{ textAlign:"right", marginTop: 10, fontSize:13, color:"var(--ink-soft)" }}>Government Fee Total: <span className="mono">{money(govProfSplitCq.govTotal)}</span></div>
@@ -3489,6 +3478,19 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
 /* ---------------------------------------------------------------------- */
 
 function QuotationTemplatesPage({ state, dispatch }) {
+  const [tab, setTab] = useState("templates");
+  return (
+    <div>
+      <div className="tabbar" style={{ marginBottom: 16 }}>
+        <button className={`tab ${tab==="templates"?"active":""}`} onClick={()=>setTab("templates")}>Templates</button>
+        <button className={`tab ${tab==="catalog"?"active":""}`} onClick={()=>setTab("catalog")}>Items catalog</button>
+      </div>
+      {tab === "templates" ? <QuotationTemplateEditor state={state} dispatch={dispatch} /> : <ItemCatalogManager catalog={state.itemCatalog} services={state.services} dispatch={dispatch} />}
+    </div>
+  );
+}
+
+function QuotationTemplateEditor({ state, dispatch }) {
   const [service, setService] = useState(SERVICES[0]);
   const seed = state.quotationTemplates[SERVICES[0]] || { items: [], terms: "", notes: "", subject: "", orderDiscount: 0, bank: "", footerNote: "" };
   const [subject, setSubject] = useState(seed.subject || "");
@@ -3519,15 +3521,6 @@ function QuotationTemplatesPage({ state, dispatch }) {
     setFooterNote(t.footerNote || "");
   };
 
-  const update = (i, field, val) => setItems(items.map((it,idx) => idx===i ? { ...it, [field]: val } : it));
-  const addItem = () => {
-    const lastCategory = items.length ? items[items.length-1].category || "" : "";
-    setItems([...items, { category: lastCategory, service, description: "", note: "", qty: 1, price: 0, discountPct: 0, feeType: "Professional Fee" }]);
-  };
-  const addCategory = () => {
-    setItems([...items, { category: "", service, description: "", note: "", qty: 1, price: 0, discountPct: 0, feeType: "Professional Fee" }]);
-  };
-
   return (
     <div className="agw-grid" style={{ gridTemplateColumns: "220px 1fr" }}>
       <div className="agw-card" style={{ padding: 8 }}>
@@ -3552,46 +3545,7 @@ function QuotationTemplatesPage({ state, dispatch }) {
 
         <div className="field"><label>Subject</label><input value={subject} onChange={e=>setSubject(e.target.value)} placeholder="e.g. 100% FOREIGN OWNERSHIP COMPANY FORMATION - Professional fees" /></div>
 
-        {items.map((it,i) => (
-          <div key={i} className="agw-card" style={{ marginBottom: 10, padding: 12, background: isGovFeeLine(it) ? GOV_FEE_BG : PROF_FEE_BG }}>
-            <div style={{ display:"flex", justifyContent:"flex-end", gap:4, marginBottom: 6 }}>
-              <button type="button" className="btn btn-sm btn-ghost" title="Move category up" disabled={i===0}
-                onClick={()=>setItems(moveCategoryBlock(items, i, -1))}><ChevronUp size={13}/><ChevronUp size={13} style={{marginLeft:-8}}/></button>
-              <button type="button" className="btn btn-sm btn-ghost" title="Move category down" disabled={i===items.length-1}
-                onClick={()=>setItems(moveCategoryBlock(items, i, 1))}><ChevronDown size={13}/><ChevronDown size={13} style={{marginLeft:-8}}/></button>
-              <button type="button" className="btn btn-sm btn-ghost" title="Move item up" disabled={i===0}
-                onClick={()=>setItems(moveArrayItem(items, i, -1))}><ChevronUp size={13}/></button>
-              <button type="button" className="btn btn-sm btn-ghost" title="Move item down" disabled={i===items.length-1}
-                onClick={()=>setItems(moveArrayItem(items, i, 1))}><ChevronDown size={13}/></button>
-            </div>
-            <div className="row2">
-              <div className="field"><label>Category / stage</label>
-                <input value={it.category || ""} onChange={e=>update(i,"category",e.target.value)} placeholder="e.g. STAGE - 1 : GOVERNMENT FEES" />
-              </div>
-              <div className="field"><label>Fee type</label>
-                <select value={it.feeType || "Professional Fee"} onChange={e=>update(i,"feeType",e.target.value)}>
-                  {FEE_TYPES.map(f=><option key={f}>{f}</option>)}
-                </select>
-              </div>
-            </div>
-            <div className="field"><label>Item & description</label>
-              <input value={it.description || ""} onChange={e=>update(i,"description",e.target.value)} placeholder="e.g. Issue New CR" />
-            </div>
-            <div className="field"><label>Note (optional — small text under the item)</label>
-              <input value={it.note || ""} onChange={e=>update(i,"note",e.target.value)} placeholder="e.g. 50 QAR per partner" />
-            </div>
-            <div className="row3">
-              <div className="field"><label>Qty</label><input type="number" value={it.qty} onChange={e=>update(i,"qty",(e.target.value === "" ? "" : Number(e.target.value)))}/></div>
-              <div className="field"><label>Default rate (QAR)</label><input type="number" value={it.price} onChange={e=>update(i,"price",(e.target.value === "" ? "" : Number(e.target.value)))}/></div>
-              <div className="field"><label>Default discount %</label><input type="number" value={it.discountPct} onChange={e=>update(i,"discountPct",(e.target.value === "" ? "" : Number(e.target.value)))}/></div>
-            </div>
-            <button className="btn btn-ghost btn-sm" onClick={()=>setItems(items.filter((_,idx)=>idx!==i))}><X size={13}/> Remove line</button>
-          </div>
-        ))}
-        <div style={{ display:"flex", gap:8 }}>
-          <button className="btn btn-sm" onClick={addItem}><Plus size={13}/> Add item</button>
-          <button className="btn btn-sm btn-ghost" onClick={addCategory}><Plus size={13}/> Add category</button>
-        </div>
+        <QuoteItemsEditor items={items} onChange={setItems} service={service} catalog={state.itemCatalog} />
 
         <div className="row2" style={{ marginTop: 14 }}>
           <div className="field"><label>Notes (shown as-is on the quotation)</label><textarea rows={4} value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Looking forward for your business..." /></div>
@@ -3618,6 +3572,95 @@ function QuotationTemplatesPage({ state, dispatch }) {
           />
         )}
       </div>
+    </div>
+  );
+}
+
+// Add/edit/deactivate reusable quotation line items — the list the catalog picker in
+// QuoteItemsEditor searches. Deactivating (not deleting) keeps history intact; see item_catalog
+// in schema.sql for why.
+function ItemCatalogManager({ catalog, services, dispatch }) {
+  const blank = { name:"", description:"", note:"", feeType:"Government Fee", price:0, service:"" };
+  const [editing, setEditing] = useState(null); // { id, ...fields } or null for "adding new"
+  const [form, setForm] = useState(blank);
+  const [saving, setSaving] = useState(false);
+  const [removing, setRemoving] = useState(null);
+
+  const startEdit = (entry) => { setEditing(entry.id); setForm({ ...entry }); };
+  const startAdd = () => { setEditing("new"); setForm(blank); };
+  const cancel = () => { setEditing(null); setForm(blank); };
+
+  const save = async () => {
+    if (!form.name.trim() || !form.description.trim()) return;
+    setSaving(true);
+    try {
+      const payload = { name: form.name.trim(), description: form.description.trim(), note: form.note || "", feeType: form.feeType, price: Number(form.price) || 0, service: form.service || "" };
+      if (editing === "new") await dispatch({ type:"ADD_ITEM_CATALOG_ENTRY", payload });
+      else await dispatch({ type:"UPDATE_ITEM_CATALOG_ENTRY", id: editing, payload });
+      cancel();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="agw-card">
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+        <div>
+          <strong style={{ fontSize:14 }}>Items catalog</strong>
+          <p className="modal-sub" style={{ marginTop:2 }}>Reusable line items — pick one instead of retyping when building a quotation. Optionally scope one to a single service; leave it blank to offer it everywhere.</p>
+        </div>
+        {editing === null && <button className="btn btn-sm" onClick={startAdd}><Plus size={13}/> Add item</button>}
+      </div>
+
+      {editing !== null && (
+        <div className="agw-card" style={{ marginBottom:14, background:"var(--gold-tint)" }}>
+          <div className="row2">
+            <div className="field"><label>Name (shown in the picker)</label><input autoFocus value={form.name} onChange={e=>setForm(f=>({...f, name:e.target.value}))} placeholder="e.g. Issue New CR" /></div>
+            <div className="field"><label>Fee type</label>
+              <select value={form.feeType} onChange={e=>setForm(f=>({...f, feeType:e.target.value}))}>
+                {FEE_TYPES.map(ft=><option key={ft}>{ft}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="field"><label>Description (goes onto the quotation line)</label><input value={form.description} onChange={e=>setForm(f=>({...f, description:e.target.value}))} placeholder="e.g. Issue New CR" /></div>
+          <div className="field"><label>Note (optional)</label><input value={form.note} onChange={e=>setForm(f=>({...f, note:e.target.value}))} placeholder="e.g. 50 QAR per partner" /></div>
+          <div className="row2">
+            <div className="field"><label>Default price (QAR)</label><input type="number" value={form.price} onChange={e=>setForm(f=>({...f, price:e.target.value}))} /></div>
+            <div className="field"><label>Only show for service (optional)</label>
+              <select value={form.service} onChange={e=>setForm(f=>({...f, service:e.target.value}))}>
+                <option value="">All services</option>
+                {services.map(s=><option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+          </div>
+          <div style={{ display:"flex", gap:8 }}>
+            <button className="btn btn-sm" onClick={cancel}>Cancel</button>
+            <button className="btn btn-sm btn-primary" disabled={saving || !form.name.trim() || !form.description.trim()} onClick={save}>{saving ? "Saving…" : "Save"}</button>
+          </div>
+        </div>
+      )}
+
+      {catalog.length === 0 ? <Empty icon={FileText} text="No catalog items yet." /> : (
+        <table className="agw-table">
+          <thead><tr><th>Name</th><th>Fee type</th><th>Price</th><th>Service</th><th></th></tr></thead>
+          <tbody>
+            {catalog.map(c => (
+              <tr key={c.id}>
+                <td>{c.name}{c.note && <div style={{fontSize:11, color:"var(--ink-soft)"}}>{c.note}</div>}</td>
+                <td><Stamp tone={c.feeType==="Government Fee" ? "neutral" : "success"}>{c.feeType}</Stamp></td>
+                <td className="mono">{money(c.price)}</td>
+                <td>{c.service || <span style={{color:"var(--ink-soft)"}}>All services</span>}</td>
+                <td>
+                  <RowActions onEdit={()=>startEdit(c)} onRemove={()=>setRemoving(c)} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {removing && <ConfirmModal title={`Remove "${removing.name}"?`} body="It stays out of the catalog picker going forward — quotations that already used it are not affected."
+        onConfirm={()=>dispatch({type:"REMOVE_ITEM_CATALOG_ENTRY", id:removing.id})} onClose={()=>setRemoving(null)} />}
     </div>
   );
 }

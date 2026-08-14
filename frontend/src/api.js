@@ -363,6 +363,12 @@ export const api = {
     add: (name) => post("/services", { name }),
     remove: (name) => del(`/services/${encodeURIComponent(name)}`),
   },
+  itemCatalog: {
+    list: () => get("/item-catalog"),
+    create: (payload) => post("/item-catalog", payload),
+    update: (id, payload) => patch(`/item-catalog/${id}`, payload),
+    remove: (id) => del(`/item-catalog/${id}`),
+  },
   quotationTemplates: {
     list: () => get("/quotation-templates"),
     update: (service, payload) => request("PUT", `/quotation-templates/${encodeURIComponent(service)}`, payload),
