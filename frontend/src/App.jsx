@@ -432,31 +432,6 @@ const moveArrayItem = (arr, i, dir) => {
   return next;
 };
 
-// Moves an entire category block (every consecutive item sharing the same category text as index
-// `i`) up or down past the adjacent block — "move category" as one action instead of dragging
-// every line in it one at a time. Items with no category (category "") are each their own
-// single-item block, same as items already are without this.
-const moveCategoryBlock = (arr, i, dir) => {
-  const cat = arr[i].category || "";
-  let start = i, end = i;
-  while (start > 0 && (arr[start - 1].category || "") === cat) start--;
-  while (end < arr.length - 1 && (arr[end + 1].category || "") === cat) end++;
-  const block = arr.slice(start, end + 1);
-  if (dir < 0) {
-    if (start === 0) return arr;
-    const prevCat = arr[start - 1].category || "";
-    let prevStart = start - 1;
-    while (prevStart > 0 && (arr[prevStart - 1].category || "") === prevCat) prevStart--;
-    return [...arr.slice(0, prevStart), ...block, ...arr.slice(prevStart, start), ...arr.slice(end + 1)];
-  } else {
-    if (end === arr.length - 1) return arr;
-    const nextCat = arr[end + 1].category || "";
-    let nextEnd = end + 1;
-    while (nextEnd < arr.length - 1 && (arr[nextEnd + 1].category || "") === nextCat) nextEnd++;
-    return [...arr.slice(0, start), ...arr.slice(end + 1, nextEnd + 1), ...block, ...arr.slice(nextEnd + 1)];
-  }
-};
-
 // Where a record originally came from. "Assigned" = the Lead Manager handed this lead to its owner
 // (assignedAt is only ever stamped on a central-distribution hand-off — see leads.routes.js);
 // "Self-sourced" = the owner brought it in themselves. Deals and quotations inherit the label by
@@ -3020,23 +2995,6 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
   };
   const cancelVisualEdit = () => { setDraft(null); setVisualEdit(false); setVisualSaveError(""); };
   const updDraft = (field, val) => setDraft(d => ({ ...d, [field]: val }));
-  const updDraftItem = (i, field, val) => setDraft(d => ({ ...d, items: d.items.map((it,idx) => idx===i ? { ...it, [field]: val } : it) }));
-  const addDraftItem = () => setDraft(d => {
-    const last = d.items[d.items.length-1];
-    const feeType = last ? (isGovFeeLine(last, q.feeType) ? "Government Fee" : "Professional Fee") : (q.feeType || "Professional Fee");
-    return { ...d, items: [...d.items, { category: last?.category || "", service: last?.service || q.items[0]?.service || "", description: "", note: "", qty: 1, price: 0, discountPct: 0, feeType }] };
-  });
-  // Inserts a blank line right after item `i`, not at the end — so a missed line can be dropped
-  // in between two existing ones instead of appended then moved up one row at a time.
-  const insertDraftItemAfter = (i) => setDraft(d => {
-    const ref = d.items[i];
-    const feeType = ref ? (isGovFeeLine(ref, q.feeType) ? "Government Fee" : "Professional Fee") : (q.feeType || "Professional Fee");
-    const blank = { category: ref?.category || "", service: ref?.service || q.items[0]?.service || "", description: "", note: "", qty: 1, price: 0, discountPct: 0, feeType };
-    const items = d.items.slice();
-    items.splice(i + 1, 0, blank);
-    return { ...d, items };
-  });
-  const removeDraftItem = (i) => setDraft(d => ({ ...d, items: d.items.filter((_,idx) => idx!==i) }));
 
   return (
     <Modal title={q.id} sub={<CustomerNameLink name={q.customer} state={state} onOpen={setViewingCustomer} />} onClose={onClose} width={960}>
@@ -3285,88 +3243,38 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
               <div style={{ fontSize:13.5, marginBottom:20 }}>{src.subject || src.items[0]?.service || "Quotation"}</div>
             )}
 
+            {editingNow ? (
+              <QuoteItemsEditor items={src.items} onChange={(next)=>updDraft("items", next)} service={src.items[0]?.service} catalog={state?.itemCatalog || []} quotationFeeType={q.feeType} />
+            ) : (
             <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12.5, marginBottom:8 }}>
               <thead>
                 <tr style={{ background:themeColors.headerBg }}>
                   <th style={{ color:"#fff", textAlign:"left", padding:"9px 10px", fontWeight:500, width:30 }}>#</th>
                   <th style={{ color:"#fff", textAlign:"left", padding:"9px 10px", fontWeight:500 }}>Item & Description</th>
-                  {editingNow && <th style={{ color:"#fff", textAlign:"right", padding:"9px 10px", fontWeight:500, width:55 }}>Qty</th>}
                   <th style={{ color:"#fff", textAlign:"right", padding:"9px 10px", fontWeight:500, width:90 }}>Rate</th>
-                  {editingNow && <th style={{ color:"#fff", textAlign:"right", padding:"9px 10px", fontWeight:500, width:60 }}>Disc.%</th>}
                   <th style={{ color:"#fff", textAlign:"right", padding:"9px 10px", fontWeight:500, width:90 }}>Amount</th>
-                  {editingNow && <th style={{ width:96 }}></th>}
                 </tr>
               </thead>
               <tbody>
                 {rows.map(r => r.kind === "category" ? (
                   <tr key={r.key} style={{ background:r.bg }}>
-                    <td colSpan={editingNow ? 7 : 4} style={{ padding:"9px 10px", fontWeight:600, fontSize:12, borderBottom:"1px solid var(--hair)" }}>
-                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                        <span>{r.label}</span>
-                        {editingNow && (
-                          <span style={{ display:"flex", gap:2 }}>
-                            <button type="button" className="btn btn-sm btn-ghost" title="Move category up" disabled={r.idx===0} style={{padding:2}}
-                              onClick={()=>updDraft("items", moveCategoryBlock(src.items, r.idx, -1))}><ChevronUp size={12}/><ChevronUp size={12} style={{marginLeft:-8}}/></button>
-                            <button type="button" className="btn btn-sm btn-ghost" title="Move category down" disabled={r.idx===src.items.length-1} style={{padding:2}}
-                              onClick={()=>updDraft("items", moveCategoryBlock(src.items, r.idx, 1))}><ChevronDown size={12}/><ChevronDown size={12} style={{marginLeft:-8}}/></button>
-                          </span>
-                        )}
-                      </div>
+                    <td colSpan={4} style={{ padding:"9px 10px", fontWeight:600, fontSize:12, borderBottom:"1px solid var(--hair)" }}>
+                      {r.label}
                     </td>
                   </tr>
                 ) : (
                   <tr key={r.key} style={{ borderBottom:"1px solid var(--hair)", background:r.bg }}>
                     <td style={{ padding:"9px 10px", verticalAlign:"top" }}>{r.number}</td>
                     <td style={{ padding:"9px 10px" }}>
-                      {editingNow ? (
-                        <>
-                          <input style={{ ...inputStyle, marginBottom:4 }} value={r.it.description || ""} onChange={e=>updDraftItem(r.idx,"description",e.target.value)} placeholder={r.it.service} />
-                          <input style={{ ...inputStyle, fontSize:11, color:"var(--ink-soft)" }} value={r.it.note || ""} onChange={e=>updDraftItem(r.idx,"note",e.target.value)} placeholder="Note (optional)" />
-                        </>
-                      ) : (
-                        <>
-                          {r.it.description || r.it.service}
-                          {r.it.note && <div style={{ fontSize:11, color:"var(--ink-soft)", marginTop:2 }}>{r.it.note}</div>}
-                        </>
-                      )}
+                      {r.it.description || r.it.service}
+                      {r.it.note && <div style={{ fontSize:11, color:"var(--ink-soft)", marginTop:2 }}>{r.it.note}</div>}
                     </td>
-                    {editingNow && (
-                      <td className="mono" style={{ padding:"9px 10px", textAlign:"right", verticalAlign:"top" }}>
-                        <input type="number" style={{ ...inputStyle, textAlign:"right" }} value={r.it.qty} onChange={e=>updDraftItem(r.idx,"qty",(e.target.value === "" ? "" : Number(e.target.value)))} />
-                      </td>
-                    )}
-                    <td className="mono" style={{ padding:"9px 10px", textAlign:"right", verticalAlign:"top" }}>
-                      {editingNow ? (
-                        <input type="number" style={{ ...inputStyle, textAlign:"right" }} value={r.it.price} onChange={e=>updDraftItem(r.idx,"price",(e.target.value === "" ? "" : Number(e.target.value)))} />
-                      ) : Number(r.it.price).toFixed(2)}
-                    </td>
-                    {editingNow && (
-                      <td className="mono" style={{ padding:"9px 10px", textAlign:"right", verticalAlign:"top" }}>
-                        <input type="number" min={0} max={100} style={{ ...inputStyle, textAlign:"right" }} value={r.it.discountPct||0} onChange={e=>updDraftItem(r.idx,"discountPct",(e.target.value === "" ? "" : Number(e.target.value)))} />
-                      </td>
-                    )}
+                    <td className="mono" style={{ padding:"9px 10px", textAlign:"right", verticalAlign:"top" }}>{Number(r.it.price).toFixed(2)}</td>
                     <td className="mono" style={{ padding:"9px 10px", textAlign:"right", verticalAlign:"top" }}>{(r.it.qty*r.it.price*(1-(r.it.discountPct||0)/100)).toFixed(2)}</td>
-                    {editingNow && (
-                      <td style={{ padding:"9px 10px", verticalAlign:"top" }}>
-                        <div style={{ display:"flex", gap:2 }}>
-                          <button type="button" className="btn btn-sm btn-ghost" title="Move item up" disabled={r.idx===0} style={{padding:2}}
-                            onClick={()=>updDraft("items", moveArrayItem(src.items, r.idx, -1))}><ChevronUp size={12}/></button>
-                          <button type="button" className="btn btn-sm btn-ghost" title="Move item down" disabled={r.idx===src.items.length-1} style={{padding:2}}
-                            onClick={()=>updDraft("items", moveArrayItem(src.items, r.idx, 1))}><ChevronDown size={12}/></button>
-                          <button type="button" className="btn btn-sm btn-ghost" title="Insert item below" style={{padding:2}}
-                            onClick={()=>insertDraftItemAfter(r.idx)}><Plus size={12}/></button>
-                          {src.items.length > 1 && (
-                            <button type="button" className="btn btn-sm btn-ghost" title="Remove item" style={{ color:"var(--danger)", padding:2 }} onClick={()=>removeDraftItem(r.idx)}><X size={13}/></button>
-                          )}
-                        </div>
-                      </td>
-                    )}
                   </tr>
                 ))}
               </tbody>
             </table>
-            {editingNow && (
-              <button type="button" className="btn btn-sm" style={{ marginBottom:16 }} onClick={addDraftItem}><Plus size={13}/> Add item</button>
             )}
 
             <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:24 }}>
