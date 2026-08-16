@@ -1,4 +1,22 @@
 require("dotenv").config();
+
+// Last-resort safety net for anything express-async-errors can't reach (a rejection outside a
+// request handler — a timer callback, an event listener, a floating promise). Without this, such
+// an error crashes the process silently: no log line, nothing pointing at the cause, just a gap
+// until the host's process supervisor notices and restarts it — which is exactly what "server
+// randomly down for a few minutes" looks like from the outside. Logging then exiting (rather than
+// trying to keep running) is deliberate: past this point the process is in an undefined state, so
+// a clean restart is safer than limping on — but now the restart comes with a stack trace in the
+// log telling us what actually broke.
+process.on("uncaughtException", (err) => {
+  console.error("[FATAL] Uncaught exception — restarting:", err);
+  process.exit(1);
+});
+process.on("unhandledRejection", (reason) => {
+  console.error("[FATAL] Unhandled promise rejection — restarting:", reason);
+  process.exit(1);
+});
+
 const express = require("express");
 // Patches Express's router so a rejected promise from an `async (req, res) => {...}` handler is
 // forwarded to the error-handling middleware below, instead of becoming an unhandled rejection
