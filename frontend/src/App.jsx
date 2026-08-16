@@ -2594,8 +2594,11 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
 
   const loadTemplate = () => {
     if (!tpl) return;
+    // startsWith, not exact match — a template's Activity Fees line can carry extra explanatory
+    // text after the label (e.g. "Activity Fees (QAR 300 to 500 for one activity...)"), which an
+    // exact-equality check would miss entirely, silently skipping the activity-list prompt.
     const activityIdxs = tpl.items.reduce((acc, it, idx) => {
-      if ((it.description || "").trim().toLowerCase() === "activity fees") acc.push(idx);
+      if ((it.description || "").trim().toLowerCase().startsWith("activity fees")) acc.push(idx);
       return acc;
     }, []);
     if (activityIdxs.length) {
