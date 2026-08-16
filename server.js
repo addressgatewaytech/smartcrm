@@ -105,13 +105,18 @@ if (process.env.NODE_ENV === "production") {
   cron.schedule("0 1 * * *", () => runRecycling().catch((e) => console.error("Cron recycling failed", e)));
   console.log("Scheduled jobs registered (auto-assign 07:00, end-of-day return 23:00, recycling 01:00).");
 
+  // Every-minute was overkill for sweeps that only need to notice something within a few minutes
+  // of it becoming due, and was a real contributor to burning through the MySQL account's
+  // max_connections_per_hour cap (Hostinger shared plan default: 500/hour) — once that's hit,
+  // every DB-touching route fails until the hour rolls over, which is what "server down for a
+  // few minutes" actually was. 5-minute cadence cuts this job's connection churn by 5x.
   const { checkOverdueLeads } = require("./src/services/leadSlaJobs");
-  cron.schedule("* * * * *", () => checkOverdueLeads().catch((e) => console.error("Cron lead-SLA sweep failed", e)));
-  console.log("Lead Assignment Manager SLA sweep scheduled (every minute).");
+  cron.schedule("*/5 * * * *", () => checkOverdueLeads().catch((e) => console.error("Cron lead-SLA sweep failed", e)));
+  console.log("Lead Assignment Manager SLA sweep scheduled (every 5 minutes).");
 
   const { checkDueReminders } = require("./src/services/todoReminderJob");
-  cron.schedule("* * * * *", () => checkDueReminders().catch((e) => console.error("Cron to-do reminder sweep failed", e)));
-  console.log("My To-Do List reminder sweep scheduled (every minute).");
+  cron.schedule("*/5 * * * *", () => checkDueReminders().catch((e) => console.error("Cron to-do reminder sweep failed", e)));
+  console.log("My To-Do List reminder sweep scheduled (every 5 minutes).");
 }
 
 const PORT = process.env.PORT || 3000;

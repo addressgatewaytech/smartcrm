@@ -12,6 +12,12 @@ const pool = mysql.createPool({
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
+  // TCP keepalive so a pooled connection sitting idle between requests doesn't get silently
+  // dropped by a firewall/NAT in between here and Hostinger's shared MySQL — a dropped
+  // connection means the next query has to open a brand-new one, which is exactly what burns
+  // through the account's max_connections_per_hour cap under real traffic.
+  enableKeepAlive: true,
+  keepAliveInitialDelay: 10000,
   dateStrings: true, // return DATE/DATETIME as strings (YYYY-MM-DD[ HH:MM:SS]) — matches the JSON shape the frontend expects
   decimalNumbers: true, // return DECIMAL/NEWDECIMAL columns as JS numbers, not strings — without this, e.g. `"5000" >= "15000.00"`
                          // is a lexicographic string comparison (true!), not a numeric one, silently corrupting invoice payment-status logic.

@@ -822,8 +822,13 @@ function Login({ onLogin }) {
 // it only fires once the user has gone quiet for a while, and skips entirely while the tab is in
 // the background. It also catches up immediately when the user comes back to a tab that's been
 // hidden long enough for its data to be stale, matching how most SPAs refetch-on-focus.
+// A full refresh() is a burst of ~25 parallel requests (one per data domain) — at a 2-minute
+// interval, every idle open tab company-wide was repeating that burst 30x/hour on top of the
+// backend's own polling, and was a real contributor to exhausting the MySQL account's
+// max_connections_per_hour cap (see server.js). 15 minutes keeps data reasonably fresh without
+// that load.
 const AUTO_REFRESH_IDLE_MS = 60_000;
-const AUTO_REFRESH_INTERVAL_MS = 120_000;
+const AUTO_REFRESH_INTERVAL_MS = 900_000;
 function useAutoRefresh(runRefresh, enabled) {
   const lastActivityRef = useRef(Date.now());
   const lastRefreshRef = useRef(Date.now());
