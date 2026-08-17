@@ -12,7 +12,7 @@ import {
   Sun, Moon, BookOpen
 } from "lucide-react";
 import { money, fmtDate, fmtDateDMY, Stamp, statusTone, Rail, DonutChart, LineChart, BarChart, SalesPersonBars, ProgressRing, progressColor, Modal, Empty, ConfirmModal, RowActions, exportCSV, usePagination, PaginationBar, TableScrollHint, useConfirm, ADMIN_LIKE, ROLE_LABEL, isSalesRole, isAssignable } from "./ui.jsx";
-import { todayStr as salesTaskToday, firstOfWeekStr, firstOfMonthStr, userTaskSnapshot } from "./salesTasksHelpers";
+import { todayStr as salesTaskToday, firstOfWeekStr, firstOfMonthStr, userTaskSnapshot, dailyCompletionColor } from "./salesTasksHelpers";
 import { CONTENT_STAGES, contentStageSnapshot } from "./contentStagesHelpers";
 import { TasksPage } from "./pages/tasks.jsx";
 import { AttendanceSignButton, AttendancePage } from "./pages/attendance.jsx";
@@ -1488,9 +1488,9 @@ function Dashboard({ state, dispatch, role, userId, setPage }) {
               const monthSnap = userTaskSnapshot(state.salesTaskDefs, salesTaskData, userId, firstOfMonthStr(), salesTaskToday_);
               return (
                 <div style={{ display:"flex", gap:28, flexWrap:"wrap", alignItems:"center" }}>
-                  <ProgressRing pct={todaySnap.completionPct} label="Daily performance" />
-                  <ProgressRing pct={weekSnap.completionPct} label="Weekly performance" />
-                  <ProgressRing pct={monthSnap.completionPct} label="Monthly performance" />
+                  <ProgressRing pct={todaySnap.completionPct} color={dailyCompletionColor(todaySnap.completionPct)} label="Daily performance" />
+                  <ProgressRing pct={weekSnap.completionPct} color={dailyCompletionColor(weekSnap.completionPct)} label="Weekly performance" />
+                  <ProgressRing pct={monthSnap.completionPct} color={dailyCompletionColor(monthSnap.completionPct)} label="Monthly performance" />
                   <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
                     <div style={{ fontSize:12.5, color:"var(--ink-soft)" }}>Today's task completion: <strong style={{ color:"var(--ink)" }}>{todaySnap.completionPct}%</strong></div>
                     <div style={{ fontSize:12.5, color:"var(--ink-soft)" }}>Revenue achieved (today): <strong style={{ color:"var(--ink)" }}>{money(todaySnap.revenue)}</strong></div>
@@ -1671,7 +1671,7 @@ function Dashboard({ state, dispatch, role, userId, setPage }) {
                   return (
                     <tr key={owner.id}>
                       <td style={{display:"flex",alignItems:"center",gap:8}}><span className="avatar">{owner.initials}</span>{owner.name}</td>
-                      <td className="mono">{snap.completionPct}%</td>
+                      <td className="mono" style={{ color: dailyCompletionColor(snap.completionPct), fontWeight:600 }}>{snap.completionPct}%</td>
                       <td className="mono">{money(snap.revenue)}</td>
                       <td className="mono">{money(snap.sales)}</td>
                       <td><Stamp tone={statusTone(snap.overallStatus)}>{snap.overallStatus}</Stamp></td>
@@ -7799,7 +7799,7 @@ function SalesDailyTasksReport({ state, range, salesFilter = [] }) {
             {rows.map(r => (
               <tr key={r.owner.id}>
                 <td style={{display:"flex",alignItems:"center",gap:8}}><span className="avatar">{r.owner.initials}</span>{r.owner.name}</td>
-                <td className="mono">{r.today.completionPct}%</td>
+                <td className="mono" style={{ color: dailyCompletionColor(r.today.completionPct), fontWeight:600 }}>{r.today.completionPct}%</td>
                 <td className="mono">{r.period.targetAchievementPct}%</td>
                 <td className="mono">{money(r.period.revenue)}</td>
                 <td className="mono">{money(r.period.sales)}</td>

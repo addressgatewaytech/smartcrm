@@ -201,7 +201,7 @@ export function ProgressRing({ pct, size = 96, color, label }) {
             strokeDasharray={`${dash} ${circumference - dash}`} strokeLinecap="round"
             transform={`rotate(-90 ${r} ${r})`} />
         )}
-        <text x={r} y={r + size*0.06} textAnchor="middle" className="disp" style={{ fontSize: size*0.2, fill:"var(--ink)" }}>{Math.round(clamped)}%</text>
+        <text x={r} y={r + size*0.06} textAnchor="middle" className="disp" style={{ fontSize: size*0.2, fill:ringColor }}>{Math.round(clamped)}%</text>
       </svg>
       {label && <div style={{ fontSize:12, color:"var(--ink-soft)" }}>{label}</div>}
     </div>

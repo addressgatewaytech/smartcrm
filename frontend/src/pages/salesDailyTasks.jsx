@@ -7,7 +7,7 @@ import { useState } from "react";
 import { Plus, TrendingUp } from "lucide-react";
 import { ApiError } from "../api";
 import { Stamp, statusTone, Empty, money, ProgressRing, ADMIN_LIKE } from "../ui.jsx";
-import { todayStr, firstOfWeekStr, firstOfMonthStr, userTaskSnapshot } from "../salesTasksHelpers";
+import { todayStr, firstOfWeekStr, firstOfMonthStr, userTaskSnapshot, dailyCompletionColor } from "../salesTasksHelpers";
 
 const isManagerOrAdmin = (role) => ADMIN_LIKE.includes(role) || role === "sales_manager";
 
@@ -50,21 +50,21 @@ function SelfView({ defs, data, today, weekStart, monthStart, userId, dispatch }
   return (
     <div>
       <div className="agw-grid" style={{ gridTemplateColumns: "repeat(3,1fr)", marginBottom: 12 }}>
-        <div className="agw-card"><div className="kpi-label">Today's task completion</div><div className="kpi-value disp">{todaySnap.completionPct}%</div></div>
+        <div className="agw-card"><div className="kpi-label">Today's task completion</div><div className="kpi-value disp" style={{ color: dailyCompletionColor(todaySnap.completionPct) }}>{todaySnap.completionPct}%</div></div>
         <div className="agw-card"><div className="kpi-label">Revenue achieved (today)</div><div className="kpi-value disp">{money(todaySnap.revenue)}</div></div>
         <div className="agw-card"><div className="kpi-label">Sales achieved (today)</div><div className="kpi-value disp">{money(todaySnap.sales)}</div></div>
       </div>
       <div className="agw-grid" style={{ gridTemplateColumns: "repeat(3,1fr)", marginBottom: 16 }}>
         <div className="agw-card" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 20, flexWrap: "wrap" }}>
-          <ProgressRing pct={todaySnap.completionPct} label="Daily performance" />
+          <ProgressRing pct={todaySnap.completionPct} color={dailyCompletionColor(todaySnap.completionPct)} label="Daily performance" />
           <div style={{ fontSize: 12.5, color: "var(--ink-soft)" }}>{todaySnap.pendingCount} of {defs.length} activities still pending today</div>
         </div>
         <div className="agw-card" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 20, flexWrap: "wrap" }}>
-          <ProgressRing pct={weekSnap.completionPct} label="Weekly performance" />
+          <ProgressRing pct={weekSnap.completionPct} color={dailyCompletionColor(weekSnap.completionPct)} label="Weekly performance" />
           <div style={{ fontSize: 12.5, color: "var(--ink-soft)" }}>Week-to-date across all daily activities</div>
         </div>
         <div className="agw-card" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 20, flexWrap: "wrap" }}>
-          <ProgressRing pct={monthSnap.completionPct} label="Monthly performance" />
+          <ProgressRing pct={monthSnap.completionPct} color={dailyCompletionColor(monthSnap.completionPct)} label="Monthly performance" />
           <div style={{ fontSize: 12.5, color: "var(--ink-soft)" }}>Month-to-date across all daily activities</div>
         </div>
       </div>
@@ -126,7 +126,7 @@ function TeamView({ state, dispatch, defs, data, today, role }) {
                 {rows.map(({ owner, snap }) => (
                   <tr key={owner.id}>
                     <td style={{ display: "flex", alignItems: "center", gap: 8 }}><span className="avatar">{owner.initials}</span>{owner.name}</td>
-                    <td className="mono">{snap.completionPct}%</td>
+                    <td className="mono" style={{ color: dailyCompletionColor(snap.completionPct), fontWeight: 600 }}>{snap.completionPct}%</td>
                     <td className="mono">{money(snap.revenue)}</td>
                     <td className="mono">{money(snap.sales)}</td>
                     <td><Stamp tone={statusTone(snap.overallStatus)}>{snap.overallStatus}</Stamp></td>
