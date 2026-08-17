@@ -249,6 +249,7 @@ export function useApiStore(enabled) {
 
       // --- Sales Daily Tasks -----------------------------------------------------------------
       case "UPDATE_SALES_TASK_TARGET": await api.salesTasks.updateTarget(action.id, action.target); return refresh(["salesTaskDefs"]);
+      case "REMOVE_SALES_TASK_DEF": await api.salesTasks.removeDefinition(action.id); return refresh(["salesTaskDefs", "salesTaskLogs"]);
       case "INCREMENT_SALES_TASK": await api.salesTasks.increment(action.taskDefId, action.delta); return refresh(["salesTaskLogs"]);
       case "SET_SALES_TASK_COUNT": await api.salesTasks.setCount(action.taskDefId, action.count); return refresh(["salesTaskLogs"]);
 

@@ -272,6 +272,7 @@ export const api = {
   salesTasks: {
     definitions: () => get("/sales-tasks/definitions"),
     updateTarget: (id, target) => patch(`/sales-tasks/definitions/${id}`, { target }),
+    removeDefinition: (id) => del(`/sales-tasks/definitions/${id}`),
     logs: () => get("/sales-tasks/logs"),
     increment: (taskDefId, delta) => post(`/sales-tasks/logs/${taskDefId}/increment`, { delta }),
     setCount: (taskDefId, count) => patch(`/sales-tasks/logs/${taskDefId}`, { count }),

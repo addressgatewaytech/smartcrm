@@ -26,6 +26,14 @@ router.patch("/definitions/:id", requireRole(["admin_like"]), async (req, res) =
   res.json({ ok: true });
 });
 
+// Hard delete, matching sales_task_daily_log's ON DELETE CASCADE (schema.sql) — removing an
+// activity clears its logged history too, not just going forward, since completionPct is always
+// computed live against the current set of definitions (see userTaskSnapshot).
+router.delete("/definitions/:id", requireRole(["admin_like"]), async (req, res) => {
+  await query("DELETE FROM sales_task_definitions WHERE id = ?", [req.params.id]);
+  res.json({ ok: true });
+});
+
 // A plain sales_exec sees only their own log rows; sales_manager/admin see everyone's — same
 // "load the whole collection, filter client-side" pattern as most of this app's other GETs.
 router.get("/logs", async (req, res) => {

@@ -4,9 +4,9 @@
 // user/task/day the same way Data Manager's daily activity already does). Self view for a plain
 // sales_exec; a read-only team table for sales_manager/admin, mirroring DataByUserTab's pattern.
 import { useState } from "react";
-import { Plus, TrendingUp } from "lucide-react";
+import { Plus, TrendingUp, Trash2 } from "lucide-react";
 import { ApiError } from "../api";
-import { Stamp, statusTone, Empty, money, ProgressRing, ADMIN_LIKE } from "../ui.jsx";
+import { Stamp, statusTone, Empty, money, ProgressRing, ADMIN_LIKE, ConfirmModal } from "../ui.jsx";
 import { todayStr, firstOfWeekStr, firstOfMonthStr, userTaskSnapshot, dailyCompletionColor } from "../salesTasksHelpers";
 
 const isManagerOrAdmin = (role) => ADMIN_LIKE.includes(role) || role === "sales_manager";
@@ -150,12 +150,21 @@ function TeamView({ state, dispatch, defs, data, today, role }) {
 function TargetEditor({ defs, dispatch }) {
   const [values, setValues] = useState(() => Object.fromEntries(defs.map((d) => [d.id, d.target])));
   const [savingId, setSavingId] = useState(null);
+  const [removingId, setRemovingId] = useState(null);
+  const [removing, setRemoving] = useState(null); // the def pending confirm, or null
 
   const save = async (id) => {
     setSavingId(id);
     try { await dispatch({ type: "UPDATE_SALES_TASK_TARGET", id, target: Number(values[id]) }); }
     catch (err) { alert(err instanceof ApiError ? err.message : "Couldn't save that target — please try again."); }
     finally { setSavingId(null); }
+  };
+
+  const remove = async (id) => {
+    setRemovingId(id);
+    try { await dispatch({ type: "REMOVE_SALES_TASK_DEF", id }); setRemoving(null); }
+    catch (err) { alert(err instanceof ApiError ? err.message : "Couldn't remove that activity — please try again."); }
+    finally { setRemovingId(null); }
   };
 
   return (
@@ -167,8 +176,20 @@ function TargetEditor({ defs, dispatch }) {
           <input type="number" min={0} value={values[d.id]} style={{ width: 110 }}
             onChange={(e) => setValues((v) => ({ ...v, [d.id]: e.target.value }))} />
           <button className="btn btn-sm" disabled={savingId === d.id || Number(values[d.id]) === d.target} onClick={() => save(d.id)}>Save</button>
+          {d.source === "Manual" && (
+            <button className="btn btn-sm btn-ghost" style={{ color: "var(--danger)" }} title="Remove activity" onClick={() => setRemoving(d)}><Trash2 size={13} /></button>
+          )}
         </div>
       ))}
+      {removing && (
+        <ConfirmModal
+          title={`Remove "${removing.name}"?`}
+          body="This stops tracking it going forward and permanently deletes everyone's logged history for it — daily/weekly/monthly completion % for every salesperson will be recalculated against the remaining activities, including for past periods. This can't be undone."
+          confirmLabel={removingId === removing.id ? "Removing…" : "Remove"}
+          onConfirm={() => remove(removing.id)}
+          onClose={() => setRemoving(null)}
+        />
+      )}
     </div>
   );
 }
