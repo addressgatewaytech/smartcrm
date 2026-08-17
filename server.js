@@ -94,17 +94,10 @@ app.use((err, req, res, next) => {
   res.status(err.status || 500).json({ error: process.env.NODE_ENV === "production" ? "Something went wrong" : err.message });
 });
 
-// --- Scheduled jobs (the real-backend replacements for the prototype's manual trigger buttons) ---
-// Data Manager: daily auto-assignment at 07:00, end-of-day return at 23:00, recycling check nightly at 01:00.
+// --- Scheduled jobs ------------------------------------------------------------------------
 // NOTE: if you ever run more than one server instance/process, guard these behind a leader-election
 // check or a dedicated worker process so the job doesn't fire once per instance.
 if (process.env.NODE_ENV === "production") {
-  const { runAutoAssign, runEndOfDayReturn, runRecycling } = require("./src/services/dataManagerJobs");
-  cron.schedule("0 7 * * *", () => runAutoAssign().catch((e) => console.error("Cron auto-assign failed", e)));
-  cron.schedule("0 23 * * *", () => runEndOfDayReturn().catch((e) => console.error("Cron end-of-day-return failed", e)));
-  cron.schedule("0 1 * * *", () => runRecycling().catch((e) => console.error("Cron recycling failed", e)));
-  console.log("Scheduled jobs registered (auto-assign 07:00, end-of-day return 23:00, recycling 01:00).");
-
   // Every-minute was overkill for sweeps that only need to notice something within a few minutes
   // of it becoming due, and was a real contributor to burning through the MySQL account's
   // max_connections_per_hour cap (Hostinger shared plan default: 500/hour) — once that's hit,

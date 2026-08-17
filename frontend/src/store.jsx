@@ -19,13 +19,6 @@ const emptyState = () => ({
   activity: [],
 });
 
-// Real backend equivalent of the prototype's ID-generated notification/activity pushes —
-// server already creates these; this is just for local optimistic activity-log lines the
-// server doesn't track anywhere (e.g. no dedicated activity_log read endpoint is wired here yet).
-function pushLocalActivity(setState, text) {
-  setState((s) => ({ ...s, activity: [{ id: "AC-" + Date.now(), text, at: new Date().toISOString().slice(0, 10) }, ...s.activity].slice(0, 30) }));
-}
-
 export function useApiStore(enabled) {
   const [state, setState] = useState(emptyState);
   const [loading, setLoading] = useState(true);
@@ -122,14 +115,11 @@ export function useApiStore(enabled) {
       case "UPDATE_DATA_RECORD": /* no generic PATCH — use the specific action endpoints (assign/archive/etc.) */ return;
       case "DELETE_DATA_RECORD": return; // archiving (MARK_DATA_INVALID) is the supported "remove" path, matching the spec
       case "ASSIGN_DATA_RECORD": await api.dataManager.assign(action.id, action.userId); return refresh(["dataRecords"]);
-      case "AUTO_ASSIGN_DAILY": { const r = await api.dataManager.autoAssign(); await refresh(["dataRecords"]); pushLocalActivity(setState, `Daily auto-assignment run — ${r.assigned} record(s) distributed`); return; }
       case "SEND_DATA_EMAIL": await api.dataManager.sendEmail(action.id); return refresh(["dataRecords", "dataUserActivity"]);
       case "SEND_DATA_WHATSAPP": await api.dataManager.sendWhatsapp(action.id); return refresh(["dataRecords", "dataUserActivity"]);
       case "COMPLETE_DATA_CALL": await api.dataManager.completeCall(action.id); return refresh(["dataRecords", "dataUserActivity"]);
       case "MARK_DATA_INVALID": await api.dataManager.archive(action.id, action.reason); return refresh(["dataRecords"]);
       case "CONVERT_DATA_TO_LEAD": await api.dataManager.convertToLead(action.id); return refresh(["dataRecords", "leads"]);
-      case "RUN_DATA_RECYCLING": { const r = await api.dataManager.recycle(); await refresh(["dataRecords"]); pushLocalActivity(setState, `Data recycling run — ${r.recycled} record(s) recycled`); return; }
-      case "RETURN_UNUSED_COMPANY_DATA": { const r = await api.dataManager.endOfDayReturn(); await refresh(["dataRecords"]); pushLocalActivity(setState, `End-of-day return — ${r.returned} unused Company Data record(s) returned`); return; }
       case "LOG_DATA_EXPORT": return refresh(["dataExportHistory"]); // GET /export already logs server-side
       case "UPDATE_DATA_SETTINGS": await api.dataManager.updateSettings(action.payload); return refresh(["dataSettings"]);
       case "UPDATE_APP_SETTINGS": await api.settings.update(action.payload); return refresh(["appSettings"]);

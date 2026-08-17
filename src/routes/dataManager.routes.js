@@ -5,7 +5,6 @@ const { query } = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
 const { requireRole, isAdminLike } = require("../middleware/roles");
 const { nextId, today, normPhone, normEmail, normCompany } = require("../utils/helpers");
-const { runAutoAssign, runEndOfDayReturn, runRecycling } = require("../services/dataManagerJobs");
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
@@ -113,22 +112,6 @@ router.post("/import", upload.single("file"), async (req, res) => {
 router.post("/:id/assign", requireRole(["admin_like", "data_manager"]), async (req, res) => {
   await query("UPDATE data_records SET assigned_user = ? WHERE id = ?", [req.body.userId || null, req.params.id]);
   res.json({ ok: true });
-});
-
-// --- Daily auto-assignment (should be wired to node-cron in production; also callable on demand) ---
-router.post("/auto-assign", requireRole(["admin_like", "data_manager"]), async (req, res) => {
-  const assigned = await runAutoAssign();
-  res.json({ assigned });
-});
-
-router.post("/end-of-day-return", requireRole(["admin_like", "data_manager"]), async (req, res) => {
-  const returned = await runEndOfDayReturn();
-  res.json({ returned });
-});
-
-router.post("/recycle", requireRole(["admin_like", "data_manager"]), async (req, res) => {
-  const recycled = await runRecycling();
-  res.json({ recycled });
 });
 
 // --- Send email / WhatsApp — enforces daily cap + cooldown server-side ---------------------

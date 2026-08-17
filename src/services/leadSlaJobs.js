@@ -1,6 +1,6 @@
 // Lead Assignment Manager SLA sweep — shared between the scheduled cron job (server.js) and
-// direct/manual invocation (testing, or an on-demand admin trigger), same pattern as
-// dataManagerJobs.js. Finds leads whose 5-minute (or next-working-day) response deadline has
+// direct/manual invocation (testing, or an on-demand admin trigger). Finds leads whose 5-minute
+// (or next-working-day) response deadline has
 // passed with no follow-up logged yet, flags them as violated (once — this is a permanent
 // performance record, not recomputed if a follow-up lands late afterward), and notifies both the
 // lead's owner and Lead Assignment Manager/admin-tier.

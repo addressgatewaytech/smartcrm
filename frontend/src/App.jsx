@@ -8,7 +8,7 @@ import {
   Plus, X, Check, ChevronRight, ChevronUp, ChevronDown, AlertTriangle, CircleDollarSign, RefreshCw,
   UserPlus, ShieldCheck, Ban, Clock, ArrowRight, Search, Mail, Phone,
   BadgeCheck, CalendarClock, Briefcase, Copy, Files, Link2, Pencil, Trash2, Repeat, BarChart3, Download, MoreHorizontal, ChevronsLeft, ChevronsRight, Camera, Star,
-  Database, Upload, MessageCircle, Recycle, ArchiveX, ShieldAlert, Settings as SettingsIcon,
+  Database, Upload, MessageCircle, ArchiveX, ShieldAlert, Settings as SettingsIcon,
   Sun, Moon, BookOpen
 } from "lucide-react";
 import { money, fmtDate, fmtDateDMY, Stamp, statusTone, Rail, DonutChart, LineChart, BarChart, SalesPersonBars, ProgressRing, progressColor, Modal, Empty, ConfirmModal, RowActions, exportCSV, usePagination, PaginationBar, TableScrollHint, useConfirm, ADMIN_LIKE, ROLE_LABEL, isSalesRole, isAssignable } from "./ui.jsx";
@@ -8162,12 +8162,6 @@ function DataPoolTab({ state, dispatch, role, userId }) {
         <div className="agw-card"><div className="kpi-label">Assigned company data</div><div className="kpi-value disp">{assigned.length}</div></div>
         <div className="agw-card"><div className="kpi-label">Own data (all users)</div><div className="kpi-value disp">{ownTotal}</div></div>
         <div className="agw-card"><div className="kpi-label">Sales users</div><div className="kpi-value disp">{salesUsers.length}</div></div>
-      </div>
-
-      <div style={{ display:"flex", gap:8, marginBottom:16, flexWrap:"wrap" }}>
-        <button className="btn btn-primary" onClick={()=>dispatch({type:"AUTO_ASSIGN_DAILY", by:userId})}><Repeat size={13}/> Run daily auto-assignment</button>
-        <button className="btn" onClick={()=>dispatch({type:"RETURN_UNUSED_COMPANY_DATA", by:userId})}><ArrowRight size={13}/> End-of-day return</button>
-        <button className="btn" onClick={()=>dispatch({type:"RUN_DATA_RECYCLING", by:userId})}><Recycle size={13}/> Run recycling now</button>
       </div>
 
       <div className="agw-card" style={{ padding: 0 }}>
