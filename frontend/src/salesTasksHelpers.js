@@ -63,13 +63,14 @@ function completedForDef(def, data, userId, from, to) {
   return manualCompletedInRange(data.logs, userId, def.id, from, to);
 }
 
-// Sales Daily Tasks completion reads as a hard pass/fail, not a graded scale — under 70% means
-// "hasn't kept up with today's activities" and should read as an alarm, not a soft amber "in
-// progress" (progressColor's general 3-tier scale in ui.jsx). Used everywhere a salesperson's
-// completion % is shown: the Dashboard self-view and team table, the Sales Daily Tasks tab, and
-// the Reports tab.
+// Sales Daily Tasks completion, on a 3-tier traffic-light scale: under 70% is behind (red), 70%
+// up to (not including) 100% is close but not finished (yellow), and only a fully completed 100%
+// reads as green. Used everywhere a salesperson's completion % is shown: the Dashboard self-view
+// and team table, the Sales Daily Tasks tab, and the Reports tab.
 export function dailyCompletionColor(pct) {
-  return pct < 70 ? "var(--danger)" : "var(--success)";
+  if (pct < 70) return "var(--danger)";
+  if (pct < 100) return "var(--warning)";
+  return "var(--success)";
 }
 
 export function statusFor(completed, target) {
