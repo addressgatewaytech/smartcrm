@@ -196,10 +196,15 @@ export function ProgressRing({ pct, size = 96, color, label }) {
     <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:4 }}>
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
         <circle cx={r} cy={r} r={radius} fill="none" stroke="var(--hair)" strokeWidth={stroke} />
-        {clamped > 0 && (
+        {clamped > 0 ? (
           <circle cx={r} cy={r} r={radius} fill="none" stroke={ringColor} strokeWidth={stroke}
             strokeDasharray={`${dash} ${circumference - dash}`} strokeLinecap="round"
             transform={`rotate(-90 ${r} ${r})`} />
+        ) : (
+          // At exactly 0% a proportional arc has zero length, so it would draw nothing at all —
+          // the one case that most needs to be visible. Draw the full ring in the status color
+          // instead of leaving it blank.
+          <circle cx={r} cy={r} r={radius} fill="none" stroke={ringColor} strokeWidth={stroke} />
         )}
         <text x={r} y={r + size*0.06} textAnchor="middle" className="disp" style={{ fontSize: size*0.2, fill:ringColor }}>{Math.round(clamped)}%</text>
       </svg>
