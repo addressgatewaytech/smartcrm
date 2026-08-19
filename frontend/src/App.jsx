@@ -5551,11 +5551,14 @@ function JobsPage({ state, dispatch, role, userId, highlightId, onHighlightHandl
               // The category tint is a fixed light pastel in both themes (by design — see
               // jobCategoryColor), so text on it can't just inherit --ink/--ink-soft: those flip to
               // near-white in dark mode and become unreadable against a light card background.
-              // Pinning both vars to their light-mode values locally keeps every descendant that
-              // reads var(--ink*) legible regardless of app theme, without touching each one by hand.
+              // Pinning both vars locally fixes descendants that explicitly read var(--ink-soft)
+              // (the id/date lines) but NOT the title — .job-card sets no color of its own, so h5
+              // just inherits the already-computed (dark-mode) color from way up the tree; setting
+              // the custom property here doesn't retroactively re-resolve it. The explicit `color`
+              // below forces that re-read at the card's own scope (same fix as the modal one).
               const cardStyle = isHi
                 ? { cursor:"pointer", background:"var(--gold-tint)", boxShadow:"inset 3px 0 0 var(--gold)" }
-                : { cursor:"pointer", background: catBg, ...(catBg ? { "--ink":"#151A1F", "--ink-soft":"#4B535B" } : {}) };
+                : { cursor:"pointer", background: catBg, ...(catBg ? { "--ink":"#151A1F", "--ink-soft":"#4B535B", color:"#151A1F" } : {}) };
               return (
               <div className={`job-card ${draggedJobId===j.id ? "dragging" : ""}`} key={j.id} id={`job-card-${j.id}`}
                 onClick={()=>{ if (highlightId===j.id) onHighlightHandled?.(); openDetail(j); }}
