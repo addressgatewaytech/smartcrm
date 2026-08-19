@@ -424,11 +424,17 @@ EOD`}return{to_workbook:r,to_sheet:n,from_sheet:o}})(),po=(function(){function e
   /* Popup/modal windows always render in light-mode colors, even with dark mode on for the rest
      of the app — re-declares the same tokens html.dark .agw overrides above, scoped one level
      deeper so it wins, plus the handful of hardcoded (non-var) dark tweaks that would otherwise
-     still leak into a modal's stamps/pills/tables/side-notes. */
+     still leak into a modal's stamps/pills/tables/side-notes. The explicit color re-declaration
+     matters even though --ink is already reset above: .agw sets color: var(--ink) once, at the
+     app root, and that computed (dark-mode) color then inherits into the modal like any other
+     inherited property — plain text with no color of its own (a title, a note) never re-reads
+     var(--ink) at its own position, so it stayed the old light-on-dark color despite the token
+     reset. Re-declaring color here forces that re-read at the modal's own scope. */
   html.dark .agw .modal {
     --ink:#151A1F; --ink-soft:#4B535B; --hair:#E1E6E8;
     --page:#F5F6F6; --surface:#FFFFFF;
     --brand-tint:#E1F2F5; --gold-tint:#FCEBDA; --success-tint:#E6F1EA; --warning-tint:#FBEEDA; --danger-tint:#FBE9E6; --info-tint:#E6ECF0;
+    color: var(--ink);
     color-scheme: light;
   }
   html.dark .agw .modal .stamp-success { border-color: #BFD9CB; }
