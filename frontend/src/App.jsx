@@ -384,6 +384,26 @@ const quotationFeeTypeLabel = (q) => {
   if (hasGov) return "Government Fee";
   return "Professional Fee";
 };
+// Turns a subscription tier (Subscriptions module — see mapTier in mappers.js) into the note a
+// quotation's package line item should show, so a Basic-tier quotation actually reads differently
+// from a Gold-tier one instead of every package sharing one generic description. Joined with " · "
+// rather than newlines — the Note field it lands in is a single-line <input>, which silently
+// strips embedded line breaks (the HTML value-sanitization algorithm for text inputs), so a
+// newline-joined string would render as one unseparated run-on line.
+const tierEntitlementsNote = (tier) => {
+  if (!tier) return "";
+  const bits = [
+    tier.companySize && `For companies with ${tier.companySize}`,
+    tier.transactionsIncluded != null && `${tier.transactionsIncluded} transactions included`,
+    tier.hukoomiServices && `Hukoomi services: ${tier.hukoomiServices}`,
+    tier.trainingSessions ? `${tier.trainingSessions} training session${tier.trainingSessions === 1 ? "" : "s"}${tier.trainingTeamMembers ? ` for up to ${tier.trainingTeamMembers} team members` : ""}` : null,
+    tier.legalAdvising ? `${tier.legalAdvising} legal advising session${tier.legalAdvising === 1 ? "" : "s"}` : null,
+    tier.dedicatedPro && "Dedicated PRO officer included",
+    tier.translationPages ? `${tier.translationPages} translation pages included` : null,
+    ...(tier.extraFeatures || []),
+  ].filter(Boolean);
+  return bits.join(" · ");
+};
 const quotationFeeTypeTone = (q) => {
   const label = quotationFeeTypeLabel(q);
   return label === "Government Fee" ? "neutral" : label === "Professional + Government Fee" ? "info" : "success";
@@ -2405,7 +2425,7 @@ function DealsPage({ state, dispatch, setPage, onViewQuotation, role, userId }) 
         </div>
       )}
 
-      {quoteFor && <QuoteBuilderModal dealId={quoteFor.id} customerName={quoteFor.customer} defaultService={quoteFor.service} services={state.services} itemCatalog={state.itemCatalog} dispatch={dispatch} templates={state.quotationTemplates} role={role} employees={state.employees} defaultOwner={quoteFor.owner} onClose={()=>setQuoteFor(null)}
+      {quoteFor && <QuoteBuilderModal dealId={quoteFor.id} customerName={quoteFor.customer} defaultService={quoteFor.service} services={state.services} itemCatalog={state.itemCatalog} dispatch={dispatch} templates={state.quotationTemplates} subscriptionPlans={state.subscriptionPlans} role={role} employees={state.employees} defaultOwner={quoteFor.owner} onClose={()=>setQuoteFor(null)}
         onCreated={(id)=>{ onViewQuotation(id); setPage("quotations"); }} />}
       {editDeal && <EditDealModal deal={editDeal} state={state} dispatch={dispatch} onClose={()=>setEditDeal(null)} />}
       {removeDeal && <ConfirmModal title={`Remove deal ${removeDeal.id}?`} body={`${removeDeal.customer} — ${money(removeDeal.value)}. This can't be undone.`} onConfirm={()=>dispatch({type:"DELETE_DEAL", id:removeDeal.id})} onClose={()=>setRemoveDeal(null)} />}
@@ -2611,7 +2631,7 @@ function QuoteItemsEditor({ items, onChange, service, catalog = [], quotationFee
   );
 }
 
-function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVICES[0], editableCustomer=false, customerOptions=[], services=SERVICES, itemCatalog=[], dispatch, templates, role=null, employees=[], defaultOwner="", onClose, onCreated }) {
+function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVICES[0], editableCustomer=false, customerOptions=[], services=SERVICES, itemCatalog=[], dispatch, templates, subscriptionPlans={}, role=null, employees=[], defaultOwner="", onClose, onCreated }) {
   const [showNewService, setShowNewService] = useState(false);
   const [customer, setCustomer] = useState(customerName);
   // Admin-only: lets whoever is building the quotation attribute it to a different salesperson
@@ -2648,6 +2668,26 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
   // have up to two such lines (one Professional Fee, one Government Fee) — the same activity list
   // fills in both, since they describe the same business activities.
   const [activityPrompt, setActivityPrompt] = useState(null); // { tpl, activityIdxs, activities: string[] }
+
+  // Any service that's also sold as a structured subscription (currently just Growth Partner
+  // Program) gets a package/tier picker here instead of everyone hand-typing "Silver - 1 Year
+  // Package" into Subject and eyeballing the price — see subscription_tiers/mapTier. Sourcing the
+  // tier list from the Subscriptions module (not a separate hardcoded list) keeps a quotation's
+  // package pricing from ever drifting out of sync with what Subscriptions actually sells.
+  const packageTiers = subscriptionPlans[templateService]?.tiers || [];
+  const [selectedPackage, setSelectedPackage] = useState("");
+  useEffect(() => { setSelectedPackage(""); }, [templateService]);
+  const applyPackage = (tierName) => {
+    setSelectedPackage(tierName);
+    const tier = packageTiers.find(t => t.name === tierName);
+    if (!tier) return;
+    setSubject(`${templateService.replace(/ Program$/, "")} - ${tier.name} - 1 Year Package`);
+    setItems(prev => {
+      const idx = prev.findIndex(it => (it.description || "").trim().toLowerCase().startsWith("package"));
+      const targetIdx = idx === -1 ? 0 : idx;
+      return prev.map((it, i) => i === targetIdx ? { ...it, price: tier.annualFee, note: tierEntitlementsNote(tier) } : it);
+    });
+  };
 
   const applyTemplate = (loadedTpl, loadedItems) => {
     setItems(loadedItems.map(it => ({ ...it })));
@@ -2745,6 +2785,15 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
       {tpl && (
         <div style={{ fontSize:12, color:"var(--ink-soft)", marginBottom:14 }}>
           <Files size={13} style={{verticalAlign:-2,marginRight:5}}/>Loaded the saved {templateService} template — edit any line below if this job needs something different.
+        </div>
+      )}
+      {packageTiers.length > 0 && (
+        <div className="field">
+          <label>Package</label>
+          <select value={selectedPackage} onChange={e=>applyPackage(e.target.value)}>
+            <option value="">Select a package…</option>
+            {packageTiers.map(t=><option key={t.name} value={t.name}>{t.name} — {money(t.annualFee)}</option>)}
+          </select>
         </div>
       )}
       <div className="field">
