@@ -5519,13 +5519,24 @@ function JobsPage({ state, dispatch, role, userId, highlightId, onHighlightHandl
             onDragLeave={()=>setDragOverCol(prev => prev===col ? null : prev)}
             onDrop={(e)=>{ e.preventDefault(); handleDrop(col); }}>
             <h4>{col}<span className="pill">{colJobs.length}</span></h4>
-            {shownJobs.map(j => (
+            {shownJobs.map(j => {
+              const catBg = jobCategoryColor(j.service);
+              const isHi = highlightId === j.id;
+              // The category tint is a fixed light pastel in both themes (by design — see
+              // jobCategoryColor), so text on it can't just inherit --ink/--ink-soft: those flip to
+              // near-white in dark mode and become unreadable against a light card background.
+              // Pinning both vars to their light-mode values locally keeps every descendant that
+              // reads var(--ink*) legible regardless of app theme, without touching each one by hand.
+              const cardStyle = isHi
+                ? { cursor:"pointer", background:"var(--gold-tint)", boxShadow:"inset 3px 0 0 var(--gold)" }
+                : { cursor:"pointer", background: catBg, ...(catBg ? { "--ink":"#151A1F", "--ink-soft":"#4B535B" } : {}) };
+              return (
               <div className={`job-card ${draggedJobId===j.id ? "dragging" : ""}`} key={j.id} id={`job-card-${j.id}`}
                 onClick={()=>{ if (highlightId===j.id) onHighlightHandled?.(); openDetail(j); }}
                 draggable={canManage && !["Completed","Cancelled","Pending Approval"].includes(j.status)}
                 onDragStart={(e)=>{ setDraggedJobId(j.id); e.dataTransfer.effectAllowed = "move"; }}
                 onDragEnd={()=>{ setDraggedJobId(null); setDragOverCol(null); }}
-                style={{ cursor:"pointer", background: jobCategoryColor(j.service), ...(highlightId===j.id ? { background:"var(--gold-tint)", boxShadow:"inset 3px 0 0 var(--gold)" } : {}) }} title="Click for full details">
+                style={cardStyle} title="Click for full details">
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:6 }}>
                   <h5 style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{j.customer}</h5>
                   {isGrowthPartnerCustomer(state, j.customer) && <span className="pill" style={{ background:"var(--gold-tint)", color:"var(--gold-dark)", fontSize:10, flexShrink:0 }} title="Growth Partner Program customer">GP{j.service==="Growth Partner Program" && j.packageTier ? ` · ${j.packageTier}` : ""}</span>}
@@ -5546,7 +5557,7 @@ function JobsPage({ state, dispatch, role, userId, highlightId, onHighlightHandl
                 {col === "Created" && (role==="ops_manager"||role==="pro_head"||ADMIN_LIKE.includes(role)) &&
                   <button className="btn btn-sm" style={{marginTop:8,width:"100%"}} onClick={(e)=>{e.stopPropagation(); setAssignFor(j);}}>Assign team</button>}
               </div>
-            ))}
+              );})}
             {colJobs.length === 0 && <div style={{fontSize:12,color:"var(--ink-soft)",padding:"6px 6px"}}>—</div>}
             {colJobs.length > KANBAN_PAGE_SIZE && (
               <button className="btn btn-sm btn-ghost" style={{width:"100%",marginTop:4}}
