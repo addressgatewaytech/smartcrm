@@ -5531,7 +5531,7 @@ function JobsPage({ state, dispatch, role, userId, highlightId, onHighlightHandl
         <div className="agw-card" style={{ padding: 0 }}>
           {visible.length === 0 ? <Empty icon={ClipboardList} text="No job cards yet." /> : (
           <div style={{ overflowX:"auto" }}>
-          <table className="agw-table" style={{ minWidth: 820 }}>
+          <table className="agw-table" style={{ minWidth: 980 }}>
             <thead><tr><th>Job card</th><th>Age</th><th>Customer</th><th>Service</th><th>Lead by</th><th>Assigned</th><th>Checklist</th><th>Priority</th><th>Target date</th><th>Status</th></tr></thead>
             <tbody>
               {pg.pageRows.map(j => {
@@ -5541,16 +5541,16 @@ function JobsPage({ state, dispatch, role, userId, highlightId, onHighlightHandl
                   style={isHighlighted ? { background:"var(--gold-tint)", boxShadow:"inset 3px 0 0 var(--gold)" } : undefined}
                   onClick={()=>{ if (isHighlighted) onHighlightHandled?.(); openDetail(j); }}>
                   <td className="mono">{j.id}</td>
-                  <td className="mono" style={{fontSize:12}}>{daysSince(j.createdAt)}d<div style={{fontSize:11,color:"var(--ink-soft)"}}>{fmtDate(j.createdAt)}</div></td>
-                  <td style={{ display:"flex", alignItems:"center", gap:6 }}>
-                    {j.customer}
-                    {isGrowthPartnerCustomer(state, j.customer) && <span className="pill" style={{ background:"var(--gold-tint)", color:"var(--gold-dark)", fontSize:10, padding:"3px 8px 3px 6px", display:"inline-flex", alignItems:"center", gap:4 }} title="Growth Partner Program customer"><Award size={16} fill="var(--gold)" fillOpacity={0.35} strokeWidth={2.25}/>{j.service==="Growth Partner Program" && j.packageTier ? j.packageTier : ""}</span>}
+                  <td className="mono" style={{fontSize:12, whiteSpace:"nowrap"}}>{daysSince(j.createdAt)}d<div style={{fontSize:11,color:"var(--ink-soft)"}}>{fmtDate(j.createdAt)}</div></td>
+                  <td style={{ display:"flex", alignItems:"center", gap:6, maxWidth:200 }}>
+                    <span style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }} title={j.customer}>{j.customer}</span>
+                    {isGrowthPartnerCustomer(state, j.customer) && <span className="pill" style={{ background:"var(--gold-tint)", color:"var(--gold-dark)", fontSize:10, padding:"3px 8px 3px 6px", flexShrink:0, display:"inline-flex", alignItems:"center", gap:4 }} title="Growth Partner Program customer"><Award size={16} fill="var(--gold)" fillOpacity={0.35} strokeWidth={2.25}/>{j.service==="Growth Partner Program" && j.packageTier ? j.packageTier : ""}</span>}
                   </td>
-                  <td style={{maxWidth:180}}>
+                  <td style={{maxWidth:220, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}} title={`${j.service}${j.description && j.description.trim().toLowerCase() !== j.service.trim().toLowerCase() ? ` — ${j.description}` : ""}`}>
                     <span style={{ display:"inline-block", width:8, height:8, borderRadius:"50%", background:jobCategoryColor(j.service), marginRight:6, border:"1px solid var(--hair)" }} />
                     {j.service}{j.description && j.description.trim().toLowerCase() !== j.service.trim().toLowerCase() && ` — ${j.description}`}
                   </td>
-                  <td style={{fontSize:12,color:"var(--ink-soft)"}}>{j.leadCreatorName || "—"}</td>
+                  <td style={{fontSize:12,color:"var(--ink-soft)", whiteSpace:"nowrap"}}>{j.leadCreatorName || "—"}</td>
                   <td>
                     <div className="avatars">
                       {j.assignees.length === 0 ? <span className="pill">Unassigned</span> :
