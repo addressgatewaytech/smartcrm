@@ -507,6 +507,33 @@ const daysFromNow = (n) => { const d = new Date(); d.setDate(d.getDate() + n); r
 // a job card has been open.
 const daysSince = (s) => Math.max(0, Math.floor((Date.now() - new Date(s).setHours(0,0,0,0)) / 86400000));
 
+// A small fixed palette of light background tints for Job Cards — the same service always hashes
+// to the same color, so scanning a busy Kanban board for "all the PRO Services jobs" is a
+// color-matching glance instead of reading every card's service line. Not tied to any specific
+// service name, so a newly-added service just gets whichever color its name happens to hash to.
+const JOB_CATEGORY_COLORS = ["#EAF7EF", "#E7F0FB", "#FDF3E4", "#F5EAFB", "#FCEBEB", "#E7FBF7", "#FBF3E1", "#EFEAFB"];
+const jobCategoryColor = (service) => {
+  if (!service) return null;
+  let hash = 0;
+  for (let i = 0; i < service.length; i++) hash = (hash * 31 + service.charCodeAt(i)) >>> 0;
+  return JOB_CATEGORY_COLORS[hash % JOB_CATEGORY_COLORS.length];
+};
+
+// A job card's own service can be anything (PRO Services, Bank Account Opening, ...) even when its
+// customer is separately enrolled in the Growth Partner Program subscription — this flags that
+// enrollment regardless of what this particular job is for, same "still paying for the plan" rule
+// subTransactionsUsed/subStatusOf already use elsewhere.
+const isGrowthPartnerCustomer = (state, customerName) =>
+  state.subscriptions.some(s => s.customer === customerName && s.plan === "Growth Partner Program" && !["Cancelled","Expired"].includes(subStatusOf(s)));
+
+const JOB_AGE_BUCKETS = [
+  { key: "0-3", label: "0–3 days old", test: (d) => d <= 3 },
+  { key: "4-7", label: "4–7 days old", test: (d) => d >= 4 && d <= 7 },
+  { key: "8-14", label: "8–14 days old", test: (d) => d >= 8 && d <= 14 },
+  { key: "15-30", label: "15–30 days old", test: (d) => d >= 15 && d <= 30 },
+  { key: "30+", label: "30+ days old", test: (d) => d > 30 },
+];
+
 let seq = 1000;
 const nextId = (prefix) => prefix + "-" + (++seq);
 
@@ -5346,11 +5373,17 @@ function JobsPage({ state, dispatch, role, userId, highlightId, onHighlightHandl
   const [query, setQuery] = useState("");
   const { period, setPeriod, customFrom, setCustomFrom, customTo, setCustomTo, range } = usePeriod("all");
   const [leadByFilter, setLeadByFilter] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [ageFilter, setAgeFilter] = useState("");
   const visibleByRole = role === "ops_member" ? state.jobCards.filter(j => j.assignees.includes(userId)) : state.jobCards;
   const periodFiltered = visibleByRole.filter(j => inRange(j.createdAt, range));
   const leadBySalespeople = [...new Set(periodFiltered.map(j => j.leadCreatorName).filter(Boolean))];
   const leadByFiltered = leadByFilter ? periodFiltered.filter(j => j.leadCreatorName === leadByFilter) : periodFiltered;
-  const visible = leadByFiltered.filter(j => [j.customer, j.id, j.service].filter(Boolean).join(" ").toLowerCase().includes(query.trim().toLowerCase()));
+  const jobCategories = [...new Set(periodFiltered.map(j => j.service).filter(Boolean))].sort();
+  const categoryFiltered = categoryFilter ? leadByFiltered.filter(j => j.service === categoryFilter) : leadByFiltered;
+  const ageBucket = JOB_AGE_BUCKETS.find(b => b.key === ageFilter);
+  const ageFiltered = ageBucket ? categoryFiltered.filter(j => ageBucket.test(daysSince(j.createdAt))) : categoryFiltered;
+  const visible = ageFiltered.filter(j => [j.customer, j.id, j.service].filter(Boolean).join(" ").toLowerCase().includes(query.trim().toLowerCase()));
   const pg = usePagination(visible);
 
   const openDetail = (j, cancelOnOpen=false) => { setDetailId(j.id); setDetailCancelOnOpen(cancelOnOpen); };
@@ -5402,6 +5435,18 @@ function JobsPage({ state, dispatch, role, userId, highlightId, onHighlightHandl
               {leadBySalespeople.map(name=><option key={name} value={name}>{name}</option>)}
             </select>
           )}
+          {jobCategories.length > 0 && (
+            <select value={categoryFilter} onChange={e=>setCategoryFilter(e.target.value)}
+              style={{ fontSize:13, border:"1px solid var(--hair)", borderRadius:8, padding:"7px 10px", background:"var(--surface)" }}>
+              <option value="">All categories</option>
+              {jobCategories.map(c=><option key={c} value={c}>{c}</option>)}
+            </select>
+          )}
+          <select value={ageFilter} onChange={e=>setAgeFilter(e.target.value)}
+            style={{ fontSize:13, border:"1px solid var(--hair)", borderRadius:8, padding:"7px 10px", background:"var(--surface)" }}>
+            <option value="">Any age</option>
+            {JOB_AGE_BUCKETS.map(b=><option key={b.key} value={b.key}>{b.label}</option>)}
+          </select>
           <div style={{ position:"relative", maxWidth: 260 }}>
             <Search size={15} style={{ position:"absolute", left:12, top:9, color:"var(--ink-soft)" }} />
             <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search job cards"
@@ -5431,8 +5476,14 @@ function JobsPage({ state, dispatch, role, userId, highlightId, onHighlightHandl
                   onClick={()=>{ if (isHighlighted) onHighlightHandled?.(); openDetail(j); }}>
                   <td className="mono">{j.id}</td>
                   <td className="mono" style={{fontSize:12}}>{daysSince(j.createdAt)}d<div style={{fontSize:11,color:"var(--ink-soft)"}}>{fmtDate(j.createdAt)}</div></td>
-                  <td>{j.customer}</td>
-                  <td style={{maxWidth:180}}>{j.service}{j.description && ` — ${j.description}`}</td>
+                  <td style={{ display:"flex", alignItems:"center", gap:6 }}>
+                    {j.customer}
+                    {isGrowthPartnerCustomer(state, j.customer) && <span className="pill" style={{ background:"var(--gold-tint)", color:"var(--gold-dark)", fontSize:10 }} title="Growth Partner Program customer">GP</span>}
+                  </td>
+                  <td style={{maxWidth:180}}>
+                    <span style={{ display:"inline-block", width:8, height:8, borderRadius:"50%", background:jobCategoryColor(j.service), marginRight:6, border:"1px solid var(--hair)" }} />
+                    {j.service}{j.description && ` — ${j.description}`}
+                  </td>
                   <td style={{fontSize:12,color:"var(--ink-soft)"}}>{j.leadCreatorName || "—"}</td>
                   <td>
                     <div className="avatars">
@@ -5471,12 +5522,15 @@ function JobsPage({ state, dispatch, role, userId, highlightId, onHighlightHandl
                 draggable={canManage && !["Completed","Cancelled","Pending Approval"].includes(j.status)}
                 onDragStart={(e)=>{ setDraggedJobId(j.id); e.dataTransfer.effectAllowed = "move"; }}
                 onDragEnd={()=>{ setDraggedJobId(null); setDragOverCol(null); }}
-                style={{ cursor:"pointer", ...(highlightId===j.id ? { background:"var(--gold-tint)", boxShadow:"inset 3px 0 0 var(--gold)" } : {}) }} title="Click for full details">
-                <h5 style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{j.customer}</h5>
+                style={{ cursor:"pointer", background: jobCategoryColor(j.service), ...(highlightId===j.id ? { background:"var(--gold-tint)", boxShadow:"inset 3px 0 0 var(--gold)" } : {}) }} title="Click for full details">
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:6 }}>
+                  <h5 style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{j.customer}</h5>
+                  {isGrowthPartnerCustomer(state, j.customer) && <span className="pill" style={{ background:"var(--gold-tint)", color:"var(--gold-dark)", fontSize:10, flexShrink:0 }} title="Growth Partner Program customer">GP</span>}
+                </div>
                 <div className="mono" style={{ fontSize:11, color:"var(--ink-soft)", marginTop:-4, marginBottom:4, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
                   {j.id} · {j.service}
                 </div>
-                <div style={{ fontSize:11, color:"var(--ink-soft)", marginBottom:4 }}>Created {fmtDate(j.createdAt)}</div>
+                <div style={{ fontSize:11, color:"var(--ink-soft)", marginBottom:4 }}>Created {fmtDate(j.createdAt)} · {daysSince(j.createdAt)}d old</div>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                   <div className="avatars">
                     {j.assignees.length === 0 ? <span className="pill">Unassigned</span> :
