@@ -6384,7 +6384,16 @@ const CLIENT_ONBOARDING_CHECKLIST = [
 /** Basic "how it works" guide for HR — a graphical Lead-to-Job-Card workflow, plus step-by-step
  * tutorials, so new staff can understand the pipeline and specific tasks at a glance. More
  * sections/articles get added here later. */
+// One entry per section below — the index card links here, and each section carries the matching
+// id so a new guide only needs a new entry here plus an id on its card, nothing else to keep in sync.
+const KB_SECTIONS = [
+  { id: "kb-workflow", label: "The core workflow: Lead → Job Card" },
+  { id: "kb-quotation-tutorial", label: "Tutorial: How to make a quotation" },
+  { id: "kb-onboarding-sop", label: "SOP: Client Onboarding Process" },
+];
+
 function KnowledgeBasePage() {
+  const goTo = (id) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
   return (
     <div>
       <div className="agw-card" style={{ marginBottom: 18 }}>
@@ -6392,13 +6401,27 @@ function KnowledgeBasePage() {
           <BookOpen size={18} />
           <strong style={{ fontSize:15.5 }}>How to use SMART CRM</strong>
         </div>
-        <div style={{ fontSize:13, color:"var(--ink-soft)", lineHeight:1.6 }}>
+        <div style={{ fontSize:13, color:"var(--ink-soft)", lineHeight:1.6, marginBottom:14 }}>
           A quick look at how work flows through the system, from the moment a lead comes in to the job card
           that closes it out. More guides will be added here over time.
         </div>
+        <div style={{ fontSize:11.5, fontWeight:600, color:"var(--ink-soft)", textTransform:"uppercase", letterSpacing:".03em", marginBottom:6 }}>
+          On this page
+        </div>
+        <div style={{ display:"flex", flexDirection:"column", gap:2 }}>
+          {KB_SECTIONS.map((s, i) => (
+            <button key={s.id} onClick={()=>goTo(s.id)}
+              style={{ display:"flex", alignItems:"center", gap:8, textAlign:"left", padding:"6px 8px", border:"none",
+                background:"transparent", borderRadius:6, cursor:"pointer", font:"inherit", fontSize:13, color:"var(--brand)" }}
+              onMouseEnter={e=>e.currentTarget.style.background="var(--page)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+              <span className="mono" style={{ fontSize:11, color:"var(--ink-soft)" }}>{i+1}</span>
+              {s.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      <div className="agw-card" style={{ marginBottom: 18 }}>
+      <div className="agw-card" style={{ marginBottom: 18 }} id="kb-workflow">
         <strong style={{ fontSize:14 }}>The core workflow: Lead → Job Card</strong>
         <div style={{ display:"flex", alignItems:"stretch", flexWrap:"wrap", gap:0, marginTop:16 }}>
           {WORKFLOW_STAGES.map((s, i) => (
@@ -6421,7 +6444,7 @@ function KnowledgeBasePage() {
         </div>
       </div>
 
-      <div className="agw-card">
+      <div className="agw-card" id="kb-quotation-tutorial">
         <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14 }}>
           <ListChecks size={17} />
           <strong style={{ fontSize:14 }}>Tutorial: How to make a quotation</strong>
@@ -6448,7 +6471,7 @@ function KnowledgeBasePage() {
         </div>
       </div>
 
-      <div className="agw-card" style={{ marginTop:18 }}>
+      <div className="agw-card" style={{ marginTop:18 }} id="kb-onboarding-sop">
         <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
           <FileText size={17} />
           <strong style={{ fontSize:14.5 }}>SOP: Client Onboarding Process</strong>
