@@ -2773,7 +2773,7 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
     setSaving(true);
     setSaveError("");
     try {
-      const payload = { dealId, customer, items, terms, notes, subject, theme, orderDiscount, orderDiscountType, bank, footerNote, owner: owner || undefined };
+      const payload = { dealId, customer, items, terms, notes, subject, theme, orderDiscount, orderDiscountType, packageTier: selectedPackage || null, bank, footerNote, owner: owner || undefined };
       const r = await dispatch({ type:"CREATE_QUOTATION", payload });
       onCreated?.(r?.id);
       onClose();
@@ -3185,7 +3185,10 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
             <Rail steps={["Draft","Pending Manager Approval","Sent",quotationStatusLabel("Client Accepted", role),"Approved"]}
               current={q.status === "Rejected" || q.status === "Expired" ? "Sent" : quotationStatusLabel(q.status, role)} />
-            <Stamp tone={quotationFeeTypeTone(q)}>{quotationFeeTypeLabel(q)}</Stamp>
+            <div style={{ display:"flex", gap:6 }}>
+              {q.packageTier && <Stamp tone="neutral">{q.packageTier}</Stamp>}
+              <Stamp tone={quotationFeeTypeTone(q)}>{quotationFeeTypeLabel(q)}</Stamp>
+            </div>
           </div>
           {q.feeType === "Government Fee" && (
             <div className="side-note" style={{marginBottom:10}}>
@@ -4946,7 +4949,7 @@ function OrdersPage({ state, dispatch, role, highlightId, onHighlightHandled, se
               <td className="mono">{so.id}</td>
               <td className="mono" style={{fontSize:12}}>{fmtDate(so.createdAt)}</td>
               <td>{so.customer}</td>
-              <td style={{maxWidth:200}}>{so.service}</td>
+              <td style={{maxWidth:200}}>{so.service}{so.packageTier && <span className="pill" style={{ marginLeft:6, background:"var(--gold-tint)", color:"var(--gold-dark)", fontSize:10 }}>{so.packageTier}</span>}</td>
               <td><Stamp tone={so.feeType==="Government Fee" ? "neutral" : "success"}>{so.feeType || "Professional Fee"}</Stamp></td>
               <td className="mono">{money(so.amount)}</td>
               <td><Stamp tone={onboarded ? "success" : "warning"}>{onboarded ? "Onboarded" : "Pending onboarding"}</Stamp></td>
@@ -5478,7 +5481,7 @@ function JobsPage({ state, dispatch, role, userId, highlightId, onHighlightHandl
                   <td className="mono" style={{fontSize:12}}>{daysSince(j.createdAt)}d<div style={{fontSize:11,color:"var(--ink-soft)"}}>{fmtDate(j.createdAt)}</div></td>
                   <td style={{ display:"flex", alignItems:"center", gap:6 }}>
                     {j.customer}
-                    {isGrowthPartnerCustomer(state, j.customer) && <span className="pill" style={{ background:"var(--gold-tint)", color:"var(--gold-dark)", fontSize:10 }} title="Growth Partner Program customer">GP</span>}
+                    {isGrowthPartnerCustomer(state, j.customer) && <span className="pill" style={{ background:"var(--gold-tint)", color:"var(--gold-dark)", fontSize:10 }} title="Growth Partner Program customer">GP{j.service==="Growth Partner Program" && j.packageTier ? ` · ${j.packageTier}` : ""}</span>}
                   </td>
                   <td style={{maxWidth:180}}>
                     <span style={{ display:"inline-block", width:8, height:8, borderRadius:"50%", background:jobCategoryColor(j.service), marginRight:6, border:"1px solid var(--hair)" }} />
@@ -5525,7 +5528,7 @@ function JobsPage({ state, dispatch, role, userId, highlightId, onHighlightHandl
                 style={{ cursor:"pointer", background: jobCategoryColor(j.service), ...(highlightId===j.id ? { background:"var(--gold-tint)", boxShadow:"inset 3px 0 0 var(--gold)" } : {}) }} title="Click for full details">
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:6 }}>
                   <h5 style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{j.customer}</h5>
-                  {isGrowthPartnerCustomer(state, j.customer) && <span className="pill" style={{ background:"var(--gold-tint)", color:"var(--gold-dark)", fontSize:10, flexShrink:0 }} title="Growth Partner Program customer">GP</span>}
+                  {isGrowthPartnerCustomer(state, j.customer) && <span className="pill" style={{ background:"var(--gold-tint)", color:"var(--gold-dark)", fontSize:10, flexShrink:0 }} title="Growth Partner Program customer">GP{j.service==="Growth Partner Program" && j.packageTier ? ` · ${j.packageTier}` : ""}</span>}
                 </div>
                 <div className="mono" style={{ fontSize:11, color:"var(--ink-soft)", marginTop:-4, marginBottom:4, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
                   {j.id} · {j.service}
@@ -5678,7 +5681,7 @@ function JobDetailModal({ job, dispatch, role, userId, employees, approvalTypes=
 
   return (
     <>
-    <Modal title={job.id} sub={`${job.customer} — ${job.service}${job.description ? " — "+job.description : ""}`} onClose={onClose} width={640}>
+    <Modal title={job.id} sub={`${job.customer} — ${job.service}${job.packageTier ? ` (${job.packageTier})` : ""}${job.description ? " — "+job.description : ""}`} onClose={onClose} width={640}>
       <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop:-6, marginBottom:6 }}>
         <button className="btn btn-sm" disabled={downloading} onClick={async ()=>{
           setDownloading(true);

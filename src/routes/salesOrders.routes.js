@@ -59,8 +59,8 @@ router.post("/:id/onboard", requireRole(["accounts", "admin_like"]), async (req,
     const steps = tpl ? tpl.steps : [];
     const checklist = steps.map((label, i) => ({ id: `CI-${i}`, label, done: false }));
     await conn.execute(
-      `INSERT INTO job_cards (id, sales_order_id, customer, service, status, priority, target_date, checklist, created_by, customer_id) VALUES (?,?,?,?, 'Created', 'Normal', ?, ?, ?, ?)`,
-      [jobId, so.id, so.customer, so.service, daysFromNow(10), JSON.stringify(checklist), req.user.id, so.customer_id]
+      `INSERT INTO job_cards (id, sales_order_id, customer, service, status, priority, target_date, checklist, created_by, customer_id, package_tier) VALUES (?,?,?,?, 'Created', 'Normal', ?, ?, ?, ?, ?)`,
+      [jobId, so.id, so.customer, so.service, daysFromNow(10), JSON.stringify(checklist), req.user.id, so.customer_id, so.package_tier || null]
     );
     await conn.execute("INSERT INTO job_card_status_log (job_card_id, status, by_user) VALUES (?, 'Created', ?)", [jobId, req.user.id]);
 

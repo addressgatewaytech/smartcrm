@@ -49,7 +49,7 @@ export const mapDeal = (d) => ({
 export const mapQuotation = (q) => ({
   id: q.id, dealId: q.deal_id, customer: q.customer, customerId: q.customer_id, owner: q.owner,
   subject: q.subject, feeType: q.fee_type, theme: q.theme || "charcoal", orderDiscount: Number(q.order_discount || 0),
-  orderDiscountType: q.order_discount_type || "amount",
+  orderDiscountType: q.order_discount_type || "amount", packageTier: q.package_tier || "",
   items: (q.items || []).map((it) => ({ ...it, qty: Number(it.qty), price: Number(it.price), discountPct: Number(it.discountPct || 0) })),
   status: q.status, validTill: q.valid_till, createdAt: q.created_at,
   bank: q.bank || "", footerNote: q.footer_note || "", notes: q.notes || "", terms: q.terms || "",
@@ -71,7 +71,7 @@ export const mapCustomer = (c) => ({
 export const mapSalesOrder = (so) => ({
   id: so.id, quotationId: so.quotation_id, customer: so.customer, service: so.service,
   feeType: so.fee_type, amount: Number(so.amount), professionalFeeAmount: Number(so.professional_fee_amount ?? so.amount),
-  orderDiscount: Number(so.order_discount || 0), createdAt: so.created_at, customerId: so.customer_id,
+  orderDiscount: Number(so.order_discount || 0), packageTier: so.package_tier || "", createdAt: so.created_at, customerId: so.customer_id,
 });
 
 export const mapPayment = (p) => ({ id: p.id, amount: Number(p.amount), mode: p.mode, date: p.paid_at, by: p.recorded_by });
@@ -90,7 +90,7 @@ export const mapJobCard = (j) => ({
   id: j.id, salesOrderId: j.sales_order_id, customer: j.customer, service: j.service, description: j.description || "",
   status: j.status, priority: j.priority, targetDate: j.target_date, checklist: j.checklist || [],
   cancelReason: j.cancel_reason, createdBy: j.created_by, createdAt: j.created_at,
-  leadCreatorName: j.lead_creator_name || null, customerId: j.customer_id,
+  leadCreatorName: j.lead_creator_name || null, customerId: j.customer_id, packageTier: j.package_tier || "",
   assignees: j.assignees || [], statusLog: (j.statusLog || []).map(mapStatusLogEntry),
 });
 

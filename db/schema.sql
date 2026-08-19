@@ -317,6 +317,13 @@ CREATE TABLE IF NOT EXISTS quotations (
   -- of it — see quoteTotal in src/utils/helpers.js for the actual math. Missing/NULL (pre-existing
   -- rows) behaves exactly as before: a flat amount.
   order_discount_type ENUM('amount','percent') DEFAULT 'amount',
+  -- Which subscription_tiers.tier_name (Basic/Standard/Silver/Gold, ...) this quotation is for —
+  -- only meaningful when the service has structured tiers (see the Package picker in
+  -- QuoteBuilderModal, App.jsx). NULL for every other service, and for quotations predating this
+  -- column. Carried forward into sales_orders and job_cards at each pipeline step so a completed
+  -- Growth Partner Program job card always knows which package to create the subscription for,
+  -- without guessing from price or free-text parsing the subject line.
+  package_tier     VARCHAR(50) NULL,
   bank             TEXT,
   footer_note      TEXT,
   notes            TEXT,
@@ -348,6 +355,7 @@ CREATE TABLE IF NOT EXISTS sales_orders (
   -- pipeline value, and incentives. Equals `amount` for a pure Professional Fee order.
   professional_fee_amount DECIMAL(12,2) DEFAULT 0,
   order_discount DECIMAL(12,2) DEFAULT 0,
+  package_tier   VARCHAR(50) NULL, -- carried forward from quotations.package_tier — see there
   customer_id    VARCHAR(20) NULL,  -- see leads.customer_id
   created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (quotation_id) REFERENCES quotations(id) ON DELETE CASCADE,
@@ -399,6 +407,7 @@ CREATE TABLE IF NOT EXISTS job_cards (
   cancel_reason  TEXT,
   created_by     VARCHAR(20),
   customer_id    VARCHAR(20) NULL,  -- see leads.customer_id
+  package_tier   VARCHAR(50) NULL, -- carried forward from sales_orders.package_tier — read when this job completes to auto-create/renew the matching subscription (see /:id/status in jobCards.routes.js)
   created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (sales_order_id) REFERENCES sales_orders(id) ON DELETE SET NULL,
   FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL

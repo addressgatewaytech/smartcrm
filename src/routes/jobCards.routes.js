@@ -100,10 +100,44 @@ router.post("/:id/assign", requireRole(["ops_manager", "pro_head", "admin_like"]
   res.json({ ok: true });
 });
 
+// The Client Onboarding SOP's "Create Subscription" step (Knowledge Base) is a manual Zoho action
+// today for Growth Partner Program clients. Once a GP job card carries a real package_tier (set at
+// quotation time via the Package picker — never guessed from price or free-text parsing), this
+// automates that step: create a fresh subscription, renew a matching one, or — if the customer's
+// existing subscription is on a *different* tier — leave it alone and flag it, since an upgrade/
+// downgrade is a billing decision a person should make, not something to silently resolve.
+async function handleGrowthPartnerCompletion(jobId, job, byUserId) {
+  if (job.service !== "Growth Partner Program" || !job.package_tier) return;
+  const [tier] = await query("SELECT annual_fee FROM subscription_tiers WHERE plan_name = 'Growth Partner Program' AND tier_name = ?", [job.package_tier]);
+  if (!tier) return; // the tier was renamed/removed since this job's quotation was made — nothing safe to infer
+  const [existing] = await query(
+    `SELECT id, tier_name FROM customer_subscriptions WHERE customer_id = ? AND plan_name = 'Growth Partner Program' AND status = 'Active' AND expiry_date >= CURDATE() ORDER BY expiry_date DESC LIMIT 1`,
+    [job.customer_id]
+  );
+  const startDate = daysFromNow(0);
+  const expiryDate = new Date(new Date(startDate).setFullYear(new Date(startDate).getFullYear() + 1)).toISOString().slice(0, 10);
+  let note;
+  if (!existing) {
+    const subId = nextId("SUB");
+    await query(
+      `INSERT INTO customer_subscriptions (id, customer_id, customer, plan_name, tier_name, annual_fee, start_date, expiry_date, status) VALUES (?,?,?,?,?,?,?,?, 'Active')`,
+      [subId, job.customer_id, job.customer, "Growth Partner Program", job.package_tier, tier.annual_fee, startDate, expiryDate]
+    );
+    note = `Growth Partner Program subscription ${subId} (${job.package_tier}) created automatically on completion.`;
+  } else if (existing.tier_name === job.package_tier) {
+    await query("UPDATE customer_subscriptions SET start_date=?, expiry_date=?, status='Active' WHERE id=?", [startDate, expiryDate, existing.id]);
+    note = `Growth Partner Program subscription ${existing.id} renewed automatically on completion.`;
+  } else {
+    note = `This job's package (${job.package_tier}) differs from the customer's active subscription (${existing.tier_name}) — review and update the subscription manually.`;
+  }
+  await query("INSERT INTO job_card_status_log (job_card_id, status, by_user, note) VALUES (?, 'Updated', ?, ?)", [jobId, byUserId, note]);
+}
+
 router.post("/:id/status", async (req, res) => {
   const { status, reason } = req.body; // "On Hold" | "In Progress" | "Completed" | "Cancelled"
+  let completingJob = null;
   if (status === "Completed") {
-    const [job] = await query("SELECT checklist FROM job_cards WHERE id = ?", [req.params.id]);
+    const [job] = await query("SELECT checklist, service, customer, customer_id, package_tier FROM job_cards WHERE id = ?", [req.params.id]);
     const checklist = job.checklist || [];
     if (checklist.length > 0 && checklist.some((c) => !c.done)) return res.status(400).json({ error: "All checklist items must be completed first" });
     // Whoever is assigned to the work (ops_member) can drive it to done, but only an Operations
@@ -111,9 +145,11 @@ router.post("/:id/status", async (req, res) => {
     // can actually mark it Completed.
     const canComplete = req.user.roles.includes("ops_manager") || req.user.roles.includes("pro_head") || isAdminLike(req.user.roles) || (await isAssignedApprover(req.user.id, "job_card_completion"));
     if (!canComplete) return res.status(403).json({ error: "Only an Operations Manager can mark a job card complete" });
+    completingJob = job;
   }
   await query("UPDATE job_cards SET status = ?, cancel_reason = ? WHERE id = ?", [status, status === "Cancelled" ? reason : null, req.params.id]);
   await query("INSERT INTO job_card_status_log (job_card_id, status, by_user, note) VALUES (?,?,?,?)", [req.params.id, status, req.user.id, reason || null]);
+  if (completingJob) await handleGrowthPartnerCompletion(req.params.id, completingJob, req.user.id);
   res.json({ ok: true });
 });
 
