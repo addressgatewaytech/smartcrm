@@ -11,6 +11,7 @@ export const ROLE_LABEL = {
   super_admin: "Super Admin", admin: "Admin", admin_exec: "Admin Executive",
   sales_manager: "Sales Manager", sales_exec: "Sales Executive",
   ops_manager: "Operations Manager", ops_member: "Operations Team Member",
+  pro_head: "PRO Head", pro: "PRO",
   accounts: "Accounts", hr: "HR", executive: "Executive", data_manager: "Data Manager",
   lead_manager: "Lead Manager",
   // Sees every business module read-only — never assignable, never in Sales Daily Task scope,

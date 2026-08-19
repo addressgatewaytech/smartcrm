@@ -694,17 +694,17 @@ const NAV = [
     // Ops Manager/Ops Member see these too now — scoped server-side to just their own (a lead
     // they added via the Dashboard quick-add, and whatever deal/quotation grows out of it), the
     // same "own data only" restriction a plain Sales Exec already has — not full team access.
-    { key: "leads", label: "Leads", icon: Users, roles: [...ADMIN_LIKE,"sales_manager","sales_exec","ops_manager","ops_member"] },
-    { key: "deals", label: "Deals", icon: Handshake, roles: [...ADMIN_LIKE,"sales_manager","sales_exec","ops_manager","ops_member"] },
-    { key: "quotations", label: "Quotations", icon: FileText, roles: [...ADMIN_LIKE,"sales_manager","sales_exec","ops_manager","ops_member"] },
-    { key: "customers", label: "Customers & KYC", icon: UserCheck, roles: [...ADMIN_LIKE,"sales_manager","sales_exec","accounts","ops_manager"] },
+    { key: "leads", label: "Leads", icon: Users, roles: [...ADMIN_LIKE,"sales_manager","sales_exec","ops_manager","ops_member","pro_head","pro"] },
+    { key: "deals", label: "Deals", icon: Handshake, roles: [...ADMIN_LIKE,"sales_manager","sales_exec","ops_manager","ops_member","pro_head","pro"] },
+    { key: "quotations", label: "Quotations", icon: FileText, roles: [...ADMIN_LIKE,"sales_manager","sales_exec","ops_manager","ops_member","pro_head","pro"] },
+    { key: "customers", label: "Customers & KYC", icon: UserCheck, roles: [...ADMIN_LIKE,"sales_manager","sales_exec","accounts","ops_manager","pro_head","pro"] },
   ]},
   { group: "Finance", items: [
     { key: "orders", label: "Sales Orders", icon: ShoppingCart, roles: [...ADMIN_LIKE,"sales_manager","accounts"] },
     { key: "invoices", label: "Invoices", icon: Receipt, roles: [...ADMIN_LIKE,"accounts","sales_manager"] },
   ]},
   { group: "Operations", items: [
-    { key: "jobs", label: "Job Cards", icon: ClipboardList, roles: [...ADMIN_LIKE,"ops_manager","ops_member","accounts","sales_manager","sales_exec"] },
+    { key: "jobs", label: "Job Cards", icon: ClipboardList, roles: [...ADMIN_LIKE,"ops_manager","ops_member","accounts","sales_manager","sales_exec","pro_head","pro"] },
     { key: "tasks", label: "Tasks", icon: ListChecks, roles: "all" },
   ]},
   { group: "Subscriptions", items: [
@@ -728,7 +728,7 @@ const NAV = [
     // Admin-tier/Sales Manager/Accounts/Executive as before.
     { key: "reports", label: "Reports", icon: BarChart3, roles: "all" },
     { key: "quotationTemplates", label: "Quotation Templates", icon: Files, roles: [...ADMIN_LIKE,"sales_manager"] },
-    { key: "templates", label: "Checklist Templates", icon: ListChecks, roles: [...ADMIN_LIKE,"ops_manager"] },
+    { key: "templates", label: "Checklist Templates", icon: ListChecks, roles: [...ADMIN_LIKE,"ops_manager","pro_head","pro"] },
   ]},
   { group: "", items: [
     { key: "notifications", label: "Notifications", icon: Bell, roles: "all" },
@@ -1037,14 +1037,14 @@ export default function App() {
   const jobsBadgeCount = ADMIN_LIKE.includes(role)
     ? state.jobCards.filter(j => j.status === "Pending Approval" || j.status === "Created").length
     : role === "accounts" ? state.jobCards.filter(j => j.status === "Pending Approval").length
-    : role === "ops_manager" ? state.jobCards.filter(j => j.status === "Created").length
-    : role === "ops_member" ? state.jobCards.filter(j => j.status === "Assigned" && j.assignees.includes(userId)).length
+    : role === "ops_manager" || role === "pro_head" ? state.jobCards.filter(j => j.status === "Created").length
+    : role === "ops_member" || role === "pro" ? state.jobCards.filter(j => j.status === "Assigned" && j.assignees.includes(userId)).length
     : 0;
   // Tasks needing this viewer's attention — mirrors the Job Cards badge above. Managers/admin see
   // tasks awaiting their approval decision; everyone else sees tasks newly assigned to them that
   // still need accepting. state.tasks is already scoped server-side (own tasks unless admin-tier),
   // so this never counts someone else's activity.
-  const tasksBadgeCount = ADMIN_LIKE.includes(role) || ["sales_manager","ops_manager","hr"].includes(role)
+  const tasksBadgeCount = ADMIN_LIKE.includes(role) || ["sales_manager","ops_manager","hr","pro_head"].includes(role)
     ? state.tasks.filter(t => t.status === "Pending Approval").length
     : state.tasks.filter(t => t.status === "Assigned" && t.assignedTo === userId).length;
   const navBadge = (key) => key === "notifications" ? unreadCount : key === "jobs" ? jobsBadgeCount : key === "tasks" ? tasksBadgeCount : 0;
@@ -1297,7 +1297,7 @@ export default function App() {
 
 function Dashboard({ state, dispatch, role, userId, setPage }) {
   const { period, setPeriod, customFrom, setCustomFrom, customTo, setCustomTo, range } = usePeriod("month");
-  const showPeriod = role !== "ops_manager" && role !== "ops_member" && role !== "hr";
+  const showPeriod = role !== "ops_manager" && role !== "ops_member" && role !== "hr" && role !== "pro_head" && role !== "pro";
 
   const openLeads = state.leads.filter(l => !["Unqualified"].includes(l.status)).length;
   const pipelineValue = state.deals.filter(d => d.stage !== "Lost").reduce((a,d) => a + d.value, 0);
@@ -1406,7 +1406,7 @@ function Dashboard({ state, dispatch, role, userId, setPage }) {
   // either, being strictly read-only everywhere.
   // Ops Manager/Ops Member now have the full Leads page (own-data-scoped) via NAV, so the
   // Dashboard quick-add would just be a second, redundant "add lead" entry point for them.
-  const canQuickAddLead = !isSalesRole(role) && role !== "viewer" && role !== "ops_manager" && role !== "ops_member";
+  const canQuickAddLead = !isSalesRole(role) && role !== "viewer" && role !== "ops_manager" && role !== "ops_member" && role !== "pro_head" && role !== "pro";
   const [showQuickAddLead, setShowQuickAddLead] = useState(false);
 
   const dealStageColors = { Open:"var(--info)", "Quotation Sent":"var(--gold)", Won:"var(--success)", Lost:"var(--danger)" };
@@ -1462,11 +1462,11 @@ function Dashboard({ state, dispatch, role, userId, setPage }) {
 
   // Every KPI links to the page it's counted from — clicking the number takes you straight there
   // instead of leaving you to find the right nav item yourself.
-  const kpis = role === "ops_manager" || role === "ops_member" ? [
+  const kpis = ["ops_manager","ops_member","pro_head","pro"].includes(role) ? [
     { label: "Jobs in progress", value: jobsInProgress, page: "jobs" },
     { label: "Completed", value: jobsCompleted, page: "jobs" },
     { label: "Cancelled", value: jobsCancelled, page: "jobs" },
-    { label: role === "ops_member" ? "Assigned to me" : "Unassigned jobs", value: role === "ops_member" ? myJobs.length : state.jobCards.filter(j=>j.assignees.length===0).length, page: "jobs" },
+    { label: (role === "ops_member" || role === "pro") ? "Assigned to me" : "Unassigned jobs", value: (role === "ops_member" || role === "pro") ? myJobs.length : state.jobCards.filter(j=>j.assignees.length===0).length, page: "jobs" },
     ...myLeadKpis,
   ] : role === "accounts" ? [
     { label: "Outstanding balance", value: money(outstanding), page: "invoices" },
@@ -1754,7 +1754,7 @@ function Dashboard({ state, dispatch, role, userId, setPage }) {
 
       {chartTab === "charts" && (
         <div className="agw-grid" style={{ gridTemplateColumns: "1fr 1fr", gap:16 }}>
-          {(role === "ops_manager" || role === "ops_member") ? (
+          {["ops_manager","ops_member","pro_head","pro"].includes(role) ? (
             <div className="agw-card">
               <strong style={{ fontSize: 14 }}>Job cards by status</strong>
               <div style={{ marginTop: 16 }}>
@@ -3769,7 +3769,7 @@ function CustomersPage({ state, dispatch, role, userId }) {
   // across every client operationally, not just ones they personally sourced) — Delete stays
   // Admin-tier only regardless of role, since that's destructive and touches KYC records other
   // people rely on (also enforced server-side: PATCH allows admin_like+ops_manager, DELETE admin_like only).
-  const canEditCustomer = isAdmin || role === "ops_manager";
+  const canEditCustomer = isAdmin || role === "ops_manager" || role === "pro_head" || role === "pro";
   // Visibility (a sales_exec only sees their own customers) is enforced server-side in
   // GET /customers, since that's the only place with enough data to derive ownership correctly —
   // /leads itself is already scoped to the requesting user for a sales_exec, so state.leads here
@@ -5340,8 +5340,8 @@ function JobsPage({ state, dispatch, role, userId, highlightId, onHighlightHandl
   const [expandedCols, setExpandedCols] = useState({});
   const KANBAN_PAGE_SIZE = 5;
   const cols = ["Pending Approval","Created","Assigned","In Progress","On Hold","Completed","Cancelled"];
-  const canManage = role === "ops_manager" || ADMIN_LIKE.includes(role);
-  const canCreateDirect = ["sales_manager","sales_exec","ops_manager"].includes(role) || ADMIN_LIKE.includes(role);
+  const canManage = role === "ops_manager" || role === "pro_head" || role === "pro" || ADMIN_LIKE.includes(role);
+  const canCreateDirect = ["sales_manager","sales_exec","ops_manager","pro_head"].includes(role) || ADMIN_LIKE.includes(role);
 
   const [query, setQuery] = useState("");
   const { period, setPeriod, customFrom, setCustomFrom, customTo, setCustomTo, range } = usePeriod("all");
@@ -5486,7 +5486,7 @@ function JobsPage({ state, dispatch, role, userId, highlightId, onHighlightHandl
                 </div>
                 {col === "Pending Approval" && (role==="accounts"||ADMIN_LIKE.includes(role)) &&
                   <button className="btn btn-sm btn-primary" style={{marginTop:8,width:"100%"}} onClick={(e)=>{e.stopPropagation(); openDetail(j);}}>Review for approval</button>}
-                {col === "Created" && (role==="ops_manager"||ADMIN_LIKE.includes(role)) &&
+                {col === "Created" && (role==="ops_manager"||role==="pro_head"||ADMIN_LIKE.includes(role)) &&
                   <button className="btn btn-sm" style={{marginTop:8,width:"100%"}} onClick={(e)=>{e.stopPropagation(); setAssignFor(j);}}>Assign team</button>}
               </div>
             ))}
@@ -5549,7 +5549,7 @@ function NewJobCardModal({ state, dispatch, onClose }) {
 }
 
 function AssignModal({ job, dispatch, employees, onClose }) {
-  const opsTeam = employees.filter(t => isAssignable(t) && (t.roles.includes("ops_member") || t.roles.includes("ops_manager")));
+  const opsTeam = employees.filter(t => isAssignable(t) && (t.roles.includes("ops_member") || t.roles.includes("ops_manager") || t.roles.includes("pro_head") || t.roles.includes("pro")));
   const [selected, setSelected] = useState(job.assignees);
   const toggle = (id) => setSelected(sel => sel.includes(id) ? sel.filter(x=>x!==id) : [...sel, id]);
   return (
@@ -5601,13 +5601,13 @@ function JobDetailModal({ job, dispatch, role, userId, employees, approvalTypes=
       setAdminStatusBusy(false);
     }
   };
-  const canManage = role === "ops_manager" || role === "ops_member" || ADMIN_LIKE.includes(role);
+  const canManage = role === "ops_manager" || role === "ops_member" || role === "pro_head" || role === "pro" || ADMIN_LIKE.includes(role);
   const canApproveJob = role === "accounts" || ADMIN_LIKE.includes(role);
   // Marking a job card Completed needs Operations Manager sign-off — narrower than canManage,
   // which the assigned ops_member still needs for holds/checklist/cancel.
   const myDesignation = employees.find(e=>e.id===userId)?.designation;
   const completionApproverDesignations = approvalTypes.find(t=>t.key==="job_card_completion")?.approverDesignations || [];
-  const canCompleteJob = role === "ops_manager" || ADMIN_LIKE.includes(role) || (myDesignation && completionApproverDesignations.includes(myDesignation));
+  const canCompleteJob = role === "ops_manager" || role === "pro_head" || ADMIN_LIKE.includes(role) || (myDesignation && completionApproverDesignations.includes(myDesignation));
   const allDone = job.checklist.length > 0 && job.checklist.every(c => c.done);
   const pendingApproval = job.status === "Pending Approval";
   const locked = ["Completed","Cancelled"].includes(job.status) || pendingApproval;
@@ -6000,7 +6000,7 @@ function IncentiveRulesAdmin({ state, dispatch }) {
         <div className="row3" style={{ marginTop: 10 }}>
           <div className="field"><label>Applies to</label>
             <select value={form.role} onChange={e=>setForm({...form,role:e.target.value})}>
-              {["sales_exec","sales_manager","ops_member","ops_manager","accounts"].map(r=><option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+              {["sales_exec","sales_manager","ops_member","ops_manager","pro_head","pro","accounts"].map(r=><option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
             </select>
           </div>
           <div className="field"><label>Period</label>

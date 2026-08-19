@@ -9,6 +9,8 @@ const ROLE_LABEL = {
   sales_exec: "Sales Executive",
   ops_manager: "Operations Manager",
   ops_member: "Operations Team Member",
+  pro_head: "PRO Head",
+  pro: "PRO",
   accounts: "Accounts",
   hr: "HR",
   executive: "Executive",       // read-only: Dashboard + Reports only — see routes/reports.routes.js gating

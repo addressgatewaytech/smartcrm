@@ -23,7 +23,7 @@ router.get("/", async (req, res) => {
   // Ops Manager is the one deliberate exception, seeing every customer like Admin-tier — they
   // service KYC/onboarding across all clients operationally, not just ones they personally
   // sourced as a lead (same reasoning as Ops Manager already seeing every Job Card).
-  const canSeeAll = isAdminLike(req.user.roles) || req.user.roles.includes("ops_manager");
+  const canSeeAll = isAdminLike(req.user.roles) || req.user.roles.includes("ops_manager") || req.user.roles.includes("pro_head") || req.user.roles.includes("pro");
   let visible = customers;
   if (!canSeeAll) {
     // Customers have no direct owner column — ownership is derived from the customer's most
@@ -70,7 +70,7 @@ router.post("/", async (req, res) => {
 // Ops Manager can update a customer's profile (name/contact/KYC-adjacent fields) as part of the
 // same "update options" access — deletion stays Admin-tier only below, since that's destructive
 // and wasn't asked for.
-router.patch("/:id", requireRole(["admin_like", "ops_manager"]), async (req, res) => {
+router.patch("/:id", requireRole(["admin_like", "ops_manager", "pro_head", "pro"]), async (req, res) => {
   const b = req.body;
   const dup = await findDuplicateCustomer(query, { name: b.name, phone: b.phone, email: b.email }, req.params.id);
   if (dup) {

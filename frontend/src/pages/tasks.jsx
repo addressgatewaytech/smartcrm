@@ -11,7 +11,7 @@ import { SalesDailyTasksTab } from "./salesDailyTasks.jsx";
 import { TaskTemplatesTab } from "./taskTemplates.jsx";
 import { CONTENT_STAGES, contentStageSnapshot } from "../contentStagesHelpers";
 
-const TASK_MANAGER_ROLES = ["sales_manager", "ops_manager", "hr"];
+const TASK_MANAGER_ROLES = ["sales_manager", "ops_manager", "hr", "pro_head"];
 const canManageTasks = (role) => ADMIN_LIKE.includes(role) || TASK_MANAGER_ROLES.includes(role);
 const daysFromNow = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
 

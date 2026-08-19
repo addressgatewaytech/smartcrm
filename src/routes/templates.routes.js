@@ -13,7 +13,7 @@ router.get("/services", async (req, res) => {
   res.json(rows.map((r) => r.name));
 });
 
-router.post("/services", requireRole(["admin_like", "sales_manager", "ops_manager", "hr", "data_manager"]), async (req, res) => {
+router.post("/services", requireRole(["admin_like", "sales_manager", "ops_manager", "hr", "data_manager", "pro_head", "pro"]), async (req, res) => {
   const { name } = req.body;
   if (!name?.trim()) return res.status(400).json({ error: "Service name is required" });
   await query("INSERT IGNORE INTO services (name) VALUES (?)", [name.trim()]);
@@ -32,7 +32,7 @@ router.get("/item-catalog", async (req, res) => {
   res.json(rows);
 });
 
-router.post("/item-catalog", requireRole(["admin_like", "sales_manager", "ops_manager", "hr", "data_manager"]), async (req, res) => {
+router.post("/item-catalog", requireRole(["admin_like", "sales_manager", "ops_manager", "hr", "data_manager", "pro_head", "pro"]), async (req, res) => {
   const { name, description, note, feeType, price, service } = req.body;
   if (!name?.trim() || !description?.trim()) return res.status(400).json({ error: "Name and description are required" });
   const id = nextId("IC");
@@ -43,7 +43,7 @@ router.post("/item-catalog", requireRole(["admin_like", "sales_manager", "ops_ma
   res.status(201).json({ id });
 });
 
-router.patch("/item-catalog/:id", requireRole(["admin_like", "sales_manager", "ops_manager", "hr", "data_manager"]), async (req, res) => {
+router.patch("/item-catalog/:id", requireRole(["admin_like", "sales_manager", "ops_manager", "hr", "data_manager", "pro_head", "pro"]), async (req, res) => {
   const { name, description, note, feeType, price, service } = req.body;
   await query(
     "UPDATE item_catalog SET name=?, description=?, note=?, fee_type=?, price=?, service=? WHERE id=?",
@@ -95,7 +95,7 @@ router.get("/checklist-templates", async (req, res) => {
   res.json(out);
 });
 
-router.put("/checklist-templates/:service", requireRole(["admin_like", "ops_manager"]), async (req, res) => {
+router.put("/checklist-templates/:service", requireRole(["admin_like", "ops_manager", "pro_head", "pro"]), async (req, res) => {
   await query("UPDATE checklist_templates SET steps = ? WHERE service = ?", [JSON.stringify(req.body.steps || []), req.params.service]);
   res.json({ ok: true });
 });

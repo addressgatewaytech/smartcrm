@@ -10,7 +10,7 @@ const router = express.Router();
 router.use(requireAuth);
 
 router.get("/", async (req, res) => {
-  const isOpsMember = req.user.roles.includes("ops_member") && !isAdminLike(req.user.roles) && !req.user.roles.includes("ops_manager");
+  const isOpsMember = (req.user.roles.includes("ops_member") || req.user.roles.includes("pro")) && !isAdminLike(req.user.roles) && !req.user.roles.includes("ops_manager") && !req.user.roles.includes("pro_head");
   // Excludes ops_manager too — someone tagged both ops_manager and sales_exec (an Operations
   // Manager who also carries a sales role) still needs to see every job card, not just the ones
   // tied to their own quotations.
@@ -51,7 +51,7 @@ router.get("/", async (req, res) => {
 // Direct creation — bypasses the quotation pipeline. Starts at "Pending Approval", requires
 // Accounts (or Admin-tier) sign-off before Operations can assign anyone. Restricted to the
 // same roles the prototype allows: sales/ops leadership + admin tier.
-router.post("/direct", requireRole(["sales_manager", "sales_exec", "ops_manager", "admin_like"]), async (req, res) => {
+router.post("/direct", requireRole(["sales_manager", "sales_exec", "ops_manager", "pro_head", "admin_like"]), async (req, res) => {
   const { customer, service, description } = req.body;
   const id = await withTransaction((conn) => nextSequentialId(conn, "AGBSJC", "job_card"));
   const [tpl] = await query("SELECT steps FROM checklist_templates WHERE service = ?", [service]);
@@ -84,7 +84,7 @@ router.post("/:id/reject", requireRoleOrApprovalTypeDesignation(["accounts", "ad
   res.json({ ok: true });
 });
 
-router.post("/:id/assign", requireRole(["ops_manager", "admin_like"]), async (req, res) => {
+router.post("/:id/assign", requireRole(["ops_manager", "pro_head", "admin_like"]), async (req, res) => {
   const { assignees } = req.body; // array of userIds
   await query("DELETE FROM job_card_assignees WHERE job_card_id = ?", [req.params.id]);
   for (const uid of assignees || []) await query("INSERT INTO job_card_assignees (job_card_id, user_id) VALUES (?,?)", [req.params.id, uid]);
@@ -107,9 +107,9 @@ router.post("/:id/status", async (req, res) => {
     const checklist = job.checklist || [];
     if (checklist.length > 0 && checklist.some((c) => !c.done)) return res.status(400).json({ error: "All checklist items must be completed first" });
     // Whoever is assigned to the work (ops_member) can drive it to done, but only an Operations
-    // Manager (or Admin-tier, or an assigned "Job Card Completion Approval" designation) can
-    // actually mark it Completed.
-    const canComplete = req.user.roles.includes("ops_manager") || isAdminLike(req.user.roles) || (await isAssignedApprover(req.user.id, "job_card_completion"));
+    // Manager/PRO Head (or Admin-tier, or an assigned "Job Card Completion Approval" designation)
+    // can actually mark it Completed.
+    const canComplete = req.user.roles.includes("ops_manager") || req.user.roles.includes("pro_head") || isAdminLike(req.user.roles) || (await isAssignedApprover(req.user.id, "job_card_completion"));
     if (!canComplete) return res.status(403).json({ error: "Only an Operations Manager can mark a job card complete" });
   }
   await query("UPDATE job_cards SET status = ?, cancel_reason = ? WHERE id = ?", [status, status === "Cancelled" ? reason : null, req.params.id]);

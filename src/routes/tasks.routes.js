@@ -17,7 +17,7 @@ router.use(requireAuth);
 
 // "Manager" for this module means any department-lead-tier role, not a single dedicated role —
 // the same set that can create/assign job cards' equivalent leadership actions elsewhere.
-const MANAGER_ROLES = ["admin_like", "sales_manager", "ops_manager", "hr"];
+const MANAGER_ROLES = ["admin_like", "sales_manager", "ops_manager", "hr", "pro_head"];
 
 // A regular user only sees their own task activity (assigned to them, or created by them, which
 // covers a manager seeing the tasks they personally handed out) — only admin-tier sees every task

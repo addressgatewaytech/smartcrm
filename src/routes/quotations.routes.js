@@ -55,7 +55,7 @@ function parseRow(r) {
 router.get("/", async (req, res) => {
   // Same broadened scope as /leads and /deals — a plain sales_exec or Ops team member sees only
   // their own quotations (e.g. one created from a deal they own); sales managers/admins see all.
-  const isSalesExec = (req.user.roles.includes("sales_exec") || req.user.roles.includes("ops_manager") || req.user.roles.includes("ops_member")) && !isAdminLike(req.user.roles) && !req.user.roles.includes("sales_manager");
+  const isSalesExec = (req.user.roles.includes("sales_exec") || req.user.roles.includes("ops_manager") || req.user.roles.includes("ops_member") || req.user.roles.includes("pro_head") || req.user.roles.includes("pro")) && !isAdminLike(req.user.roles) && !req.user.roles.includes("sales_manager");
   const rows = isSalesExec
     ? await query("SELECT * FROM quotations WHERE owner = ? OR owner IS NULL ORDER BY created_at DESC", [req.user.id])
     : await query("SELECT * FROM quotations ORDER BY created_at DESC");

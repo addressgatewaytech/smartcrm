@@ -11,7 +11,7 @@ router.use(requireAuth);
 // pipeline the same way once they've added a lead) only sees their own deals; sales managers and
 // admins see everyone's. (A deal with no owner shouldn't normally exist — POST always sets one —
 // but "OR owner IS NULL" is kept for parity with /leads in case of legacy/imported rows.)
-const isSalesExecOnly = (roles) => (roles.includes("sales_exec") || roles.includes("ops_manager") || roles.includes("ops_member")) && !isAdminLike(roles) && !roles.includes("sales_manager");
+const isSalesExecOnly = (roles) => (roles.includes("sales_exec") || roles.includes("ops_manager") || roles.includes("ops_member") || roles.includes("pro_head") || roles.includes("pro")) && !isAdminLike(roles) && !roles.includes("sales_manager");
 
 router.get("/", async (req, res) => {
   const rows = isSalesExecOnly(req.user.roles)

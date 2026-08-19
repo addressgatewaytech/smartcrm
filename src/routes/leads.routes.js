@@ -70,7 +70,7 @@ router.post("/", async (req, res) => {
 // A sales_exec (or Ops team member — they now see/manage their own leads too, e.g. one they added
 // via the Dashboard's quick-add) may only modify their own lead, even if they somehow know another
 // lead's id — GET already keeps them from seeing it, but nothing previously stopped a direct API call.
-const isSalesExecOnly = (roles) => (roles.includes("sales_exec") || roles.includes("ops_manager") || roles.includes("ops_member")) && !isAdminLike(roles) && !roles.includes("sales_manager");
+const isSalesExecOnly = (roles) => (roles.includes("sales_exec") || roles.includes("ops_manager") || roles.includes("ops_member") || roles.includes("pro_head") || roles.includes("pro")) && !isAdminLike(roles) && !roles.includes("sales_manager");
 async function assertOwnsOrAdmin(req, res) {
   if (!isSalesExecOnly(req.user.roles)) return true;
   const [lead] = await query("SELECT owner FROM leads WHERE id = ?", [req.params.id]);
