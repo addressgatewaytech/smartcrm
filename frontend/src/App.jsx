@@ -9,7 +9,7 @@ import {
   UserPlus, ShieldCheck, Ban, Clock, ArrowRight, Search, Mail, Phone,
   BadgeCheck, CalendarClock, Briefcase, Copy, Files, Link2, Pencil, Trash2, Repeat, BarChart3, Download, MoreHorizontal, ChevronsLeft, ChevronsRight, Camera, Star,
   Database, Upload, MessageCircle, ArchiveX, ShieldAlert, Settings as SettingsIcon,
-  Sun, Moon, BookOpen
+  Sun, Moon, BookOpen, Award
 } from "lucide-react";
 import { money, fmtDate, fmtDateDMY, Stamp, statusTone, Rail, DonutChart, LineChart, BarChart, SalesPersonBars, ProgressRing, progressColor, Modal, Empty, ConfirmModal, RowActions, exportCSV, usePagination, PaginationBar, TableScrollHint, useConfirm, ADMIN_LIKE, ROLE_LABEL, isSalesRole, isAssignable } from "./ui.jsx";
 import { todayStr as salesTaskToday, firstOfWeekStr, firstOfMonthStr, userTaskSnapshot, dailyCompletionColor } from "./salesTasksHelpers";
@@ -399,6 +399,16 @@ const professionalFeeAmount = (items, orderDiscount, quotationFeeType, orderDisc
   const discountAmount = orderDiscountType === "percent" ? subtotal * (pct / 100) : (orderDiscount || 0);
   return Math.max(0, profSubtotal - discountAmount * profShare);
 };
+// Business Volume = realized Professional Fee revenue minus each service's fixed internal cost
+// (admin-configurable per service, state.serviceCosts — e.g. Office Space Assistance always costs
+// the business 2,000 QAR to deliver, whatever the client is charged). Charged once per transaction,
+// flat, no matter how many line items of that service appear on the quotation — not scaled by qty.
+const costForItems = (items, serviceCosts) => {
+  const services = new Set((items || []).map((it) => it.service).filter(Boolean));
+  return [...services].reduce((a, s) => a + Number((serviceCosts || {})[s] || 0), 0);
+};
+const quoteBusinessVolume = (q, serviceCosts) =>
+  Math.max(0, professionalFeeAmount(q.items, q.orderDiscount, q.feeType, q.orderDiscountType) - costForItems(q.items, serviceCosts));
 // Single-quotation model: a quotation's real fee-type makeup can now be a mix — this reflects
 // that in badges/exports instead of a possibly-misleading single "Professional Fee" label.
 const quotationFeeTypeLabel = (q) => {
@@ -1354,13 +1364,15 @@ function Dashboard({ state, dispatch, role, userId, setPage }) {
 
   const openLeads = state.leads.filter(l => !["Unqualified"].includes(l.status)).length;
   const pipelineValue = state.deals.filter(d => d.stage !== "Lost").reduce((a,d) => a + d.value, 0);
-  const outstanding = state.invoices.reduce((a,inv) => a + Math.max(0, inv.amount - inv.payments.reduce((x,p)=>x+p.amount,0)), 0);
+  // Pending collection only ever counts the Professional Fee portion of an invoice — Government
+  // Fee is a pass-through the client owes regardless, never Address Gateway's own money to collect.
+  const outstanding = state.invoices.reduce((a,inv) => a + Math.max(0, inv.professionalFeeAmount - inv.payments.reduce((x,p)=>x+p.amount,0)), 0);
   // Only the Professional Fee portion of a quotation counts as business volume — see
   // professionalFeeAmount above (handles quotations that mix Professional + Government Fee items).
   const quoteAmount = (q) => professionalFeeAmount(q.items, q.orderDiscount, q.feeType, q.orderDiscountType);
 
   const periodQuotes = state.quotations.filter(q => q.status === "Approved" && q.feeType !== "Government Fee" && inRange(q.createdAt, range));
-  const businessVolume = periodQuotes.reduce((a,q) => a + quoteAmount(q), 0);
+  const businessVolume = periodQuotes.reduce((a,q) => a + quoteBusinessVolume(q, state.serviceCosts), 0);
   const periodInvoices = state.invoices.filter(inv => inv.feeType !== "Government Fee" && inRange(inv.createdAt, range));
   const periodInvoiced = periodInvoices.reduce((a,inv)=>a+inv.amount,0);
   const periodCollected = state.invoices.reduce((a,inv) => a + inv.payments.filter(p=>inRange(p.date, range)).reduce((x,p)=>x+p.amount,0), 0);
@@ -1393,7 +1405,7 @@ function Dashboard({ state, dispatch, role, userId, setPage }) {
   const mySalesOrderIds = new Set(state.salesOrders.filter(so => myQuotationIds.has(so.quotationId)).map(so => so.id));
   const myOutstanding = state.invoices
     .filter(inv => inv.salesOrderId && mySalesOrderIds.has(inv.salesOrderId))
-    .reduce((a,inv) => a + Math.max(0, inv.amount - inv.payments.reduce((x,p)=>x+p.amount,0)), 0);
+    .reduce((a,inv) => a + Math.max(0, inv.professionalFeeAmount - inv.payments.reduce((x,p)=>x+p.amount,0)), 0);
 
   const jobsInProgress = state.jobCards.filter(j => ["Assigned","In Progress","On Hold"].includes(j.status)).length;
   const jobsCompleted = state.jobCards.filter(j => j.status === "Completed").length;
@@ -1420,7 +1432,7 @@ function Dashboard({ state, dispatch, role, userId, setPage }) {
 
   // Top customers by Professional Fee business volume within the selected period.
   const byCustomer = {};
-  periodQuotes.forEach(q => { byCustomer[q.customer] = (byCustomer[q.customer]||0) + quoteAmount(q); });
+  periodQuotes.forEach(q => { byCustomer[q.customer] = (byCustomer[q.customer]||0) + quoteBusinessVolume(q, state.serviceCosts); });
   const topCustomers = Object.entries(byCustomer).sort((a,b)=>b[1]-a[1]).slice(0,6);
 
   // Per-salesperson leads/deals/quotations/collections breakdown — admin and sales managers see the
@@ -1440,9 +1452,9 @@ function Dashboard({ state, dispatch, role, userId, setPage }) {
     const salesOrders = state.salesOrders.filter(so => quoteIds.has(so.quotationId));
     const soIds = new Set(salesOrders.map(so=>so.id));
     const invoices = state.invoices.filter(inv => soIds.has(inv.salesOrderId) && inRange(inv.createdAt, range));
-    const businessVol = quotes.filter(q => q.status==="Approved" && q.feeType!=="Government Fee").reduce((a,q)=>a+quoteAmount(q),0);
+    const businessVol = quotes.filter(q => q.status==="Approved" && q.feeType!=="Government Fee").reduce((a,q)=>a+quoteBusinessVolume(q, state.serviceCosts),0);
     const collected = invoices.reduce((a,inv)=>a+inv.payments.reduce((x,p)=>x+p.amount,0),0);
-    const pendingCollection = invoices.reduce((a,inv)=>a+Math.max(0, inv.amount - inv.payments.reduce((x,p)=>x+p.amount,0)),0);
+    const pendingCollection = invoices.reduce((a,inv)=>a+Math.max(0, inv.professionalFeeAmount - inv.payments.reduce((x,p)=>x+p.amount,0)),0);
     const pendingLeads = leads.filter(l => !["Qualified","Unqualified","Converted"].includes(l.status)).length;
     const pendingQuotes = quotes.filter(q => !["Approved","Rejected","Expired"].includes(q.status)).length;
     return { owner, leadsCount: leads.length, dealsCount: deals.length, dealsWon, quotesCount: quotes.length,
@@ -1505,7 +1517,7 @@ function Dashboard({ state, dispatch, role, userId, setPage }) {
   }
   const volumeByMonth = monthKeys.map(key =>
     state.quotations.filter(q => q.status==="Approved" && q.feeType!=="Government Fee" && (q.createdAt||"").slice(0,7)===key)
-      .reduce((a,q)=>a+quoteAmount(q), 0)
+      .reduce((a,q)=>a+quoteBusinessVolume(q, state.serviceCosts), 0)
   );
   const collectedByMonth = monthKeys.map(key =>
     state.invoices.reduce((a,inv) => a + inv.payments.filter(p=>(p.date||"").slice(0,7)===key).reduce((x,p)=>x+p.amount,0), 0)
@@ -3630,6 +3642,7 @@ function QuotationTemplateEditor({ state, dispatch }) {
   const [orderDiscountType, setOrderDiscountType] = useState(seed.orderDiscountType || "amount");
   const [bank, setBank] = useState(seed.bank || "");
   const [footerNote, setFooterNote] = useState(seed.footerNote || "");
+  const [serviceCost, setServiceCost] = useState(state.serviceCosts[SERVICES[0]] ?? 0);
   const [showNewService, setShowNewService] = useState(false);
   const [newServiceName, setNewServiceName] = useState("");
   const [removingTemplate, setRemovingTemplate] = useState(false);
@@ -3650,6 +3663,7 @@ function QuotationTemplateEditor({ state, dispatch }) {
     setOrderDiscountType(t.orderDiscountType || "amount");
     setBank(t.bank || "");
     setFooterNote(t.footerNote || "");
+    setServiceCost(state.serviceCosts[s] ?? 0);
   };
 
   return (
@@ -3686,6 +3700,14 @@ function QuotationTemplateEditor({ state, dispatch }) {
         <div className="row2">
           <OrderDiscountField label="Default overall discount" value={orderDiscount} type={orderDiscountType} onValueChange={setOrderDiscount} onTypeChange={setOrderDiscountType} />
           <div className="field"><label>Bank details override (optional — defaults to the standard account)</label><textarea rows={2} value={bank} onChange={e=>setBank(e.target.value)} placeholder="Leave blank to use the standard Address Gateway bank details" /></div>
+        </div>
+
+        <div className="field">
+          <label>Service cost (internal — what it costs Address Gateway to deliver this service, e.g. Office Space Assistance = 2,000 QAR. Not shown to the client — subtracted once per transaction from the Professional Fee to get Business Volume.)</label>
+          <div style={{ display:"flex", gap:8, maxWidth: 280 }}>
+            <input type="number" min="0" step="0.01" value={serviceCost} onChange={e=>setServiceCost(e.target.value)} />
+            <button className="btn btn-sm" onClick={()=>dispatch({type:"UPDATE_SERVICE_COST", service, cost: Number(serviceCost)||0})}>Save</button>
+          </div>
         </div>
         <div className="field"><label>Footer note (optional — shown at the bottom of every page)</label><textarea rows={2} value={footerNote} onChange={e=>setFooterNote(e.target.value)} placeholder={DEFAULT_FOOTER_NOTE} /></div>
 
@@ -4239,7 +4261,9 @@ function CustomerDashboard({ customer: c, state, dispatch, role, userId }) {
   const quoteTotal = (q) => quoteTotals(q.items, q.orderDiscount, q.orderDiscountType || "amount").total;
   const totalInvoiced = invoices.reduce((a,inv) => a + inv.amount, 0);
   const totalPaid = invoices.reduce((a,inv) => a + inv.payments.reduce((x,p)=>x+p.amount,0), 0);
-  const totalBalance = totalInvoiced - totalPaid;
+  // Outstanding/balance only ever counts the Professional Fee portion — Government Fee is a
+  // pass-through the client owes regardless of what Address Gateway is chasing to collect.
+  const totalBalance = invoices.reduce((a,inv) => a + Math.max(0, inv.professionalFeeAmount - inv.payments.reduce((x,p)=>x+p.amount,0)), 0);
 
   const jobStatusCounts = jobCards.reduce((acc,j) => { acc[j.status] = (acc[j.status]||0)+1; return acc; }, {});
 
@@ -4292,7 +4316,7 @@ function CustomerDashboard({ customer: c, state, dispatch, role, userId }) {
           <tbody>
             {invoices.map(inv => {
               const paid = inv.payments.reduce((a,p)=>a+p.amount,0);
-              const balance = inv.amount - paid;
+              const balance = Math.max(0, inv.professionalFeeAmount - paid);
               const invService = state.salesOrders.find(so=>so.id===inv.salesOrderId)?.service || state.subscriptions.find(s=>s.id===inv.subscriptionId)?.plan || "—";
               return (
                 <tr key={inv.id}>
@@ -5163,7 +5187,7 @@ function InvoicesPage({ state, dispatch, role, highlightId, onHighlightHandled, 
         </div>
         <button className="btn btn-sm" onClick={()=>exportCSV("invoices.csv",
           ["Invoice ID","Created","Customer","Fee Type","Amount","Paid","Balance","Due","Status"],
-          rows.map(inv=>{ const paid = inv.payments.reduce((a,p)=>a+p.amount,0); return [inv.id, inv.createdAt, inv.customer, inv.feeType||"Professional Fee", inv.amount, paid, inv.amount-paid, inv.dueDate, inv.status]; }))}>
+          rows.map(inv=>{ const paid = inv.payments.reduce((a,p)=>a+p.amount,0); return [inv.id, inv.createdAt, inv.customer, inv.feeType||"Professional Fee", inv.amount, paid, Math.max(0, inv.professionalFeeAmount-paid), inv.dueDate, inv.status]; }))}>
           <Download size={13}/> Export
         </button>
       </div>
@@ -5174,7 +5198,7 @@ function InvoicesPage({ state, dispatch, role, highlightId, onHighlightHandled, 
           <tbody>
             {pg.pageRows.map(inv => {
               const paid = inv.payments.reduce((a,p)=>a+p.amount,0);
-              const balance = inv.amount - paid;
+              const balance = Math.max(0, inv.professionalFeeAmount - paid);
               const isHighlighted = highlightId === inv.id;
               return (
                 <tr key={inv.id} id={`inv-row-${inv.id}`}
@@ -5520,11 +5544,11 @@ function JobsPage({ state, dispatch, role, userId, highlightId, onHighlightHandl
                   <td className="mono" style={{fontSize:12}}>{daysSince(j.createdAt)}d<div style={{fontSize:11,color:"var(--ink-soft)"}}>{fmtDate(j.createdAt)}</div></td>
                   <td style={{ display:"flex", alignItems:"center", gap:6 }}>
                     {j.customer}
-                    {isGrowthPartnerCustomer(state, j.customer) && <span className="pill" style={{ background:"var(--gold-tint)", color:"var(--gold-dark)", fontSize:10 }} title="Growth Partner Program customer">GP{j.service==="Growth Partner Program" && j.packageTier ? ` · ${j.packageTier}` : ""}</span>}
+                    {isGrowthPartnerCustomer(state, j.customer) && <span className="pill" style={{ background:"var(--gold-tint)", color:"var(--gold-dark)", fontSize:10, padding:"3px 8px 3px 6px", display:"inline-flex", alignItems:"center", gap:4 }} title="Growth Partner Program customer"><Award size={16} fill="var(--gold)" fillOpacity={0.35} strokeWidth={2.25}/>{j.service==="Growth Partner Program" && j.packageTier ? j.packageTier : ""}</span>}
                   </td>
                   <td style={{maxWidth:180}}>
                     <span style={{ display:"inline-block", width:8, height:8, borderRadius:"50%", background:jobCategoryColor(j.service), marginRight:6, border:"1px solid var(--hair)" }} />
-                    {j.service}{j.description && ` — ${j.description}`}
+                    {j.service}{j.description && j.description.trim().toLowerCase() !== j.service.trim().toLowerCase() && ` — ${j.description}`}
                   </td>
                   <td style={{fontSize:12,color:"var(--ink-soft)"}}>{j.leadCreatorName || "—"}</td>
                   <td>
@@ -5581,7 +5605,7 @@ function JobsPage({ state, dispatch, role, userId, highlightId, onHighlightHandl
                 style={cardStyle} title="Click for full details">
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:6 }}>
                   <h5 style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{j.customer}</h5>
-                  {isGrowthPartnerCustomer(state, j.customer) && <span className="pill" style={{ background:"var(--gold-tint)", color:"var(--gold-dark)", fontSize:10, flexShrink:0 }} title="Growth Partner Program customer">GP{j.service==="Growth Partner Program" && j.packageTier ? ` · ${j.packageTier}` : ""}</span>}
+                  {isGrowthPartnerCustomer(state, j.customer) && <span className="pill" style={{ background:"var(--gold-tint)", color:"var(--gold-dark)", fontSize:10, padding:"3px 8px 3px 6px", flexShrink:0, display:"inline-flex", alignItems:"center", gap:4 }} title="Growth Partner Program customer"><Award size={16} fill="var(--gold)" fillOpacity={0.35} strokeWidth={2.25}/>{j.service==="Growth Partner Program" && j.packageTier ? j.packageTier : ""}</span>}
                 </div>
                 <div className="mono" style={{ fontSize:11, color:"var(--ink-soft)", marginTop:-4, marginBottom:4, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
                   {j.id} · {j.service}
@@ -5734,7 +5758,7 @@ function JobDetailModal({ job, dispatch, role, userId, employees, approvalTypes=
 
   return (
     <>
-    <Modal title={job.id} sub={`${job.customer} — ${job.service}${job.packageTier ? ` (${job.packageTier})` : ""}${job.description ? " — "+job.description : ""}`} onClose={onClose} width={640}>
+    <Modal title={job.id} sub={`${job.customer} — ${job.service}${job.packageTier ? ` (${job.packageTier})` : ""}${job.description && job.description.trim().toLowerCase() !== job.service.trim().toLowerCase() ? " — "+job.description : ""}`} onClose={onClose} width={640}>
       <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop:-6, marginBottom:6 }}>
         <button className="btn btn-sm" disabled={downloading} onClick={async ()=>{
           setDownloading(true);
@@ -7735,7 +7759,7 @@ function VolumeReport({ state, range, salesFilter = [] }) {
   const quotes = salesFilter.length ? quotesInRange.filter(q => salesFilter.includes(ownerOf(q))) : quotesInRange;
   const approved = quotes.filter(q => q.status === "Approved");
   const totalQuoted = quotes.reduce((a,q)=>a+quoteAmount(q),0);
-  const totalApproved = approved.reduce((a,q)=>a+quoteAmount(q),0);
+  const totalApproved = approved.reduce((a,q)=>a+quoteBusinessVolume(q, state.serviceCosts),0);
   const winRate = quotes.length > 0 ? Math.round((approved.length/quotes.length)*100) : 0;
 
   const salesUsers = state.employees.filter(e => e.roles.includes("sales_exec") || e.roles.includes("sales_manager"));
@@ -7744,7 +7768,7 @@ function VolumeReport({ state, range, salesFilter = [] }) {
     const q = quotesInRange.filter(q => ownerOf(q) === owner.id);
     const won = q.filter(x => x.status === "Approved");
     const quotedVal = q.reduce((a,x)=>a+quoteAmount(x),0);
-    const approvedVal = won.reduce((a,x)=>a+quoteAmount(x),0);
+    const approvedVal = won.reduce((a,x)=>a+quoteBusinessVolume(x, state.serviceCosts),0);
     return { owner, count: q.length, quotedVal, approvedVal, winRate: q.length ? Math.round((won.length/q.length)*100) : 0 };
   }).sort((a,b) => b.quotedVal - a.quotedVal);
 
@@ -7817,7 +7841,7 @@ function SalesPersonReport({ state, range, salesFilter = [] }) {
     const soIds = new Set(salesOrders.map(so=>so.id));
     const invoices = state.invoices.filter(inv => soIds.has(inv.salesOrderId) && inRange(inv.createdAt, range));
 
-    const businessVolume = quotes.filter(q => q.status==="Approved" && q.feeType!=="Government Fee").reduce((a,q)=>a+quoteAmount(q),0);
+    const businessVolume = quotes.filter(q => q.status==="Approved" && q.feeType!=="Government Fee").reduce((a,q)=>a+quoteBusinessVolume(q, state.serviceCosts),0);
     const invoicedAmount = invoices.reduce((a,inv)=>a+inv.amount,0);
     const collected = invoices.reduce((a,inv)=>a+inv.payments.reduce((x,p)=>x+p.amount,0),0);
     const pendingLeads = leads.filter(l => !["Qualified","Unqualified"].includes(l.status)).length;
@@ -7887,7 +7911,7 @@ function CollectionsReport({ state, range }) {
   const invoices = state.invoices.filter(inv => inv.feeType !== "Government Fee" && inRange(inv.createdAt, range));
   const totalInvoiced = invoices.reduce((a,inv)=>a+inv.amount,0);
   const totalPaid = state.invoices.reduce((a,inv) => a + inv.payments.filter(p=>inRange(p.date, range)).reduce((x,p)=>x+p.amount,0), 0);
-  const outstanding = invoices.reduce((a,inv) => a + Math.max(0, inv.amount - inv.payments.reduce((x,p)=>x+p.amount,0)), 0);
+  const outstanding = invoices.reduce((a,inv) => a + Math.max(0, inv.professionalFeeAmount - inv.payments.reduce((x,p)=>x+p.amount,0)), 0);
 
   return (
     <div>
@@ -7899,15 +7923,15 @@ function CollectionsReport({ state, range }) {
       ]} />
       <ReportTableCard title="Professional Fee invoices" empty={invoices.length===0 ? "No Professional Fee invoices in this period." : null}
         onExport={invoices.length ? ()=>exportCSV("collections.csv", ["Invoice","Customer","Amount","Paid","Balance","Status","Date"],
-          invoices.map(inv=>{ const paid=inv.payments.reduce((a,p)=>a+p.amount,0); return [inv.id, inv.customer, inv.amount, paid, inv.amount-paid, inv.status, fmtDate(inv.createdAt)]; })) : null}
+          invoices.map(inv=>{ const paid=inv.payments.reduce((a,p)=>a+p.amount,0); return [inv.id, inv.customer, inv.amount, paid, Math.max(0, inv.professionalFeeAmount-paid), inv.status, fmtDate(inv.createdAt)]; })) : null}
         onExportExcel={invoices.length ? ()=>exportExcel("collections.xlsx", ["Invoice","Customer","Amount","Paid","Balance","Status","Date"],
-          invoices.map(inv=>{ const paid=inv.payments.reduce((a,p)=>a+p.amount,0); return [inv.id, inv.customer, inv.amount, paid, inv.amount-paid, inv.status, fmtDate(inv.createdAt)]; })) : null}>
+          invoices.map(inv=>{ const paid=inv.payments.reduce((a,p)=>a+p.amount,0); return [inv.id, inv.customer, inv.amount, paid, Math.max(0, inv.professionalFeeAmount-paid), inv.status, fmtDate(inv.createdAt)]; })) : null}>
         <table className="agw-table">
           <thead><tr><th>Invoice</th><th>Customer</th><th>Amount</th><th>Paid</th><th>Balance</th><th>Status</th><th>Date</th></tr></thead>
           <tbody>
             {invoices.map(inv => {
               const paid = inv.payments.reduce((a,p)=>a+p.amount,0);
-              const balance = inv.amount - paid;
+              const balance = Math.max(0, inv.professionalFeeAmount - paid);
               return (
                 <tr key={inv.id}>
                   <td className="mono">{inv.id}</td><td>{inv.customer}</td>
@@ -7931,8 +7955,9 @@ function CustomersReport({ state, range }) {
     const invoices = state.invoices.filter(inv => inv.customer===c.name && inv.feeType!=="Government Fee" && inRange(inv.createdAt, range));
     const invoiced = invoices.reduce((a,inv)=>a+inv.amount,0);
     const paid = invoices.reduce((a,inv)=>a+inv.payments.reduce((x,p)=>x+p.amount,0),0);
+    const profFeeInvoiced = invoices.reduce((a,inv)=>a+inv.professionalFeeAmount,0);
     const jobCards = state.jobCards.filter(j => j.customer===c.name && (j.statusLog?.[0]?.at) && inRange(j.statusLog[0].at, range));
-    return { customer: c.name, quotedValue: quotes.reduce((a,q)=>a+quoteAmount(q),0), invoiced, paid, balance: invoiced-paid, jobCards: jobCards.length };
+    return { customer: c.name, quotedValue: quotes.reduce((a,q)=>a+quoteBusinessVolume(q, state.serviceCosts),0), invoiced, paid, balance: Math.max(0, profFeeInvoiced-paid), jobCards: jobCards.length };
   }).filter(r => r.quotedValue > 0 || r.invoiced > 0 || r.jobCards > 0)
     .sort((a,b) => b.invoiced - a.invoiced);
 

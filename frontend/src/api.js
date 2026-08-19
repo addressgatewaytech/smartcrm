@@ -367,6 +367,10 @@ export const api = {
     update: (id, payload) => patch(`/item-catalog/${id}`, payload),
     remove: (id) => del(`/item-catalog/${id}`),
   },
+  serviceCosts: {
+    list: () => get("/service-costs"),
+    update: (service, cost) => request("PUT", `/service-costs/${encodeURIComponent(service)}`, { cost }),
+  },
   quotationTemplates: {
     list: () => get("/quotation-templates"),
     update: (service, payload) => request("PUT", `/quotation-templates/${encodeURIComponent(service)}`, payload),

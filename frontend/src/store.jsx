@@ -8,7 +8,7 @@ import {
 } from "./mappers";
 
 const emptyState = () => ({
-  services: [], itemCatalog: [], employees: [], leads: [], deals: [], quotations: [], customers: [],
+  services: [], itemCatalog: [], serviceCosts: {}, employees: [], leads: [], deals: [], quotations: [], customers: [],
   salesOrders: [], invoices: [], jobCards: [], tasks: [], todos: [], notifications: [], quotationTemplates: {},
   taskTemplates: [], salesTaskDefs: [], salesTaskLogs: [],
   checklistTemplates: {}, incentiveRules: [], leaveRequests: [], punchRequests: [],
@@ -29,6 +29,7 @@ export function useApiStore(enabled) {
     const tasks = {
       services: async () => ({ services: await api.services.list() }),
       itemCatalog: async () => ({ itemCatalog: (await api.itemCatalog.list()).map(mapItemCatalogEntry) }),
+      serviceCosts: async () => ({ serviceCosts: await api.serviceCosts.list() }),
       employees: async () => ({ employees: (await api.users.list()).map(mapUser) }),
       leads: async () => ({ leads: (await api.leads.list()).map(mapLead) }),
       deals: async () => ({ deals: (await api.deals.list()).map(mapDeal) }),
@@ -164,6 +165,7 @@ export function useApiStore(enabled) {
       case "ADD_ITEM_CATALOG_ENTRY": await api.itemCatalog.create(action.payload); return refresh(["itemCatalog"]);
       case "UPDATE_ITEM_CATALOG_ENTRY": await api.itemCatalog.update(action.id, action.payload); return refresh(["itemCatalog"]);
       case "REMOVE_ITEM_CATALOG_ENTRY": await api.itemCatalog.remove(action.id); return refresh(["itemCatalog"]);
+      case "UPDATE_SERVICE_COST": await api.serviceCosts.update(action.service, action.cost); return refresh(["serviceCosts"]);
 
       // --- Customers -----------------------------------------------------------------------
       case "ADD_CUSTOMER": await api.customers.create(action.payload); return refresh(["customers"]);

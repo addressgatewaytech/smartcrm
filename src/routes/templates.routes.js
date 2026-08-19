@@ -26,6 +26,24 @@ router.delete("/services/:name", requireRole(["admin_like"]), async (req, res) =
   res.json({ ok: true });
 });
 
+// --- Service costs (internal delivery cost per service, e.g. Office Space Assistance = 2,000 QAR —
+// subtracted from Professional Fee to get Business Volume; see service_costs in schema.sql) -------
+router.get("/service-costs", async (req, res) => {
+  const rows = await query("SELECT service, cost FROM service_costs");
+  const byService = {};
+  for (const r of rows) byService[r.service] = Number(r.cost);
+  res.json(byService);
+});
+
+router.put("/service-costs/:service", requireRole(["admin_like", "sales_manager"]), async (req, res) => {
+  const { cost } = req.body;
+  await query(
+    "INSERT INTO service_costs (service, cost) VALUES (?, ?) ON DUPLICATE KEY UPDATE cost = VALUES(cost)",
+    [req.params.service, cost || 0]
+  );
+  res.json({ ok: true });
+});
+
 // --- Item catalog (reusable quotation line items — pick one instead of retyping) ----------
 router.get("/item-catalog", async (req, res) => {
   const rows = await query("SELECT * FROM item_catalog WHERE active = 1 ORDER BY name");

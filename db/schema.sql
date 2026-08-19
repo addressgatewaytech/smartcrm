@@ -135,6 +135,16 @@ CREATE TABLE IF NOT EXISTS services (
   name VARCHAR(150) PRIMARY KEY
 ) ENGINE=InnoDB;
 
+-- Internal delivery cost per service (what the business pays, distinct from what's charged to the
+-- client) — e.g. Office Space Assistance always costs 2,000 QAR. Subtracted once per transaction
+-- (flat, not scaled by line quantity) from a quotation's Professional Fee to get true Business
+-- Volume. Defaults to 0 for any service with no row here.
+CREATE TABLE IF NOT EXISTS service_costs (
+  service VARCHAR(150) PRIMARY KEY,
+  cost DECIMAL(12,2) NOT NULL DEFAULT 0,
+  FOREIGN KEY (service) REFERENCES services(name) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
 -- Reusable line items for building quotations (e.g. "Issue New CR", "Add Signing Authority") —
 -- picking one prefills description/note/price/feeType on a quotation line, still fully editable
 -- per quotation. Optional `service` scopes an item to only show when that service is selected;
