@@ -421,6 +421,26 @@ EOD`}return{to_workbook:r,to_sheet:n,from_sheet:o}})(),po=(function(){function e
   html.dark .agw .btn-ghost:hover { background: #262E37; }
   html.dark .agw .notif-unread { background: #1C2731; }
 
+  /* Popup/modal windows always render in light-mode colors, even with dark mode on for the rest
+     of the app — re-declares the same tokens html.dark .agw overrides above, scoped one level
+     deeper so it wins, plus the handful of hardcoded (non-var) dark tweaks that would otherwise
+     still leak into a modal's stamps/pills/tables/side-notes. */
+  html.dark .agw .modal {
+    --ink:#151A1F; --ink-soft:#4B535B; --hair:#E1E6E8;
+    --page:#F5F6F6; --surface:#FFFFFF;
+    --brand-tint:#E1F2F5; --gold-tint:#FCEBDA; --success-tint:#E6F1EA; --warning-tint:#FBEEDA; --danger-tint:#FBE9E6; --info-tint:#E6ECF0;
+    color-scheme: light;
+  }
+  html.dark .agw .modal .stamp-success { border-color: #BFD9CB; }
+  html.dark .agw .modal .stamp-warning { border-color: #EAD4A6; }
+  html.dark .agw .modal .stamp-danger  { border-color: #EFC3BC; }
+  html.dark .agw .modal .stamp-info    { border-color: #C3D8E3; }
+  html.dark .agw .modal .stamp-gold    { border-color: #F2C089; }
+  html.dark .agw .modal .stamp-neutral { background: #F0EEE7; }
+  html.dark .agw .modal .pill { background: #F0EEE7; }
+  html.dark .agw .modal .agw-table tbody tr:hover { background: #FBFAF7; }
+  html.dark .agw .modal .side-note { background: #F7F6F1; }
+
   .theme-toggle { width: 34px; height: 34px; border-radius: 50%; background: rgba(255,255,255,.18); border: none;
     color: #fff; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
   .theme-toggle:hover { background: rgba(255,255,255,.3); }
