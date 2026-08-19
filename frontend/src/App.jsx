@@ -1381,6 +1381,19 @@ function Dashboard({ state, dispatch, role, userId, setPage }) {
   const closedDealValue = state.deals
     .filter(d => d.stage === "Won" && inRange(d.wonAt || d.createdAt, range))
     .reduce((a,d) => a + d.value, 0);
+  // GET /invoices deliberately also hands a plain sales_exec any invoice with no linked sales
+  // order (e.g. subscription billing) so someone is responsible for chasing it — but that means
+  // the exact same unattributed balance lands in every sales_exec's invoice list identically, not
+  // just whoever actually sold the underlying business. Summed blind, "Pending collection" ends up
+  // double-(triple-, ...)counting that shared balance into every rep's own figure. Every other role
+  // that reaches this KPI (sales_manager, admin-tier, ...) gets a genuinely unscoped invoice list
+  // from the backend, so `outstanding` is already the true company-wide total for them — only
+  // sales_exec needs restricting to invoices actually traceable back to their own quotations.
+  const myQuotationIds = new Set(state.quotations.filter(q => q.owner === userId).map(q => q.id));
+  const mySalesOrderIds = new Set(state.salesOrders.filter(so => myQuotationIds.has(so.quotationId)).map(so => so.id));
+  const myOutstanding = state.invoices
+    .filter(inv => inv.salesOrderId && mySalesOrderIds.has(inv.salesOrderId))
+    .reduce((a,inv) => a + Math.max(0, inv.amount - inv.payments.reduce((x,p)=>x+p.amount,0)), 0);
 
   const jobsInProgress = state.jobCards.filter(j => ["Assigned","In Progress","On Hold"].includes(j.status)).length;
   const jobsCompleted = state.jobCards.filter(j => j.status === "Completed").length;
@@ -1510,7 +1523,7 @@ function Dashboard({ state, dispatch, role, userId, setPage }) {
     { label: "Quotations value", value: money(periodQuotationsValue), page: "quotations" },
     { label: "Closed deal value", value: money(closedDealValue), page: "deals" },
     { label: "Payment collected", value: money(periodCollected), page: "invoices" },
-    { label: "Pending collection", value: money(outstanding), page: "invoices" },
+    { label: "Pending collection", value: money(role === "sales_exec" ? myOutstanding : outstanding), page: "invoices" },
   ];
 
   // Every KPI links to the page it's counted from — clicking the number takes you straight there
