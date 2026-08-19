@@ -373,6 +373,7 @@ function TaskDetailModal({ task, dispatch, role, userId, employees, approvalType
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [newComment, setNewComment] = useState("");
   const [downloading, setDownloading] = useState(false);
+  const [editing, setEditing] = useState(false);
 
   const isMine = task.assignedTo === userId;
   const myDesignation = employees.find((e) => e.id === userId)?.designation;
@@ -415,6 +416,9 @@ function TaskDetailModal({ task, dispatch, role, userId, employees, approvalType
               setDownloading(false);
             }
           }}><Download size={13} /> {downloading ? "Generating…" : "Download PDF"}</button>
+          {manager && task.status !== "Completed" && (
+            <button className="btn btn-sm btn-ghost" onClick={() => setEditing(true)}><Pencil size={13} /> Edit</button>
+          )}
           {ADMIN_LIKE.includes(role) && (
             <button className="btn btn-sm btn-ghost" style={{ color: "var(--danger)" }} onClick={() => setConfirmDelete(true)}><Trash2 size={13} /> Delete task</button>
           )}
@@ -523,6 +527,7 @@ function TaskDetailModal({ task, dispatch, role, userId, employees, approvalType
         <ConfirmModal title={`Delete ${task.id}?`} body={`${task.title}. This permanently deletes the task and its history. This can't be undone.`}
           confirmLabel="Delete" onConfirm={handleDelete} onClose={() => setConfirmDelete(false)} />
       )}
+      {editing && <EditTaskModal task={task} state={{ employees }} dispatch={dispatch} onClose={() => setEditing(false)} />}
     </>
   );
 }
