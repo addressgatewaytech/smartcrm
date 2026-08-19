@@ -2211,7 +2211,7 @@ function LeadsPage({ state, dispatch, userId, role }) {
             <div style={{ marginBottom: 16 }}>
               <div style={{ fontSize:11.5, color:"var(--ink-soft)", textTransform:"uppercase", letterSpacing:".04em", marginBottom:6 }}>Previous follow-ups</div>
               {followFor.followUps.map(f => (
-                <div key={f.id} style={{ fontSize:12.5, padding:"8px 0", borderBottom:"1px dashed var(--hair)" }}>
+                <div key={f.id} style={{ fontSize:12.5, padding:"10px 12px", marginBottom:8, background:"var(--page)", border:"1px solid var(--hair)", borderRadius:8 }}>
                   <div style={{ display:"flex", gap:8, alignItems:"center" }}>
                     <span className="pill">{f.outcome}</span>
                     <span style={{ color:"var(--ink-soft)", fontSize:11.5 }}>{fmtDateDMY(f.at)}</span>
