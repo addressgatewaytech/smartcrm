@@ -134,12 +134,12 @@ export function useApiStore(enabled) {
       case "ASSIGN_LEAD": await api.leads.assign(action.id, action.userId); return refresh(["leads", "notifications"]);
 
       // --- Deals ----------------------------------------------------------------------------
-      case "ADD_DEAL": await api.deals.create(action.payload); return refresh(["deals"]);
+      case "ADD_DEAL": { const r = await api.deals.create(action.payload); await refresh(["deals"]); return r; }
       case "UPDATE_DEAL": await api.deals.update(action.id, action.payload); return refresh(["deals"]);
       case "DELETE_DEAL": await api.deals.remove(action.id); return refresh(["deals"]);
 
       // --- Quotations -------------------------------------------------------------------------
-      case "CREATE_QUOTATION": await api.quotations.create(action.payload); return refresh(["quotations", "deals"]);
+      case "CREATE_QUOTATION": { const r = await api.quotations.create(action.payload); await refresh(["quotations", "deals"]); return r; }
       case "SUBMIT_QUOTATION_FOR_APPROVAL": await api.quotations.submitForApproval(action.id); return refresh(["quotations"]);
       case "CLONE_QUOTATION": await api.quotations.clone(action.id, action.customer); return refresh(["quotations"]);
       case "REVISE_QUOTATION": await api.quotations.revise(action.id); return refresh(["quotations", "deals"]);
@@ -197,9 +197,9 @@ export function useApiStore(enabled) {
       case "SET_EMPLOYEE_DOC_CLOUD_LINK": await api.customers.updateEmployeeDoc?.(action.customerId, action.employeeId, action.docId, { cloudLink: action.url }); return refresh(["customers"]);
 
       // --- Sales pipeline ----------------------------------------------------------------
-      case "CONVERT_TO_SALES_ORDER": await api.quotations.convertToSalesOrder(action.quotationId); return refresh(["quotations", "salesOrders", "deals", "customers"]);
+      case "CONVERT_TO_SALES_ORDER": { const r = await api.quotations.convertToSalesOrder(action.quotationId); await refresh(["quotations", "salesOrders", "deals", "customers"]); return r; }
       case "GENERATE_INVOICE": return; // superseded — GENERATE_INVOICE + ONBOARD_CLIENT are one atomic /onboard call on this backend
-      case "ONBOARD_CLIENT": await api.salesOrders.onboard(action.salesOrderId); return refresh(["salesOrders", "invoices", "jobCards", "notifications"]);
+      case "ONBOARD_CLIENT": { const r = await api.salesOrders.onboard(action.salesOrderId); await refresh(["salesOrders", "invoices", "jobCards", "notifications"]); return r; }
       case "DELETE_SALES_ORDER": await api.salesOrders.remove(action.id); return refresh(["salesOrders"]);
       case "RECORD_PAYMENT": await api.invoices.recordPayment(action.invoiceId, action.amount, action.mode, action.paidAt); return refresh(["invoices"]);
       case "REMOVE_PAYMENT": await api.invoices.removePayment(action.invoiceId, action.paymentId); return refresh(["invoices"]);

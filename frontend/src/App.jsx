@@ -932,6 +932,12 @@ export default function App() {
   // Set when "View quotation" is clicked from Deals, so QuotationsPage can highlight and
   // scroll to that specific row instead of leaving the user to hunt for it in the full list.
   const [highlightQuotationId, setHighlightQuotationId] = useState(null);
+  // Same pattern for the rest of the pipeline — set right after the record is created, so
+  // jumping to its page always lands on and highlights the one just created instead of leaving
+  // the user to hunt for it in a long list.
+  const [highlightSalesOrderId, setHighlightSalesOrderId] = useState(null);
+  const [highlightInvoiceId, setHighlightInvoiceId] = useState(null);
+  const [highlightJobCardId, setHighlightJobCardId] = useState(null);
 
   // Desktop/mobile OS notifications for anything new in this user's own notification feed (job
   // card awaiting approval, lead assigned, ...), on top of the in-app bell. Combined with the 45s
@@ -1133,14 +1139,17 @@ export default function App() {
             {page === "dashboard" && <Dashboard {...ctx} setPage={setPage} />}
             {page === "leads" && <LeadsPage {...ctx} setPage={setPage} />}
             {page === "deals" && <DealsPage {...ctx} setPage={setPage} onViewQuotation={setHighlightQuotationId} />}
-            {page === "quotations" && <QuotationsPage {...ctx} highlightId={highlightQuotationId} onHighlightHandled={()=>setHighlightQuotationId(null)} />}
+            {page === "quotations" && <QuotationsPage {...ctx} highlightId={highlightQuotationId} onHighlightHandled={()=>setHighlightQuotationId(null)}
+              setPage={setPage} onSalesOrderCreated={setHighlightSalesOrderId} />}
             {page === "quotationTemplates" && <QuotationTemplatesPage {...ctx} />}
             {page === "customers" && <CustomersPage {...ctx} />}
             {page === "dataManager" && <DataManagerPage {...ctx} />}
             {page === "subscriptions" && <SubscriptionsPage {...ctx} />}
-            {page === "orders" && <OrdersPage {...ctx} />}
-            {page === "invoices" && <InvoicesPage {...ctx} />}
-            {page === "jobs" && <JobsPage {...ctx} />}
+            {page === "orders" && <OrdersPage {...ctx} setPage={setPage} highlightId={highlightSalesOrderId} onHighlightHandled={()=>setHighlightSalesOrderId(null)}
+              onInvoiceCreated={setHighlightInvoiceId} />}
+            {page === "invoices" && <InvoicesPage {...ctx} setPage={setPage} highlightId={highlightInvoiceId} onHighlightHandled={()=>setHighlightInvoiceId(null)}
+              onJobCardTarget={setHighlightJobCardId} />}
+            {page === "jobs" && <JobsPage {...ctx} highlightId={highlightJobCardId} onHighlightHandled={()=>setHighlightJobCardId(null)} />}
             {page === "tasks" && <TasksPage {...ctx} />}
             {page === "incentives" && <IncentivesPage {...ctx} />}
             {page === "hr" && <HrPage {...ctx} />}
@@ -2140,6 +2149,15 @@ function LeadsPage({ state, dispatch, userId, role }) {
 function DealsPage({ state, dispatch, setPage, onViewQuotation, role, userId }) {
   const [view, setView] = useState("kanban");
   const viewQuotationFor = (d) => { onViewQuotation(state.quotations.find(q=>q.dealId===d.id)?.id); setPage("quotations"); };
+  // Highlights the row just created via "New deal" — local to this page since creation and
+  // display both happen here, unlike the cross-page highlightQuotationId pattern below.
+  const [highlightDealId, setHighlightDealId] = useState(null);
+  useEffect(() => {
+    if (!highlightDealId) return;
+    const el = document.getElementById(`deal-row-${highlightDealId}`);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [highlightDealId]);
+  const dealHighlightStyle = (d) => d.id === highlightDealId ? { background:"var(--gold-tint)", boxShadow:"inset 3px 0 0 var(--gold)" } : undefined;
   const [quoteFor, setQuoteFor] = useState(null);
   const [editDeal, setEditDeal] = useState(null);
   const [removeDeal, setRemoveDeal] = useState(null);
@@ -2199,7 +2217,8 @@ function DealsPage({ state, dispatch, setPage, onViewQuotation, role, userId }) 
             <thead><tr><th>Customer</th><th>Created</th><th>Service</th><th>Value</th><th>Lead type</th><th>Owner</th><th>Stage</th><th>Expected close</th><th></th></tr></thead>
             <tbody>
               {pg.pageRows.map(d => (
-                <tr key={d.id} style={d.stage === "Won" ? { background: "var(--success-tint)" } : undefined}>
+                <tr key={d.id} id={`deal-row-${d.id}`} onClick={()=>{ if (highlightDealId===d.id) setHighlightDealId(null); }}
+                  style={dealHighlightStyle(d) || (d.stage === "Won" ? { background: "var(--success-tint)" } : undefined)}>
                   <td>{d.customer}<div className="mono" style={{fontSize:11,color:"var(--ink-soft)"}}>{d.id}</div></td>
                   <td className="mono" style={{fontSize:12}}>{fmtDate(d.createdAt)}</td>
                   <td style={{maxWidth:200}}>{d.service}</td>
@@ -2246,7 +2265,9 @@ function DealsPage({ state, dispatch, setPage, onViewQuotation, role, userId }) 
             onDrop={(e)=>{ e.preventDefault(); if (draggedDealId) dispatch({type:"UPDATE_DEAL", id:draggedDealId, payload:{stage}}); setDraggedDealId(null); setDragOverStage(null); }}>
             <h4>{stage}<span className="pill">{deals.filter(d=>d.stage===stage).length}</span></h4>
             {deals.filter(d => d.stage === stage).map(d => (
-              <div className={`job-card ${draggedDealId===d.id ? "dragging" : ""}`} key={d.id} draggable
+              <div className={`job-card ${draggedDealId===d.id ? "dragging" : ""}`} key={d.id} id={`deal-row-${d.id}`} draggable
+                style={dealHighlightStyle(d)}
+                onClick={()=>{ if (highlightDealId===d.id) setHighlightDealId(null); }}
                 onDragStart={(e)=>{ setDraggedDealId(d.id); e.dataTransfer.effectAllowed = "move"; }}
                 onDragEnd={()=>{ setDraggedDealId(null); setDragOverStage(null); }}>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
@@ -2281,7 +2302,8 @@ function DealsPage({ state, dispatch, setPage, onViewQuotation, role, userId }) 
               // before customer_id existed).
               const customer = (d.customerId ? state.customers.find(c=>c.id===d.customerId) : null) || state.customers.find(c=>c.name===d.customer);
               return (
-              <div className="agw-card" key={d.id}>
+              <div className="agw-card" key={d.id} id={`deal-row-${d.id}`} style={dealHighlightStyle(d)}
+                onClick={()=>{ if (highlightDealId===d.id) setHighlightDealId(null); }}>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
                   <div>
                     <strong style={{ fontSize:14.5 }}>{d.customer}</strong>
@@ -2345,17 +2367,18 @@ function DealsPage({ state, dispatch, setPage, onViewQuotation, role, userId }) 
         </div>
       )}
 
-      {quoteFor && <QuoteBuilderModal dealId={quoteFor.id} customerName={quoteFor.customer} defaultService={quoteFor.service} services={state.services} itemCatalog={state.itemCatalog} dispatch={dispatch} templates={state.quotationTemplates} role={role} employees={state.employees} defaultOwner={quoteFor.owner} onClose={()=>setQuoteFor(null)} />}
+      {quoteFor && <QuoteBuilderModal dealId={quoteFor.id} customerName={quoteFor.customer} defaultService={quoteFor.service} services={state.services} itemCatalog={state.itemCatalog} dispatch={dispatch} templates={state.quotationTemplates} role={role} employees={state.employees} defaultOwner={quoteFor.owner} onClose={()=>setQuoteFor(null)}
+        onCreated={(id)=>{ onViewQuotation(id); setPage("quotations"); }} />}
       {editDeal && <EditDealModal deal={editDeal} state={state} dispatch={dispatch} onClose={()=>setEditDeal(null)} />}
       {removeDeal && <ConfirmModal title={`Remove deal ${removeDeal.id}?`} body={`${removeDeal.customer} — ${money(removeDeal.value)}. This can't be undone.`} onConfirm={()=>dispatch({type:"DELETE_DEAL", id:removeDeal.id})} onClose={()=>setRemoveDeal(null)} />}
-      {newDeal && <NewDealModal state={state} dispatch={dispatch} userId={userId} onClose={()=>setNewDeal(false)} />}
+      {newDeal && <NewDealModal state={state} dispatch={dispatch} userId={userId} onClose={()=>setNewDeal(false)} onCreated={setHighlightDealId} />}
     </div>
   );
 }
 
 // Deals normally come from converting a Lead — this is the direct path for a customer who's
 // already in the system and doesn't need to go through the lead pipeline again.
-function NewDealModal({ state, dispatch, userId, initialCustomer=null, onClose }) {
+function NewDealModal({ state, dispatch, userId, initialCustomer=null, onClose, onCreated }) {
   const [form, setForm] = useState({ customer: initialCustomer || "", service: state.services[0] || "", expectedClose: daysFromNow(21) });
   const [saveError, setSaveError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -2364,7 +2387,8 @@ function NewDealModal({ state, dispatch, userId, initialCustomer=null, onClose }
     setSaving(true);
     setSaveError("");
     try {
-      await dispatch({ type:"ADD_DEAL", payload: { ...form, owner: userId, stage: "Open" } });
+      const r = await dispatch({ type:"ADD_DEAL", payload: { ...form, owner: userId, stage: "Open" } });
+      onCreated?.(r?.id);
       onClose();
     } catch (err) {
       setSaveError(err instanceof ApiError ? err.message : "Couldn't save — please try again.");
@@ -2549,7 +2573,7 @@ function QuoteItemsEditor({ items, onChange, service, catalog = [], quotationFee
   );
 }
 
-function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVICES[0], editableCustomer=false, customerOptions=[], services=SERVICES, itemCatalog=[], dispatch, templates, role=null, employees=[], defaultOwner="", onClose }) {
+function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVICES[0], editableCustomer=false, customerOptions=[], services=SERVICES, itemCatalog=[], dispatch, templates, role=null, employees=[], defaultOwner="", onClose, onCreated }) {
   const [showNewService, setShowNewService] = useState(false);
   const [customer, setCustomer] = useState(customerName);
   // Admin-only: lets whoever is building the quotation attribute it to a different salesperson
@@ -2644,7 +2668,8 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
     setSaveError("");
     try {
       const payload = { dealId, customer, items, terms, notes, subject, theme, orderDiscount, bank, footerNote, owner: owner || undefined };
-      await dispatch({ type:"CREATE_QUOTATION", payload });
+      const r = await dispatch({ type:"CREATE_QUOTATION", payload });
+      onCreated?.(r?.id);
       onClose();
     } catch (err) {
       setSaveError(err instanceof ApiError ? err.message : "Couldn't save — please try again.");
@@ -2769,7 +2794,7 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
 /* QUOTATIONS                                                              */
 /* ---------------------------------------------------------------------- */
 
-function QuotationsPage({ state, dispatch, role, userId, highlightId, onHighlightHandled }) {
+function QuotationsPage({ state, dispatch, role, userId, highlightId, onHighlightHandled, setPage, onSalesOrderCreated }) {
   const [openId, setOpenId] = useState(null);
   // Set alongside openId when opened via the Edit action, so the modal jumps straight into Visual
   // edit instead of landing on Current view first — Draft/Pending Manager Approval quotations are
@@ -2876,7 +2901,8 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, onHighligh
         </table>)}
         <PaginationBar {...pg} />
       </div>
-      {open && <QuoteDetailModal quotation={open} state={state} dispatch={dispatch} role={role} userId={userId} customerOptions={customerOptions} templates={state.quotationTemplates} startInEdit={openInEdit} onClose={()=>{ setOpenId(null); setOpenInEdit(false); }} />}
+      {open && <QuoteDetailModal quotation={open} state={state} dispatch={dispatch} role={role} userId={userId} customerOptions={customerOptions} templates={state.quotationTemplates} startInEdit={openInEdit} onClose={()=>{ setOpenId(null); setOpenInEdit(false); }}
+        setPage={setPage} onSalesOrderCreated={onSalesOrderCreated} />}
       {cloneFor && <CloneQuoteModal quotation={cloneFor} customerOptions={customerOptions} dispatch={dispatch} onClose={()=>setCloneFor(null)} />}
       {removeQuote && <ConfirmModal title={`Remove ${removeQuote.id}?`} body={`${removeQuote.customer} — ${removeQuote.status}. This can't be undone. Blocked if it already has a Sales Order.`}
         onConfirm={async ()=>{ try { await dispatch({type:"DELETE_QUOTATION", id:removeQuote.id}); } catch (err) { alert(err instanceof ApiError ? err.message : "Couldn't delete — please try again."); } }}
@@ -2914,7 +2940,7 @@ function CloneQuoteModal({ quotation: q, customerOptions, dispatch, onClose, onC
   );
 }
 
-function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, customerOptions=[], templates={}, onClose, startInEdit=false }) {
+function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, customerOptions=[], templates={}, onClose, startInEdit=false, setPage, onSalesOrderCreated }) {
   const [view, setView] = useState(startInEdit ? "pdf" : "details");
   const [cloning, setCloning] = useState(false);
   const [removing, setRemoving] = useState(false);
@@ -2954,8 +2980,9 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
     setActionBusy(true);
     setActionError("");
     try {
-      await dispatch(action);
+      const result = await dispatch(action);
       if (!keepOpen) onClose();
+      return result;
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : "Couldn't complete this action — please try again.");
     } finally {
@@ -3151,8 +3178,12 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
             {q.status === "Client Accepted" && (
               isAccountsOrAdmin(role) ? (
                 <button className="btn btn-primary" disabled={actionBusy} onClick={async ()=>{
-                  if (await confirm({ title:`Convert ${q.id} to a Sales Order?`, body:"This creates a real Sales Order from this quotation and moves the linked deal to Won. Make sure the terms are final first.", confirmLabel:"Convert" }))
-                    runAction({type:"CONVERT_TO_SALES_ORDER", quotationId:q.id});
+                  if (await confirm({ title:`Convert ${q.id} to a Sales Order?`, body:"This creates a real Sales Order from this quotation and moves the linked deal to Won. Make sure the terms are final first.", confirmLabel:"Convert" })) {
+                    const r = await runAction({type:"CONVERT_TO_SALES_ORDER", quotationId:q.id});
+                    // salesOrderId is null for Government Fee quotations — those don't create a
+                    // real Sales Order, so there's nothing to navigate to or highlight.
+                    if (r?.salesOrderId) { onSalesOrderCreated?.(r.salesOrderId); setPage?.("orders"); }
+                  }
                 }}>{actionBusy ? "Creating…" : "Convert Sales Order"}</button>
               ) : (
                 <div className="side-note" style={{marginTop:0}}>Client accepted — now under payment process. Accounts will convert this into a sales order.</div>
@@ -4724,7 +4755,7 @@ function RenewSubscriptionModal({ subscription: sub, dispatch, onClose }) {
 /* SALES ORDERS                                                            */
 /* ---------------------------------------------------------------------- */
 
-function OrdersPage({ state, dispatch, role }) {
+function OrdersPage({ state, dispatch, role, highlightId, onHighlightHandled, setPage, onInvoiceCreated }) {
   // This backend onboards a sales order in one atomic step (creates the invoice AND the first
   // job card together — see /api/sales-orders/:id/onboard) rather than the prototype's separate
   // "Confirmed -> Invoiced -> Client Onboarded" stages, and sales_orders itself has no status
@@ -4736,8 +4767,14 @@ function OrdersPage({ state, dispatch, role }) {
   const [removeSo, setRemoveSo] = useState(null);
   const [pdfSo, setPdfSo] = useState(null);
   const [query, setQuery] = useState("");
+  const [onboardingId, setOnboardingId] = useState(null);
   const rows = state.salesOrders.filter(so => [so.customer, so.id, so.service].filter(Boolean).join(" ").toLowerCase().includes(query.trim().toLowerCase()));
   const pg = usePagination(rows);
+  useEffect(() => {
+    if (!highlightId) return;
+    const el = document.getElementById(`so-row-${highlightId}`);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [highlightId, rows.length]);
   return (
     <div>
       <div style={{ display:"flex", justifyContent:"flex-end", marginBottom: 14, gap:8 }}>
@@ -4759,8 +4796,11 @@ function OrdersPage({ state, dispatch, role }) {
         <tbody>
           {pg.pageRows.map(so => {
             const onboarded = isOnboarded(so.id);
+            const isHighlighted = highlightId === so.id;
             return (
-            <tr key={so.id}>
+            <tr key={so.id} id={`so-row-${so.id}`}
+              style={isHighlighted ? { background:"var(--gold-tint)", boxShadow:"inset 3px 0 0 var(--gold)" } : undefined}
+              onClick={isHighlighted ? () => onHighlightHandled?.() : undefined}>
               <td className="mono">{so.id}</td>
               <td className="mono" style={{fontSize:12}}>{fmtDate(so.createdAt)}</td>
               <td>{so.customer}</td>
@@ -4769,7 +4809,15 @@ function OrdersPage({ state, dispatch, role }) {
               <td className="mono">{money(so.amount)}</td>
               <td><Stamp tone={onboarded ? "success" : "warning"}>{onboarded ? "Onboarded" : "Pending onboarding"}</Stamp></td>
               <td style={{ display:"flex", gap:6, alignItems:"center" }}>
-                {!onboarded && canOnboard && <button className="btn btn-sm btn-primary" onClick={()=>dispatch({type:"ONBOARD_CLIENT", salesOrderId:so.id})}>Onboard client → create invoice & job</button>}
+                {!onboarded && canOnboard && <button className="btn btn-sm btn-primary" disabled={onboardingId===so.id} onClick={async ()=>{
+                  setOnboardingId(so.id);
+                  try {
+                    const r = await dispatch({type:"ONBOARD_CLIENT", salesOrderId:so.id});
+                    if (r?.invoiceId) { onInvoiceCreated?.(r.invoiceId); setPage?.("invoices"); }
+                  } finally {
+                    setOnboardingId(null);
+                  }
+                }}>{onboardingId===so.id ? "Onboarding…" : "Onboard client → create invoice & job"}</button>}
                 {!onboarded && !canOnboard && <span className="pill">Awaiting Accounts</span>}
                 {onboarded && <span className="pill"><BadgeCheck size={12} style={{verticalAlign:-2}}/> Invoice & job card created</span>}
                 <button className="btn btn-sm btn-ghost" onClick={()=>setPdfSo(so)}><FileText size={13}/> PDF</button>
@@ -4900,11 +4948,12 @@ function SalesOrderPdfModal({ salesOrder: so, onboarded, items=[], role, onClose
 /* INVOICES                                                                */
 /* ---------------------------------------------------------------------- */
 
-function InvoicesPage({ state, dispatch, role }) {
+function InvoicesPage({ state, dispatch, role, highlightId, onHighlightHandled, setPage, onJobCardTarget }) {
   const [pay, setPay] = useState(null);
   const [amount, setAmount] = useState(0);
   const [mode, setMode] = useState("Bank Transfer");
   const [paidAt, setPaidAt] = useState(daysFromNow(0));
+  const [payBusy, setPayBusy] = useState(false);
   const [history, setHistory] = useState(null);
   const [emailFor, setEmailFor] = useState(null);
   const [removeInvoice, setRemoveInvoice] = useState(null);
@@ -4914,6 +4963,11 @@ function InvoicesPage({ state, dispatch, role }) {
   const [query, setQuery] = useState("");
   const rows = state.invoices.filter(inv => [inv.customer, inv.id].filter(Boolean).join(" ").toLowerCase().includes(query.trim().toLowerCase()));
   const pg = usePagination(rows);
+  useEffect(() => {
+    if (!highlightId) return;
+    const el = document.getElementById(`inv-row-${highlightId}`);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [highlightId, rows.length]);
 
   return (
     <div>
@@ -4937,8 +4991,11 @@ function InvoicesPage({ state, dispatch, role }) {
             {pg.pageRows.map(inv => {
               const paid = inv.payments.reduce((a,p)=>a+p.amount,0);
               const balance = inv.amount - paid;
+              const isHighlighted = highlightId === inv.id;
               return (
-                <tr key={inv.id}>
+                <tr key={inv.id} id={`inv-row-${inv.id}`}
+                  style={isHighlighted ? { background:"var(--gold-tint)", boxShadow:"inset 3px 0 0 var(--gold)" } : undefined}
+                  onClick={isHighlighted ? () => onHighlightHandled?.() : undefined}>
                   <td className="mono">{inv.id}</td>
                   <td className="mono" style={{fontSize:12}}>{fmtDate(inv.createdAt)}</td>
                   <td>{inv.customer}</td>
@@ -4992,7 +5049,17 @@ function InvoicesPage({ state, dispatch, role }) {
           <div className="field"><label>Payment date</label><input type="date" max={daysFromNow(0)} value={paidAt} onChange={e=>setPaidAt(e.target.value)} /></div>
           <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop: 16 }}>
             <button className="btn" onClick={()=>setPay(null)}>Cancel</button>
-            <button className="btn btn-primary" disabled={!paidAt} onClick={()=>{ dispatch({type:"RECORD_PAYMENT", invoiceId:pay.id, amount, mode, paidAt, by:"Accounts"}); setPay(null); }}>Record payment</button>
+            <button className="btn btn-primary" disabled={!paidAt || payBusy} onClick={async ()=>{
+              setPayBusy(true);
+              try {
+                await dispatch({type:"RECORD_PAYMENT", invoiceId:pay.id, amount, mode, paidAt, by:"Accounts"});
+                const jc = pay.salesOrderId ? state.jobCards.find(j=>j.salesOrderId===pay.salesOrderId) : null;
+                setPay(null);
+                if (jc) { onJobCardTarget?.(jc.id); setPage?.("jobs"); }
+              } finally {
+                setPayBusy(false);
+              }
+            }}>{payBusy ? "Recording…" : "Record payment"}</button>
           </div>
         </Modal>
       )}
@@ -5144,7 +5211,7 @@ function PaymentHistoryModal({ invoice: inv, dispatch, onClose }) {
 /* JOB CARDS                                                               */
 /* ---------------------------------------------------------------------- */
 
-function JobsPage({ state, dispatch, role, userId }) {
+function JobsPage({ state, dispatch, role, userId, highlightId, onHighlightHandled }) {
   const [view, setView] = useState("kanban");
   const [assignFor, setAssignFor] = useState(null);
   const [detailId, setDetailId] = useState(null);
@@ -5172,6 +5239,17 @@ function JobsPage({ state, dispatch, role, userId }) {
   const pg = usePagination(visible);
 
   const openDetail = (j, cancelOnOpen=false) => { setDetailId(j.id); setDetailCancelOnOpen(cancelOnOpen); };
+
+  // Kanban paginates 5-per-column, so a newly-relevant card could be hidden behind "Show more" —
+  // force the flat table view instead, where the highlight logic below can always find it (subject
+  // to the same known limitation as the other pipeline pages: if it's off the current table page,
+  // the scroll is a no-op).
+  useEffect(() => { if (highlightId) setView("table"); }, [highlightId]);
+  useEffect(() => {
+    if (!highlightId) return;
+    const el = document.getElementById(`job-row-${highlightId}`);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [highlightId, view, pg.pageRows.length]);
 
   const handleDrop = (col) => {
     setDragOverCol(null);
@@ -5230,8 +5308,12 @@ function JobsPage({ state, dispatch, role, userId }) {
           <table className="agw-table" style={{ minWidth: 820 }}>
             <thead><tr><th>Job card</th><th>Age</th><th>Customer</th><th>Service</th><th>Lead by</th><th>Assigned</th><th>Checklist</th><th>Priority</th><th>Target date</th><th>Status</th></tr></thead>
             <tbody>
-              {pg.pageRows.map(j => (
-                <tr key={j.id} onClick={()=>openDetail(j)}>
+              {pg.pageRows.map(j => {
+                const isHighlighted = highlightId === j.id;
+                return (
+                <tr key={j.id} id={`job-row-${j.id}`}
+                  style={isHighlighted ? { background:"var(--gold-tint)", boxShadow:"inset 3px 0 0 var(--gold)" } : undefined}
+                  onClick={()=>{ if (isHighlighted) onHighlightHandled?.(); openDetail(j); }}>
                   <td className="mono">{j.id}</td>
                   <td className="mono" style={{fontSize:12}}>{daysSince(j.createdAt)}d<div style={{fontSize:11,color:"var(--ink-soft)"}}>{fmtDate(j.createdAt)}</div></td>
                   <td>{j.customer}</td>
@@ -5248,7 +5330,7 @@ function JobsPage({ state, dispatch, role, userId }) {
                   <td className="mono" style={{fontSize:12}}>{fmtDate(j.targetDate)}</td>
                   <td><Stamp tone={statusTone(j.status)}>{j.status}</Stamp></td>
                 </tr>
-              ))}
+              );})}
             </tbody>
           </table>
           </div>)}
@@ -5269,11 +5351,12 @@ function JobsPage({ state, dispatch, role, userId }) {
             onDrop={(e)=>{ e.preventDefault(); handleDrop(col); }}>
             <h4>{col}<span className="pill">{colJobs.length}</span></h4>
             {shownJobs.map(j => (
-              <div className={`job-card ${draggedJobId===j.id ? "dragging" : ""}`} key={j.id} onClick={()=>openDetail(j)}
+              <div className={`job-card ${draggedJobId===j.id ? "dragging" : ""}`} key={j.id} id={`job-card-${j.id}`}
+                onClick={()=>{ if (highlightId===j.id) onHighlightHandled?.(); openDetail(j); }}
                 draggable={canManage && !["Completed","Cancelled","Pending Approval"].includes(j.status)}
                 onDragStart={(e)=>{ setDraggedJobId(j.id); e.dataTransfer.effectAllowed = "move"; }}
                 onDragEnd={()=>{ setDraggedJobId(null); setDragOverCol(null); }}
-                style={{ cursor:"pointer" }} title="Click for full details">
+                style={{ cursor:"pointer", ...(highlightId===j.id ? { background:"var(--gold-tint)", boxShadow:"inset 3px 0 0 var(--gold)" } : {}) }} title="Click for full details">
                 <h5 style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{j.customer}</h5>
                 <div className="mono" style={{ fontSize:11, color:"var(--ink-soft)", marginTop:-4, marginBottom:4, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
                   {j.id} · {j.service}
