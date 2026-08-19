@@ -6324,6 +6324,63 @@ const QUOTATION_TUTORIAL_STEPS = [
   { title: "Track what happens next", desc: "Status moves Draft → Sent → Client Accepted → Approved (or Rejected / Under Negotiation along the way). Once accepted, Accounts converts it into a Sales Order." },
 ];
 
+// Common Standard Operating Procedure for onboarding an accepted client — applies to every
+// service line (Step 6 is the one exception, Growth Partner Program only). Sourced from
+// Client_Onboarding_SOP_3.docx.
+const CLIENT_ONBOARDING_SOP_STEPS = [
+  { step: "1. Client Accepted", role: "Sales Person", action: "Update the client status to “Client Accepted” after the client confirms the service." },
+  { step: "2. Payment Status Update", role: "Accountant/Admin + CRO", action: "Verify and update payment status in the CRM. Confirm whether payment is pending, partial, or received." },
+  { step: "3. Sales Order", role: "Accountant/Admin", action: "Create the Sales Order based on the approved quotation/service." },
+  { step: "4. Record Payment", role: "Accountant/Admin", action: "Record the received payment accurately in the SMART CRM/Zoho." },
+  { step: "5. Create Customer in Zoho Books", role: "Accountant/Admin", action: "Create or verify the customer record in Zoho with correct company and contact details." },
+  { step: "6. Create Subscription *", role: "Accountant/Admin", action: "Create the recurring Subscription in Zoho, linking the correct plan and billing cycle. Applies to Growth Partner Program clients only — skip for other services." },
+  { step: "7. Create Receipt", role: "Accountant/Admin", action: "Create and issue the official receipt against the recorded payment." },
+  { step: "8. Create Job", role: "Accountant/Admin", action: "Create the job/task in the relevant CRM/Zoho workflow and assign the required internal action." },
+  { step: "9. Documentation", role: "CRO", action: "Collect the required client documents and ensure all files are complete and properly named." },
+  { step: "10. Documentation File", role: "CRO", action: "Maintain the client file containing quotation, client form, agreement, coupon details and supporting documents." },
+  { step: "11. Thank-You Email", role: "Admin + CRO", action: "Once the signed agreement is on file and the receipt is issued, Admin and CRO jointly send a thank-you email to the client acknowledging their onboarding." },
+  { step: "12. Onboarding Completed", role: "Admin + CRO", action: "Confirm payment, CRM records, Zoho customer, receipt, job and documentation are completed. Mark onboarding as completed." },
+  { step: "13. Next-Step Follow-Up", role: "CRO", action: "After onboarding, CRO follows up with the client, coordinates the next operational step and keeps the client informed until the service progresses." },
+];
+
+const CLIENT_ONBOARDING_DOCS = [
+  "Quotation / approved quotation",
+  "Client information / client onboarding form",
+  "Signed agreement / service agreement",
+  "Coupon or promotion details, where applicable",
+  "Payment confirmation / payment record",
+  "Receipt",
+  "Company and contact supporting documents, as applicable",
+  "Subscription/plan agreement details (Growth Partner Program clients only)",
+  "Any additional documents required for the specific service",
+];
+
+const CLIENT_ONBOARDING_ROLES = [
+  { role: "Sales Person", responsibility: "Client acceptance, confirmation of service, and handover to Accountant/Admin and CRO." },
+  { role: "Accountant/Admin", responsibility: "Payment status, Sales Order, payment recording, Zoho Books customer creation, subscription creation (Growth Partner Program clients), receipt creation and job creation." },
+  { role: "CRO", responsibility: "Documentation, client file completion, coordination, communication and next-step follow-up." },
+  { role: "Admin + CRO", responsibility: "Send the client a thank-you email once the signed agreement and receipt are confirmed; final onboarding verification and confirmation that the client is fully onboarded." },
+];
+
+const CLIENT_ONBOARDING_CHECKLIST = [
+  "Client status changed to Client Accepted",
+  "Payment status updated",
+  "Sales Order created",
+  "Payment recorded in CRM/Zoho",
+  "Customer created/verified in Zoho",
+  "Subscription created in Zoho (Growth Partner Program clients only)",
+  "Receipt created and issued",
+  "Job/task created and assigned",
+  "Quotation filed",
+  "Client form filed",
+  "Agreement filed",
+  "Coupon/promotion details filed, if applicable",
+  "Supporting documents filed",
+  "Thank-you email sent to client (after signature & receipt confirmed)",
+  "Client onboarding marked Completed",
+  "CRO assigned for next-step follow-up",
+];
+
 /** Basic "how it works" guide for HR — a graphical Lead-to-Job-Card workflow, plus step-by-step
  * tutorials, so new staff can understand the pipeline and specific tasks at a glance. More
  * sections/articles get added here later. */
@@ -6388,6 +6445,76 @@ function KnowledgeBasePage() {
           Government Fee quotations (the whole document, not just a line item) are for viewing and sharing as a
           PDF only — they're excluded from business volume/incentive calculations and never create a Sales
           Order, Invoice or Job Card.
+        </div>
+      </div>
+
+      <div className="agw-card" style={{ marginTop:18 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
+          <FileText size={17} />
+          <strong style={{ fontSize:14.5 }}>SOP: Client Onboarding Process</strong>
+        </div>
+        <div style={{ fontSize:12.5, color:"var(--ink-soft)", lineHeight:1.6, marginBottom:14 }}>
+          Common Standard Operating Procedure — applies to every service line, including the Growth Partner Program.
+          <br/><strong>Purpose:</strong> ensure every accepted client is properly recorded, paid, documented, created in Zoho,
+          assigned a job, and handed over for structured follow-up.
+          <br/><strong>Scope:</strong> common to all services — a small number of steps apply only to a specific service, marked
+          accordingly below, and should be skipped for other services.
+        </div>
+
+        <div style={{ fontWeight:600, fontSize:13, marginBottom:8 }}>1. Detailed Client Onboarding Procedure</div>
+        <div style={{ overflowX:"auto", marginBottom:16 }}>
+          <table className="agw-table">
+            <thead><tr><th style={{width:170}}>Step</th><th style={{width:140}}>Responsible</th><th>Required Action</th></tr></thead>
+            <tbody>
+              {CLIENT_ONBOARDING_SOP_STEPS.map(s => (
+                <tr key={s.step}>
+                  <td style={{ fontWeight:500 }}>{s.step}</td>
+                  <td style={{ fontSize:12.5, color:"var(--ink-soft)" }}>{s.role}</td>
+                  <td style={{ fontSize:12.5 }}>{s.action}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div style={{ fontSize:11.5, color:"var(--ink-soft)", marginBottom:16 }}>
+          * Step 6 (Create Subscription) applies only to Growth Partner Program clients. All other steps are identical across every service.
+        </div>
+
+        <div style={{ fontWeight:600, fontSize:13, marginBottom:8 }}>2. Required Client Documentation</div>
+        <ul style={{ margin:"0 0 16px", paddingLeft:20, fontSize:12.5, lineHeight:1.9 }}>
+          {CLIENT_ONBOARDING_DOCS.map(d => <li key={d}>{d}</li>)}
+        </ul>
+
+        <div style={{ fontWeight:600, fontSize:13, marginBottom:8 }}>3. Roles & Responsibilities</div>
+        <div style={{ overflowX:"auto", marginBottom:16 }}>
+          <table className="agw-table">
+            <thead><tr><th style={{width:170}}>Role</th><th>Responsibility</th></tr></thead>
+            <tbody>
+              {CLIENT_ONBOARDING_ROLES.map(r => (
+                <tr key={r.role}>
+                  <td style={{ fontWeight:500 }}>{r.role}</td>
+                  <td style={{ fontSize:12.5 }}>{r.responsibility}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div style={{ fontWeight:600, fontSize:13, marginBottom:8 }}>4. Onboarding Completion Checklist</div>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(260px, 1fr))", gap:"4px 16px", marginBottom:16 }}>
+          {CLIENT_ONBOARDING_CHECKLIST.map(c => (
+            <div key={c} style={{ display:"flex", alignItems:"flex-start", gap:7, fontSize:12.5 }}>
+              <span style={{ width:14, height:14, border:"1.5px solid var(--hair)", borderRadius:3, flexShrink:0, marginTop:2 }} />
+              {c}
+            </div>
+          ))}
+        </div>
+
+        <div className="side-note">
+          <AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>
+          <strong>Control Rule:</strong> a client should not be marked as "Client Onboarded – Completed" until the required
+          payment, CRM/Zoho records, receipt, job creation, documentation file and client thank-you email are completed.
+          Once onboarding is completed, the CRO becomes responsible for continuous follow-up and coordination.
         </div>
       </div>
     </div>
