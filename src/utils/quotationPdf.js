@@ -121,7 +121,8 @@ function drawTableHeader(doc, y, colX, tableRight, headerBg) {
 function generateQuotationPdf(quotation, res) {
   const items = quotation.items || [];
   const orderDiscount = Number(quotation.order_discount ?? quotation.orderDiscount ?? 0);
-  const { subtotal, total } = quoteTotal(items, orderDiscount);
+  const orderDiscountType = quotation.order_discount_type ?? quotation.orderDiscountType ?? "amount";
+  const { subtotal, itemDiscountTotal, discountAmount, total } = quoteTotal(items, orderDiscount, orderDiscountType);
   const theme = themeFor(quotation.theme);
 
   const doc = new PDFDocument({ size: "A4", margin: MARGIN, bufferPages: true });
@@ -230,7 +231,7 @@ function generateQuotationPdf(quotation, res) {
   const firstGovIdx = items.findIndex(isGovFeeItem);
   const firstProfIdx = items.findIndex((it) => !isGovFeeItem(it));
   const govFirst = firstGovIdx !== -1 && (firstProfIdx === -1 || firstGovIdx < firstProfIdx);
-  ensureRoom(102);
+  ensureRoom(118); // +16 over the old fixed estimate to cover the new "Item Discount" line
   const totalsWidth = 220;
   const totalsX = tableRight - totalsWidth;
   const drawFeeTotalLine = (label, amount) => {
@@ -242,12 +243,18 @@ function generateQuotationPdf(quotation, res) {
     if (govFirst) { drawFeeTotalLine("Government Fee Total", govFeeTotal); drawFeeTotalLine("Professional Fee Total", profFeeTotal); }
     else { drawFeeTotalLine("Professional Fee Total", profFeeTotal); drawFeeTotalLine("Government Fee Total", govFeeTotal); }
   }
+  if (itemDiscountTotal > 0) {
+    doc.font("Inter").fontSize(9.5).fillColor(GRAY).text("Item Discount", totalsX, y, { width: 110 });
+    doc.font("Inter").fontSize(9.5).fillColor(INK).text(`(-) ${money2(itemDiscountTotal)}`, totalsX + 110, y, { width: totalsWidth - 110, align: "right" });
+    y += 16;
+  }
   doc.font("Inter").fontSize(9.5).fillColor(GRAY).text("Sub Total", totalsX, y, { width: 110 });
   doc.font("Inter").fontSize(9.5).fillColor(INK).text(money2(subtotal), totalsX + 110, y, { width: totalsWidth - 110, align: "right" });
   y += 16;
-  if (orderDiscount > 0) {
-    doc.font("Inter").fontSize(9.5).fillColor(GRAY).text("Discount", totalsX, y, { width: 110 });
-    doc.font("Inter").fontSize(9.5).fillColor(INK).text(`(-) ${money2(orderDiscount)}`, totalsX + 110, y, { width: totalsWidth - 110, align: "right" });
+  if (discountAmount > 0) {
+    const label = orderDiscountType === "percent" ? `Discount (${money2(orderDiscount)}%)` : "Discount";
+    doc.font("Inter").fontSize(9.5).fillColor(GRAY).text(label, totalsX, y, { width: 110 });
+    doc.font("Inter").fontSize(9.5).fillColor(INK).text(`(-) ${money2(discountAmount)}`, totalsX + 110, y, { width: totalsWidth - 110, align: "right" });
     y += 16;
   }
   doc.rect(totalsX, y - 2, totalsWidth, 20).fill(theme.totalBg);

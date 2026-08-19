@@ -169,6 +169,9 @@ CREATE TABLE IF NOT EXISTS quotation_templates (
   notes        TEXT,
   terms        TEXT,
   order_discount DECIMAL(12,2) DEFAULT 0,
+  -- Whether order_discount above is a flat QAR amount or a percentage of the (post-item-discount)
+  -- subtotal — see the matching column on quotations for how it's actually applied.
+  order_discount_type ENUM('amount','percent') DEFAULT 'amount',
   bank         TEXT,
   footer_note  TEXT,
   FOREIGN KEY (service) REFERENCES services(name) ON DELETE CASCADE
@@ -310,6 +313,10 @@ CREATE TABLE IF NOT EXISTS quotations (
   subject          VARCHAR(500),
   items            JSON NOT NULL,     -- [{category, service, description, note, qty, price, discountPct, feeType}] — feeType is optional per item ('Professional Fee' | 'Government Fee'); missing means "inherit the quotation's own fee_type" (pre-existing rows)
   order_discount   DECIMAL(12,2) DEFAULT 0,
+  -- Whether order_discount is a flat QAR amount subtracted once from the subtotal, or a percentage
+  -- of it — see quoteTotal in src/utils/helpers.js for the actual math. Missing/NULL (pre-existing
+  -- rows) behaves exactly as before: a flat amount.
+  order_discount_type ENUM('amount','percent') DEFAULT 'amount',
   bank             TEXT,
   footer_note      TEXT,
   notes            TEXT,

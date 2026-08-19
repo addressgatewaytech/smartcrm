@@ -70,11 +70,12 @@ router.put("/quotation-templates/:service", requireRole(["admin_like", "sales_ma
   const { service } = req.params;
   const b = req.body;
   await query(
-    `INSERT INTO quotation_templates (service, subject, items, notes, terms, order_discount, bank, footer_note)
-     VALUES (?,?,?,?,?,?,?,?)
+    `INSERT INTO quotation_templates (service, subject, items, notes, terms, order_discount, order_discount_type, bank, footer_note)
+     VALUES (?,?,?,?,?,?,?,?,?)
      ON DUPLICATE KEY UPDATE subject=VALUES(subject), items=VALUES(items), notes=VALUES(notes), terms=VALUES(terms),
-       order_discount=VALUES(order_discount), bank=VALUES(bank), footer_note=VALUES(footer_note)`,
-    [service, b.subject || null, JSON.stringify(b.items || []), b.notes || null, b.terms || null, b.orderDiscount || 0, b.bank || null, b.footerNote || null]
+       order_discount=VALUES(order_discount), order_discount_type=VALUES(order_discount_type), bank=VALUES(bank), footer_note=VALUES(footer_note)`,
+    [service, b.subject || null, JSON.stringify(b.items || []), b.notes || null, b.terms || null, b.orderDiscount || 0,
+      b.orderDiscountType === "percent" ? "percent" : "amount", b.bank || null, b.footerNote || null]
   );
   res.json({ ok: true });
 });

@@ -91,10 +91,21 @@ async function findOrCreateCustomer(query, { name, phone, email, contact, ownerI
   return { customerId, duplicateOf: null };
 }
 
-/** Sum of a quotation/order's line items after per-item and order-level discount. */
-function quoteTotal(items, orderDiscount = 0) {
-  const subtotal = (items || []).reduce((a, it) => a + it.qty * it.price * (1 - (it.discountPct || 0) / 100), 0);
-  return { subtotal, total: Math.max(0, subtotal - (orderDiscount || 0)) };
+/**
+ * Sum of a quotation/order's line items after per-item and order-level discount.
+ * orderDiscountType controls how `orderDiscount` is applied: 'amount' (default, a flat QAR value
+ * subtracted once) or 'percent' (a percentage of the post-item-discount subtotal). itemDiscountTotal
+ * is the total already folded into each line's amount via its own discountPct — broken out here so
+ * callers can show it as its own line instead of it silently vanishing into the subtotal.
+ */
+function quoteTotal(items, orderDiscount = 0, orderDiscountType = "amount") {
+  const list = items || [];
+  const grossSubtotal = list.reduce((a, it) => a + it.qty * it.price, 0);
+  const subtotal = list.reduce((a, it) => a + it.qty * it.price * (1 - (it.discountPct || 0) / 100), 0);
+  const itemDiscountTotal = grossSubtotal - subtotal;
+  const pct = Math.min(100, Math.max(0, orderDiscount || 0));
+  const discountAmount = orderDiscountType === "percent" ? subtotal * (pct / 100) : (orderDiscount || 0);
+  return { grossSubtotal, subtotal, itemDiscountTotal, discountAmount, total: Math.max(0, subtotal - discountAmount) };
 }
 
 /**
@@ -107,7 +118,7 @@ function quoteTotal(items, orderDiscount = 0) {
  * two fee-type subtotals, so it degrades to the exact old value for a quotation that's 100% one
  * type either way.
  */
-function professionalFeeTotal(items, orderDiscount, quotationFeeType) {
+function professionalFeeTotal(items, orderDiscount, quotationFeeType, orderDiscountType = "amount") {
   const list = items || [];
   const lineAmount = (it) => it.qty * it.price * (1 - (it.discountPct || 0) / 100);
   const isGovernmentFee = (it) => (it.feeType || quotationFeeType || "Professional Fee") === "Government Fee";
@@ -115,7 +126,9 @@ function professionalFeeTotal(items, orderDiscount, quotationFeeType) {
   if (subtotal <= 0) return 0;
   const profSubtotal = list.filter((it) => !isGovernmentFee(it)).reduce((a, it) => a + lineAmount(it), 0);
   const profShare = profSubtotal / subtotal;
-  return Math.max(0, profSubtotal - (orderDiscount || 0) * profShare);
+  const pct = Math.min(100, Math.max(0, orderDiscount || 0));
+  const discountAmount = orderDiscountType === "percent" ? subtotal * (pct / 100) : (orderDiscount || 0);
+  return Math.max(0, profSubtotal - discountAmount * profShare);
 }
 
 module.exports = { nextId, nextSequentialId, today, daysFromNow, normPhone, normEmail, normCompany, money, quoteTotal, professionalFeeTotal, findDuplicateCustomer, findOrCreateCustomer };

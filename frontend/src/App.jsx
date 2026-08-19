@@ -361,7 +361,7 @@ const quotationStatusLabel = (status, role) => (status === "Client Accepted" && 
 // type is its own `feeType` if tagged, else the quotation's whole-document `feeType` (so a
 // pre-single-quotation-model record, whose items were never tagged individually, still resolves
 // correctly). Order-level discount is allocated proportionally across the two subtotals.
-const professionalFeeAmount = (items, orderDiscount, quotationFeeType) => {
+const professionalFeeAmount = (items, orderDiscount, quotationFeeType, orderDiscountType = "amount") => {
   const list = items || [];
   const lineAmount = (it) => it.qty * it.price * (1 - (it.discountPct || 0) / 100);
   const isGovernmentFee = (it) => (it.feeType || quotationFeeType || "Professional Fee") === "Government Fee";
@@ -369,7 +369,9 @@ const professionalFeeAmount = (items, orderDiscount, quotationFeeType) => {
   if (subtotal <= 0) return 0;
   const profSubtotal = list.filter((it) => !isGovernmentFee(it)).reduce((a, it) => a + lineAmount(it), 0);
   const profShare = profSubtotal / subtotal;
-  return Math.max(0, profSubtotal - (orderDiscount || 0) * profShare);
+  const pct = Math.min(100, Math.max(0, orderDiscount || 0));
+  const discountAmount = orderDiscountType === "percent" ? subtotal * (pct / 100) : (orderDiscount || 0);
+  return Math.max(0, profSubtotal - discountAmount * profShare);
 };
 // Single-quotation model: a quotation's real fee-type makeup can now be a mix — this reflects
 // that in badges/exports instead of a possibly-misleading single "Professional Fee" label.
@@ -421,6 +423,42 @@ const govProfSplit = (items, quotationFeeType) => {
   const govFirst = firstGovIdx !== -1 && (firstProfIdx === -1 || firstGovIdx < firstProfIdx);
   return { subtotal, govTotal, profTotal, govFirst };
 };
+
+// Mirrors quoteTotal in src/utils/helpers.js. itemDiscountTotal is what each line's own
+// discountPct already folded silently into its Amount — broken out here so it can be shown as
+// its own line instead of just vanishing into Sub Total. orderDiscountType picks how
+// orderDiscount is applied: a flat QAR amount (default) or a percentage of Sub Total.
+const quoteTotals = (items, orderDiscount, orderDiscountType) => {
+  const grossSubtotal = items.reduce((a, it) => a + it.qty * it.price, 0);
+  const subtotal = items.reduce((a, it) => a + it.qty * it.price * (1 - (it.discountPct || 0) / 100), 0);
+  const itemDiscountTotal = grossSubtotal - subtotal;
+  const pct = Math.min(100, Math.max(0, orderDiscount || 0));
+  const discountAmount = orderDiscountType === "percent" ? subtotal * (pct / 100) : (orderDiscount || 0);
+  return { grossSubtotal, subtotal, itemDiscountTotal, discountAmount, total: Math.max(0, subtotal - discountAmount) };
+};
+
+// Amount/percent toggle for the order-level "overall discount" field — reused everywhere a
+// quotation's whole-document discount is entered (builder, current-view edit, PDF-preview edit,
+// per-service template).
+function OrderDiscountField({ value, type, onValueChange, onTypeChange, label = "Overall discount" }) {
+  return (
+    <div className="field">
+      <label>{label} (optional — shown as its own line)</label>
+      <div style={{ display:"flex", gap:6 }}>
+        <input type="number" min={0} max={type==="percent" ? 100 : undefined} value={value}
+          onChange={e=>onValueChange(e.target.value === "" ? "" : Number(e.target.value))} style={{ flex:1 }} />
+        <div style={{ display:"flex", border:"1px solid var(--hair)", borderRadius:8, overflow:"hidden", flexShrink:0 }}>
+          <button type="button" onClick={()=>onTypeChange("amount")}
+            style={{ padding:"0 12px", fontSize:12.5, border:"none", cursor:"pointer",
+              background: type!=="percent" ? "var(--brand)" : "var(--surface)", color: type!=="percent" ? "#fff" : "var(--ink)" }}>QAR</button>
+          <button type="button" onClick={()=>onTypeChange("percent")}
+            style={{ padding:"0 12px", fontSize:12.5, border:"none", cursor:"pointer",
+              background: type==="percent" ? "var(--brand)" : "var(--surface)", color: type==="percent" ? "#fff" : "var(--ink)" }}>%</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // Moves array element `i` up (dir=-1) or down (dir=1) by one position — used for the per-line
 // "move item" controls in the quotation builder and templates editor.
@@ -1246,7 +1284,7 @@ function Dashboard({ state, dispatch, role, userId, setPage }) {
   const outstanding = state.invoices.reduce((a,inv) => a + Math.max(0, inv.amount - inv.payments.reduce((x,p)=>x+p.amount,0)), 0);
   // Only the Professional Fee portion of a quotation counts as business volume — see
   // professionalFeeAmount above (handles quotations that mix Professional + Government Fee items).
-  const quoteAmount = (q) => professionalFeeAmount(q.items, q.orderDiscount, q.feeType);
+  const quoteAmount = (q) => professionalFeeAmount(q.items, q.orderDiscount, q.feeType, q.orderDiscountType);
 
   const periodQuotes = state.quotations.filter(q => q.status === "Approved" && q.feeType !== "Government Fee" && inRange(q.createdAt, range));
   const businessVolume = periodQuotes.reduce((a,q) => a + quoteAmount(q), 0);
@@ -2591,12 +2629,12 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
   // backend). Real pricing comes from loading the service's fee template below, or typing it in.
   const [items, setItems] = useState([{ category: "", service: defaultService, description: "", note: "", qty: 1, price: 0, discountPct: 0 }]);
   const [orderDiscount, setOrderDiscount] = useState(0);
+  const [orderDiscountType, setOrderDiscountType] = useState("amount");
   const [bank, setBank] = useState("");
   const [footerNote, setFooterNote] = useState("");
   const [notes, setNotes] = useState("");
   const [terms, setTerms] = useState("");
-  const subtotal = items.reduce((a,it) => a + it.qty*it.price*(1-(it.discountPct||0)/100), 0);
-  const total = Math.max(0, subtotal - (orderDiscount || 0));
+  const { subtotal, itemDiscountTotal, discountAmount, total } = quoteTotals(items, orderDiscount, orderDiscountType);
   const hasDiscount = items.some(it => it.discountPct > 0) || orderDiscount > 0;
   // One merged template per service (Professional Fee and Government Fee lines share the same
   // template, tagged per item — see quotation_templates in schema.sql), so there's no fee-type
@@ -2617,6 +2655,7 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
     setNotes(loadedTpl.notes || "");
     setSubject(loadedTpl.subject || "");
     setOrderDiscount(loadedTpl.orderDiscount || 0);
+    setOrderDiscountType(loadedTpl.orderDiscountType || "amount");
     setBank(loadedTpl.bank || "");
     setFooterNote(loadedTpl.footerNote || "");
   };
@@ -2667,7 +2706,7 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
     setSaving(true);
     setSaveError("");
     try {
-      const payload = { dealId, customer, items, terms, notes, subject, theme, orderDiscount, bank, footerNote, owner: owner || undefined };
+      const payload = { dealId, customer, items, terms, notes, subject, theme, orderDiscount, orderDiscountType, bank, footerNote, owner: owner || undefined };
       const r = await dispatch({ type:"CREATE_QUOTATION", payload });
       onCreated?.(r?.id);
       onClose();
@@ -2756,18 +2795,23 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
       </div>
 
       <div className="row2">
-        <div className="field"><label>Overall discount (QAR, optional — shown as its own line)</label><input type="number" min={0} value={orderDiscount} onChange={e=>setOrderDiscount((e.target.value === "" ? "" : Number(e.target.value)))} /></div>
+        <OrderDiscountField value={orderDiscount} type={orderDiscountType} onValueChange={setOrderDiscount} onTypeChange={setOrderDiscountType} />
         <div className="field"><label>Bank details override (optional — defaults to the standard account)</label><textarea rows={2} value={bank} onChange={e=>setBank(e.target.value)} placeholder="Leave blank to use the standard Address Gateway bank details" /></div>
       </div>
       <div className="field"><label>Footer note (optional — shown at the bottom of every page)</label><textarea rows={2} value={footerNote} onChange={e=>setFooterNote(e.target.value)} placeholder={DEFAULT_FOOTER_NOTE} /></div>
 
       <div style={{ marginTop: 6, borderTop:"1px solid var(--hair)", paddingTop: 12 }}>
-        <div style={{ display:"flex", justifyContent:"space-between", fontSize:13, color:"var(--ink-soft)" }}>
+        {itemDiscountTotal > 0 && (
+          <div style={{ display:"flex", justifyContent:"space-between", fontSize:13, color:"var(--ink-soft)" }}>
+            <span>Item Discount</span><span className="mono">(-) {money(itemDiscountTotal)}</span>
+          </div>
+        )}
+        <div style={{ display:"flex", justifyContent:"space-between", fontSize:13, color:"var(--ink-soft)", marginTop: itemDiscountTotal > 0 ? 4 : 0 }}>
           <span>Sub Total</span><span className="mono">{money(subtotal)}</span>
         </div>
-        {orderDiscount > 0 && (
+        {discountAmount > 0 && (
           <div style={{ display:"flex", justifyContent:"space-between", fontSize:13, color:"var(--ink-soft)", marginTop:4 }}>
-            <span>Discount</span><span className="mono">(-) {money(orderDiscount)}</span>
+            <span>Discount{orderDiscountType === "percent" ? ` (${orderDiscount}%)` : ""}</span><span className="mono">(-) {money(discountAmount)}</span>
           </div>
         )}
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginTop: 8 }}>
@@ -2821,8 +2865,8 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, onHighligh
     .slice().sort((a,b) => (b.favorite?1:0) - (a.favorite?1:0));
   const favoriteCount = ownerFiltered.filter(q => q.favorite).length;
   const pg = usePagination(rows);
-  const total = q => Math.max(0, q.items.reduce((a,it)=>a+it.qty*it.price*(1-(it.discountPct||0)/100),0) - (q.orderDiscount||0));
-  const profFees = q => professionalFeeAmount(q.items, q.orderDiscount, q.feeType);
+  const total = q => quoteTotals(q.items, q.orderDiscount, q.orderDiscountType || "amount").total;
+  const profFees = q => professionalFeeAmount(q.items, q.orderDiscount, q.feeType, q.orderDiscountType);
   const customerOptions = state.customers.map(c=>c.name);
   const isAdmin = ADMIN_LIKE.includes(role);
 
@@ -2963,7 +3007,8 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
   // "draft" is the working copy while Visual edit is active in the PDF tab.
   const [content, setContent] = useState(() => ({
     subject: q.subject || "", items: q.items.map(it => ({...it})), notes: q.notes || "",
-    terms: q.terms || "", orderDiscount: q.orderDiscount || 0, bank: q.bank || "", footerNote: q.footerNote || "",
+    terms: q.terms || "", orderDiscount: q.orderDiscount || 0, orderDiscountType: q.orderDiscountType || "amount",
+    bank: q.bank || "", footerNote: q.footerNote || "",
     theme: q.theme || "charcoal",
   }));
   const [visualEdit, setVisualEdit] = useState(startInEdit);
@@ -2996,8 +3041,7 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
   const src = visualEdit && draft ? draft : content;
   const editingNow = visualEdit && !!draft;
   const cq = { ...q, ...src };
-  const subtotal = cq.items.reduce((a,it)=>a+it.qty*it.price*(1-(it.discountPct||0)/100),0);
-  const total = Math.max(0, subtotal - (cq.orderDiscount||0));
+  const { subtotal, itemDiscountTotal, discountAmount, total } = quoteTotals(cq.items, cq.orderDiscount, cq.orderDiscountType || "amount");
   const govProfSplitCq = govProfSplit(cq.items, q.feeType);
   const hasDiscount = cq.items.some(it=>it.discountPct>0) || (cq.orderDiscount||0) > 0;
   const myDesignation = state?.employees.find(e=>e.id===userId)?.designation;
@@ -3092,6 +3136,12 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
           )}
           {visualSaveError && <div className="side-note" style={{ color:"var(--danger)", marginTop:0, marginBottom:10 }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{visualSaveError}</div>}
           <QuoteItemsEditor items={cq.items} onChange={(next)=>updDraft("items", next)} service={cq.items[0]?.service} catalog={state?.itemCatalog || []} quotationFeeType={q.feeType} readOnly={!editingNow} />
+          {editingNow && (
+            <div style={{ maxWidth:320, marginLeft:"auto", marginTop:10 }}>
+              <OrderDiscountField value={cq.orderDiscount||0} type={cq.orderDiscountType||"amount"}
+                onValueChange={(v)=>updDraft("orderDiscount", v)} onTypeChange={(t)=>updDraft("orderDiscountType", t)} />
+            </div>
+          )}
           {govProfSplitCq.govTotal > 0 && govProfSplitCq.profTotal > 0 && (govProfSplitCq.govFirst ? (
             <>
               <div style={{ textAlign:"right", marginTop: 10, fontSize:13, color:"var(--ink-soft)" }}>Government Fee Total: <span className="mono">{money(govProfSplitCq.govTotal)}</span></div>
@@ -3103,8 +3153,9 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
               <div style={{ textAlign:"right", marginTop: 2, fontSize:13, color:"var(--ink-soft)" }}>Government Fee Total: <span className="mono">{money(govProfSplitCq.govTotal)}</span></div>
             </>
           ))}
-          <div style={{ textAlign:"right", marginTop: (govProfSplitCq.govTotal > 0 && govProfSplitCq.profTotal > 0) ? 2 : 10, fontSize:13, color:"var(--ink-soft)" }}>Sub Total: <span className="mono">{money(subtotal)}</span></div>
-          {(cq.orderDiscount||0) > 0 && <div style={{ textAlign:"right", marginTop: 2, fontSize:13, color:"var(--ink-soft)" }}>Discount: <span className="mono">(-) {money(cq.orderDiscount)}</span></div>}
+          {itemDiscountTotal > 0 && <div style={{ textAlign:"right", marginTop: (govProfSplitCq.govTotal > 0 && govProfSplitCq.profTotal > 0) ? 2 : 10, fontSize:13, color:"var(--ink-soft)" }}>Item Discount: <span className="mono">(-) {money(itemDiscountTotal)}</span></div>}
+          <div style={{ textAlign:"right", marginTop: (itemDiscountTotal > 0 || (govProfSplitCq.govTotal > 0 && govProfSplitCq.profTotal > 0)) ? 2 : 10, fontSize:13, color:"var(--ink-soft)" }}>Sub Total: <span className="mono">{money(subtotal)}</span></div>
+          {discountAmount > 0 && <div style={{ textAlign:"right", marginTop: 2, fontSize:13, color:"var(--ink-soft)" }}>Discount{cq.orderDiscountType === "percent" ? ` (${cq.orderDiscount}%)` : ""}: <span className="mono">(-) {money(discountAmount)}</span></div>}
           <div style={{ textAlign:"right", marginTop: 4, fontSize: 15 }}><strong>Total: <span className="mono">{money(total)}</span></strong></div>
           {cq.terms && <div className="side-note">{cq.terms}</div>}
 
@@ -3223,8 +3274,8 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
           runningNumber++;
           rows.push({ kind: "item", it, number: runningNumber, idx: i, key: "item-"+i, bg });
         });
-        const pdfSubtotal = src.items.reduce((a,it)=>a+it.qty*it.price*(1-(it.discountPct||0)/100),0);
-        const pdfTotal = Math.max(0, pdfSubtotal - (src.orderDiscount||0));
+        const { subtotal: pdfSubtotal, itemDiscountTotal: pdfItemDiscountTotal, discountAmount: pdfDiscountAmount, total: pdfTotal } =
+          quoteTotals(src.items, src.orderDiscount, src.orderDiscountType || "amount");
         const pdfSplit = govProfSplit(src.items, q.feeType);
         const termLines = (src.terms || "").split("\n").map(t=>t.trim()).filter(Boolean);
         const noteLines = (src.notes || "").split("\n").map(t=>t.trim()).filter(Boolean);
@@ -3330,12 +3381,25 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
                       <tr><td style={{ padding:"4px 16px 4px 0", color:"var(--ink-soft)" }}>Government Fee Total</td><td className="mono" style={{ padding:"4px 0", textAlign:"right" }}>{pdfSplit.govTotal.toFixed(2)}</td></tr>
                     </>
                   ))}
+                  {pdfItemDiscountTotal > 0 && (
+                    <tr><td style={{ padding:"4px 16px 4px 0", color:"var(--ink-soft)" }}>Item Discount</td><td className="mono" style={{ padding:"4px 0", textAlign:"right" }}>(-) {pdfItemDiscountTotal.toFixed(2)}</td></tr>
+                  )}
                   <tr><td style={{ padding:"4px 16px 4px 0", color:"var(--ink-soft)" }}>Sub Total</td><td className="mono" style={{ padding:"4px 0", textAlign:"right" }}>{pdfSubtotal.toFixed(2)}</td></tr>
-                  {(editingNow || (src.orderDiscount||0) > 0) && (
-                    <tr><td style={{ padding:"4px 16px 4px 0", color:"var(--ink-soft)" }}>Discount</td>
+                  {(editingNow || pdfDiscountAmount > 0) && (
+                    <tr><td style={{ padding:"4px 16px 4px 0", color:"var(--ink-soft)" }}>Discount{!editingNow && src.orderDiscountType==="percent" ? ` (${src.orderDiscount}%)` : ""}</td>
                       <td className="mono" style={{ padding:"4px 0", textAlign:"right" }}>
-                        {editingNow ? <span>(-) <input type="number" style={{ ...inputStyle, width:70, textAlign:"right", display:"inline-block" }} value={src.orderDiscount||0} onChange={e=>updDraft("orderDiscount", (e.target.value === "" ? "" : Number(e.target.value)))} /></span>
-                          : <>(-) {Number(src.orderDiscount).toFixed(2)}</>}
+                        {editingNow ? (
+                          <span style={{ display:"inline-flex", alignItems:"center", gap:4 }}>
+                            (-) <input type="number" min={0} max={src.orderDiscountType==="percent" ? 100 : undefined}
+                              style={{ ...inputStyle, width:60, textAlign:"right", display:"inline-block" }} value={src.orderDiscount||0}
+                              onChange={e=>updDraft("orderDiscount", (e.target.value === "" ? "" : Number(e.target.value)))} />
+                            <select value={src.orderDiscountType||"amount"} onChange={e=>updDraft("orderDiscountType", e.target.value)}
+                              style={{ fontSize:11, border:"1px solid var(--hair)", borderRadius:4, padding:"1px 3px", background:"var(--gold-tint)" }}>
+                              <option value="amount">QAR</option>
+                              <option value="percent">%</option>
+                            </select>
+                          </span>
+                        ) : <>(-) {pdfDiscountAmount.toFixed(2)}</>}
                       </td>
                     </tr>
                   )}
@@ -3439,12 +3503,13 @@ function QuotationTemplatesPage({ state, dispatch }) {
 
 function QuotationTemplateEditor({ state, dispatch }) {
   const [service, setService] = useState(SERVICES[0]);
-  const seed = state.quotationTemplates[SERVICES[0]] || { items: [], terms: "", notes: "", subject: "", orderDiscount: 0, bank: "", footerNote: "" };
+  const seed = state.quotationTemplates[SERVICES[0]] || { items: [], terms: "", notes: "", subject: "", orderDiscount: 0, orderDiscountType: "amount", bank: "", footerNote: "" };
   const [subject, setSubject] = useState(seed.subject || "");
   const [items, setItems] = useState(seed.items);
   const [notes, setNotes] = useState(seed.notes || "");
   const [terms, setTerms] = useState(seed.terms || "");
   const [orderDiscount, setOrderDiscount] = useState(seed.orderDiscount || 0);
+  const [orderDiscountType, setOrderDiscountType] = useState(seed.orderDiscountType || "amount");
   const [bank, setBank] = useState(seed.bank || "");
   const [footerNote, setFooterNote] = useState(seed.footerNote || "");
   const [showNewService, setShowNewService] = useState(false);
@@ -3453,17 +3518,18 @@ function QuotationTemplateEditor({ state, dispatch }) {
   const hasTemplate = !!state.quotationTemplates[service];
 
   const clearForm = () => {
-    setItems([]); setTerms(""); setNotes(""); setSubject(""); setOrderDiscount(0); setBank(""); setFooterNote("");
+    setItems([]); setTerms(""); setNotes(""); setSubject(""); setOrderDiscount(0); setOrderDiscountType("amount"); setBank(""); setFooterNote("");
   };
 
   const switchService = (s) => {
     setService(s);
-    const t = state.quotationTemplates[s] || { items: [], terms: "", notes: "", subject: "", orderDiscount: 0, bank: "", footerNote: "" };
+    const t = state.quotationTemplates[s] || { items: [], terms: "", notes: "", subject: "", orderDiscount: 0, orderDiscountType: "amount", bank: "", footerNote: "" };
     setItems(t.items);
     setTerms(t.terms || "");
     setNotes(t.notes || "");
     setSubject(t.subject || "");
     setOrderDiscount(t.orderDiscount || 0);
+    setOrderDiscountType(t.orderDiscountType || "amount");
     setBank(t.bank || "");
     setFooterNote(t.footerNote || "");
   };
@@ -3500,13 +3566,13 @@ function QuotationTemplateEditor({ state, dispatch }) {
         </div>
 
         <div className="row2">
-          <div className="field"><label>Default overall discount (QAR, optional)</label><input type="number" min={0} value={orderDiscount} onChange={e=>setOrderDiscount((e.target.value === "" ? "" : Number(e.target.value)))} /></div>
+          <OrderDiscountField label="Default overall discount" value={orderDiscount} type={orderDiscountType} onValueChange={setOrderDiscount} onTypeChange={setOrderDiscountType} />
           <div className="field"><label>Bank details override (optional — defaults to the standard account)</label><textarea rows={2} value={bank} onChange={e=>setBank(e.target.value)} placeholder="Leave blank to use the standard Address Gateway bank details" /></div>
         </div>
         <div className="field"><label>Footer note (optional — shown at the bottom of every page)</label><textarea rows={2} value={footerNote} onChange={e=>setFooterNote(e.target.value)} placeholder={DEFAULT_FOOTER_NOTE} /></div>
 
         <div style={{ display:"flex", gap:8, marginTop: 8 }}>
-          <button className="btn btn-primary" onClick={()=>dispatch({type:"UPDATE_QUOTATION_TEMPLATE", service, items, terms, notes, subject, orderDiscount, bank, footerNote})}>Save template</button>
+          <button className="btn btn-primary" onClick={()=>dispatch({type:"UPDATE_QUOTATION_TEMPLATE", service, items, terms, notes, subject, orderDiscount, orderDiscountType, bank, footerNote})}>Save template</button>
           {hasTemplate && <button className="btn btn-ghost" style={{color:"var(--danger)"}} onClick={()=>setRemovingTemplate(true)}><Trash2 size={13}/> Delete template</button>}
         </div>
         {removingTemplate && (
@@ -4052,7 +4118,7 @@ function CustomerDashboard({ customer: c, state, dispatch, role, userId }) {
   const [downloadingStatement, setDownloadingStatement] = useState(false);
   const customerOptions = state.customers.map(cu => cu.name);
 
-  const quoteTotal = (q) => Math.max(0, q.items.reduce((a,it)=>a+it.qty*it.price*(1-(it.discountPct||0)/100),0) - (q.orderDiscount||0));
+  const quoteTotal = (q) => quoteTotals(q.items, q.orderDiscount, q.orderDiscountType || "amount").total;
   const totalInvoiced = invoices.reduce((a,inv) => a + inv.amount, 0);
   const totalPaid = invoices.reduce((a,inv) => a + inv.payments.reduce((x,p)=>x+p.amount,0), 0);
   const totalBalance = totalInvoiced - totalPaid;
@@ -7350,7 +7416,7 @@ async function exportPdf(title, subtitle, columns, rows) {
 
 // Only the Professional Fee portion of a quotation counts as business volume — see
 // professionalFeeAmount above (handles quotations that mix Professional + Government Fee items).
-const quoteAmount = (q) => professionalFeeAmount(q.items, q.orderDiscount, q.feeType);
+const quoteAmount = (q) => professionalFeeAmount(q.items, q.orderDiscount, q.feeType, q.orderDiscountType);
 
 function VolumeReport({ state, range, salesFilter = [] }) {
   const dealOwners = new Map(state.deals.map(d => [d.id, d.owner]));

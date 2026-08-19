@@ -36,10 +36,10 @@ router.use(requireAuth);
 async function syncDealValue(dealId) {
   if (!dealId) return;
   const [latest] = await query(
-    "SELECT items, order_discount, fee_type FROM quotations WHERE deal_id = ? ORDER BY created_at DESC LIMIT 1",
+    "SELECT items, order_discount, order_discount_type, fee_type FROM quotations WHERE deal_id = ? ORDER BY created_at DESC LIMIT 1",
     [dealId]
   );
-  const value = latest ? professionalFeeTotal(latest.items || [], latest.order_discount, latest.fee_type) : 0;
+  const value = latest ? professionalFeeTotal(latest.items || [], latest.order_discount, latest.fee_type, latest.order_discount_type) : 0;
   await query("UPDATE deals SET value = ? WHERE id = ?", [value, dealId]);
 }
 
@@ -48,7 +48,7 @@ function parseRow(r) {
     ...r,
     items: r.items || [],
     email_cc: r.email_cc || [],
-    ...quoteTotal(r.items || [], r.order_discount),
+    ...quoteTotal(r.items || [], r.order_discount, r.order_discount_type),
   };
 }
 
@@ -104,10 +104,10 @@ router.post("/", async (req, res) => {
   }
 
   await query(
-    `INSERT INTO quotations (id, deal_id, customer, fee_type, theme, subject, items, order_discount, bank, footer_note, notes, terms, status, valid_till, owner, favorite, customer_id)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?)`,
+    `INSERT INTO quotations (id, deal_id, customer, fee_type, theme, subject, items, order_discount, order_discount_type, bank, footer_note, notes, terms, status, valid_till, owner, favorite, customer_id)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?)`,
     [id, b.dealId || null, b.customer, b.feeType || "Professional Fee", validTheme(b.theme), b.subject || null, JSON.stringify(b.items || []), b.orderDiscount || 0,
-      b.bank || null, b.footerNote || null, b.notes || null, b.terms || null, status, daysFromNow(14), owner, customerId]
+      b.orderDiscountType === "percent" ? "percent" : "amount", b.bank || null, b.footerNote || null, b.notes || null, b.terms || null, status, daysFromNow(14), owner, customerId]
   );
   if (b.dealId) {
     await query("UPDATE deals SET stage = 'Quotation Sent' WHERE id = ?", [b.dealId]);
@@ -135,10 +135,10 @@ router.patch("/:id", async (req, res) => {
   // Editing the customer name means it may now belong to a different (or new) Customer profile.
   const customerId = b.customer !== undefined ? (await findOrCreateCustomer(query, { name: customer, ownerId: req.user.id })).customerId : undefined;
   await query(
-    `UPDATE quotations SET customer=?, fee_type=?, theme=?, subject=?, items=?, order_discount=?, bank=?, footer_note=?, notes=?, terms=?, status=?${customerId !== undefined ? ", customer_id=?" : ""}
+    `UPDATE quotations SET customer=?, fee_type=?, theme=?, subject=?, items=?, order_discount=?, order_discount_type=?, bank=?, footer_note=?, notes=?, terms=?, status=?${customerId !== undefined ? ", customer_id=?" : ""}
      WHERE id = ?`,
-    [customer, feeType, theme, b.subject || null, JSON.stringify(b.items || []), b.orderDiscount || 0, b.bank || null, b.footerNote || null,
-      b.notes || null, b.terms || null, newStatus, ...(customerId !== undefined ? [customerId] : []), req.params.id]
+    [customer, feeType, theme, b.subject || null, JSON.stringify(b.items || []), b.orderDiscount || 0, b.orderDiscountType === "percent" ? "percent" : "amount",
+      b.bank || null, b.footerNote || null, b.notes || null, b.terms || null, newStatus, ...(customerId !== undefined ? [customerId] : []), req.params.id]
   );
   // Only notify on the transition INTO Pending Manager Approval — not on every re-save of a
   // quotation that was already sitting there, which would spam the approver on each edit.
@@ -274,9 +274,9 @@ router.post("/:id/clone", async (req, res) => {
   const dealId = customerChanged ? null : src.deal_id;
   const customerId = customerChanged ? (await findOrCreateCustomer(query, { name: customer, ownerId: req.user.id })).customerId : src.customer_id;
   await query(
-    `INSERT INTO quotations (id, deal_id, customer, fee_type, theme, subject, items, order_discount, bank, footer_note, notes, terms, status, valid_till, owner, favorite, customer_id)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'Draft',?,?,0,?)`,
-    [id, dealId, customer, src.fee_type, src.theme, src.subject, src.items, src.order_discount, src.bank, src.footer_note, src.notes, src.terms, daysFromNow(14), req.user.id, customerId]
+    `INSERT INTO quotations (id, deal_id, customer, fee_type, theme, subject, items, order_discount, order_discount_type, bank, footer_note, notes, terms, status, valid_till, owner, favorite, customer_id)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'Draft',?,?,0,?)`,
+    [id, dealId, customer, src.fee_type, src.theme, src.subject, src.items, src.order_discount, src.order_discount_type || "amount", src.bank, src.footer_note, src.notes, src.terms, daysFromNow(14), req.user.id, customerId]
   );
   // Only meaningful when the clone kept the same deal (customer unchanged) — dealId is null
   // otherwise, and syncDealValue is a no-op for that.
@@ -313,12 +313,15 @@ router.post("/:id/convert-to-sales-order", requireRole(["accounts", "admin_like"
 
     await conn.execute("UPDATE quotations SET status = 'Approved' WHERE id = ?", [q.id]);
     const items = q.items;
-    const { total } = quoteTotal(items, q.order_discount);
-    const professionalFeeAmount = professionalFeeTotal(items, q.order_discount, q.fee_type);
+    // A Sales Order is a frozen snapshot of what was agreed — it always stores the resolved flat
+    // QAR discount amount, never the quotation's original percent, so sales_orders/invoices and
+    // their PDFs keep working unchanged regardless of how the quotation's discount was entered.
+    const { total, discountAmount } = quoteTotal(items, q.order_discount, q.order_discount_type);
+    const professionalFeeAmount = professionalFeeTotal(items, q.order_discount, q.fee_type, q.order_discount_type);
     const soId = await nextSequentialId(conn, "AGBSSO", "sales_order");
     await conn.execute(
       `INSERT INTO sales_orders (id, quotation_id, customer, service, fee_type, amount, professional_fee_amount, order_discount, customer_id) VALUES (?,?,?,?,?,?,?,?,?)`,
-      [soId, q.id, q.customer, items[0]?.service || null, q.fee_type, total, professionalFeeAmount, q.order_discount, q.customer_id]
+      [soId, q.id, q.customer, items[0]?.service || null, q.fee_type, total, professionalFeeAmount, discountAmount, q.customer_id]
     );
     if (q.deal_id) await conn.execute("UPDATE deals SET stage = 'Won', won_at = NOW() WHERE id = ?", [q.deal_id]);
     return { salesOrderId: soId, governmentFee: false };

@@ -49,6 +49,7 @@ export const mapDeal = (d) => ({
 export const mapQuotation = (q) => ({
   id: q.id, dealId: q.deal_id, customer: q.customer, customerId: q.customer_id, owner: q.owner,
   subject: q.subject, feeType: q.fee_type, theme: q.theme || "charcoal", orderDiscount: Number(q.order_discount || 0),
+  orderDiscountType: q.order_discount_type || "amount",
   items: (q.items || []).map((it) => ({ ...it, qty: Number(it.qty), price: Number(it.price), discountPct: Number(it.discountPct || 0) })),
   status: q.status, validTill: q.valid_till, createdAt: q.created_at,
   bank: q.bank || "", footerNote: q.footer_note || "", notes: q.notes || "", terms: q.terms || "",
@@ -155,7 +156,8 @@ export const mapQuotationTemplates = (raw) => {
     const t = raw[service];
     out[service] = {
       subject: t.subject, items: t.items || [], notes: t.notes || "", terms: t.terms || "",
-      orderDiscount: Number(t.order_discount || 0), bank: t.bank || "", footerNote: t.footer_note || "",
+      orderDiscount: Number(t.order_discount || 0), orderDiscountType: t.order_discount_type || "amount",
+      bank: t.bank || "", footerNote: t.footer_note || "",
     };
   }
   return out;
