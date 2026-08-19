@@ -527,23 +527,38 @@ export function TableScrollHint() {
 
     // A timer (not requestAnimationFrame) — rAF is fully suspended by the browser while the tab is
     // backgrounded/hidden, which would silently stop every re-sync (including the very first one)
-    // until the tab regains focus. A short timeout still fires either way.
+    // until the tab regains focus. A short timeout still fires either way. Used for mutation/resize
+    // triggers, which just need eventual correctness, not frame-perfect timing.
     const scheduleSync = () => {
       if (syncTimer) return;
       syncTimer = setTimeout(() => { syncTimer = null; sync(); }, 16);
+    };
+
+    // Vertical page scroll (the button tracking the table's top edge as .agw-content scrolls) gets
+    // its own rAF-driven path instead of sharing the 16ms timer above. A plain setTimeout isn't
+    // vsync-aligned, so under fast/inertial scrolling it visibly lagged a frame or more behind the
+    // actual scroll offset — the button "not following all the time" the user reported. rAF is
+    // suspended while the tab is hidden, but that's fine here: nothing is being watched on-screen
+    // during a scroll gesture on a backgrounded tab, and scheduleSync above still keeps positions
+    // eventually correct via the MutationObserver/resize paths regardless.
+    let rafId = null;
+    const scheduleScrollSync = () => {
+      if (rafId) return;
+      rafId = requestAnimationFrame(() => { rafId = null; sync(); });
     };
 
     scheduleSync();
     const mo = new MutationObserver(scheduleSync);
     mo.observe(document.body, { childList: true, subtree: true });
     window.addEventListener("resize", scheduleSync);
-    window.addEventListener("scroll", scheduleSync, true);
+    window.addEventListener("scroll", scheduleScrollSync, true);
 
     return () => {
       mo.disconnect();
       window.removeEventListener("resize", scheduleSync);
-      window.removeEventListener("scroll", scheduleSync, true);
+      window.removeEventListener("scroll", scheduleScrollSync, true);
       if (syncTimer) clearTimeout(syncTimer);
+      if (rafId) cancelAnimationFrame(rafId);
       for (const pair of buttons.values()) { pair.left.remove(); pair.right.remove(); }
     };
   }, []);
