@@ -1053,6 +1053,10 @@ export default function App() {
   // Set when "View quotation" is clicked from Deals, so QuotationsPage can highlight and
   // scroll to that specific row instead of leaving the user to hunt for it in the full list.
   const [highlightQuotationId, setHighlightQuotationId] = useState(null);
+  // True only right after Build quotation creates a new one — makes QuotationsPage open it
+  // straight into the PDF preview tab instead of just scrolling the row into view (see
+  // viewQuotationFor vs. the QuoteBuilderModal onCreated callback below, in DealsPage).
+  const [autoOpenQuotationPdf, setAutoOpenQuotationPdf] = useState(false);
   // Same pattern for the rest of the pipeline — set right after the record is created, so
   // jumping to its page always lands on and highlights the one just created instead of leaving
   // the user to hunt for it in a long list.
@@ -1259,8 +1263,8 @@ export default function App() {
           <div className="agw-content">
             {page === "dashboard" && <Dashboard {...ctx} setPage={setPage} />}
             {page === "leads" && <LeadsPage {...ctx} setPage={setPage} />}
-            {page === "deals" && <DealsPage {...ctx} setPage={setPage} onViewQuotation={setHighlightQuotationId} />}
-            {page === "quotations" && <QuotationsPage {...ctx} highlightId={highlightQuotationId} onHighlightHandled={()=>setHighlightQuotationId(null)}
+            {page === "deals" && <DealsPage {...ctx} setPage={setPage} onViewQuotation={(id, openPdf)=>{ setHighlightQuotationId(id); setAutoOpenQuotationPdf(!!openPdf); }} />}
+            {page === "quotations" && <QuotationsPage {...ctx} highlightId={highlightQuotationId} autoOpenPdf={autoOpenQuotationPdf} onHighlightHandled={()=>{ setHighlightQuotationId(null); setAutoOpenQuotationPdf(false); }}
               setPage={setPage} onSalesOrderCreated={setHighlightSalesOrderId} />}
             {page === "quotationTemplates" && <QuotationTemplatesPage {...ctx} />}
             {page === "customers" && <CustomersPage {...ctx} />}
@@ -2567,7 +2571,7 @@ function DealsPage({ state, dispatch, setPage, onViewQuotation, role, userId }) 
       )}
 
       {quoteFor && <QuoteBuilderModal dealId={quoteFor.id} customerName={quoteFor.customer} defaultService={quoteFor.service} services={state.services} itemCatalog={state.itemCatalog} dispatch={dispatch} templates={state.quotationTemplates} subscriptionPlans={state.subscriptionPlans} role={role} employees={state.employees} defaultOwner={quoteFor.owner} onClose={()=>setQuoteFor(null)}
-        onCreated={(id)=>{ onViewQuotation(id); setPage("quotations"); }} />}
+        onCreated={(id)=>{ onViewQuotation(id, true); setPage("quotations"); }} />}
       {editDeal && <EditDealModal deal={editDeal} state={state} dispatch={dispatch} onClose={()=>setEditDeal(null)} />}
       {removeDeal && <ConfirmModal title={`Remove deal ${removeDeal.id}?`} body={`${removeDeal.customer} — ${money(removeDeal.value)}. This can't be undone.`} onConfirm={()=>dispatch({type:"DELETE_DEAL", id:removeDeal.id})} onClose={()=>setRemoveDeal(null)} />}
       {newDeal && <NewDealModal state={state} dispatch={dispatch} userId={userId} onClose={()=>setNewDeal(false)} onCreated={setHighlightDealId} />}
@@ -2795,8 +2799,24 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
   const [footerNote, setFooterNote] = useState("");
   const [notes, setNotes] = useState("");
   const [terms, setTerms] = useState("");
-  const { subtotal, itemDiscountTotal, discountAmount, total } = quoteTotals(items, orderDiscount, orderDiscountType);
-  const hasDiscount = items.some(it => it.discountPct > 0) || orderDiscount > 0;
+  // Government Fee lines are trusted straight from the template — nothing to review per line, so
+  // there's no per-item editor for them here. Professional Fee collapses to one confirmable amount
+  // (matches how it's actually written on every real quotation: one lump-sum line, not itemized —
+  // see QuotationTemplateEditor). Full per-line editing is still available after creation via the
+  // existing Edit action on the quotation itself.
+  const [profFee, setProfFee] = useState(0);
+  const govLines = items.filter(it => isGovFeeLine(it, undefined));
+  const firstProfTemplateLine = items.find(it => !isGovFeeLine(it, undefined));
+  const govTotal = govLines.reduce((a, it) => a + it.qty * it.price * (1 - (it.discountPct || 0) / 100), 0);
+  const finalItems = [...govLines, ...(profFee > 0 ? [{
+    category: firstProfTemplateLine?.category || "",
+    service: templateService,
+    description: firstProfTemplateLine?.description || "PROFESSIONAL FEE IS INCLUSIVE OF THE FOLLOWING:",
+    note: firstProfTemplateLine?.note || "",
+    qty: 1, price: profFee, discountPct: 0, feeType: "Professional Fee",
+  }] : [])];
+  const { subtotal, itemDiscountTotal, discountAmount, total } = quoteTotals(finalItems, orderDiscount, orderDiscountType);
+  const hasDiscount = finalItems.some(it => it.discountPct > 0) || orderDiscount > 0;
   // One merged template per service (Professional Fee and Government Fee lines share the same
   // template, tagged per item — see quotation_templates in schema.sql), so there's no fee-type
   // keying to do here anymore.
@@ -2823,15 +2843,17 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
     const tier = packageTiers.find(t => t.name === tierName);
     if (!tier) return;
     setSubject(`${templateService.replace(/ Program$/, "")} - ${tier.name} - 1 Year Package`);
-    setItems(prev => {
-      const idx = prev.findIndex(it => (it.description || "").trim().toLowerCase().startsWith("package"));
-      const targetIdx = idx === -1 ? 0 : idx;
-      return prev.map((it, i) => i === targetIdx ? { ...it, price: tier.annualFee, note: tierEntitlementsNote(tier) } : it);
-    });
+    const idx = items.findIndex(it => (it.description || "").trim().toLowerCase().startsWith("package"));
+    const targetIdx = idx === -1 ? 0 : idx;
+    const next = items.map((it, i) => i === targetIdx ? { ...it, price: tier.annualFee, note: tierEntitlementsNote(tier) } : it);
+    setItems(next);
+    setProfFee(next.filter(it => !isGovFeeLine(it, undefined)).reduce((a, it) => a + it.qty * it.price * (1 - (it.discountPct || 0) / 100), 0));
   };
 
   const applyTemplate = (loadedTpl, loadedItems) => {
-    setItems(loadedItems.map(it => ({ ...it })));
+    const mapped = loadedItems.map(it => ({ ...it }));
+    setItems(mapped);
+    setProfFee(mapped.filter(it => !isGovFeeLine(it, undefined)).reduce((a, it) => a + it.qty * it.price * (1 - (it.discountPct || 0) / 100), 0));
     setTerms(loadedTpl.terms || "");
     setNotes(loadedTpl.notes || "");
     setSubject(loadedTpl.subject || "");
@@ -2887,7 +2909,7 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
     setSaving(true);
     setSaveError("");
     try {
-      const payload = { dealId, customer, items, terms, notes, subject, theme, orderDiscount, orderDiscountType, packageTier: selectedPackage || null, bank, footerNote, owner: owner || undefined };
+      const payload = { dealId, customer, items: finalItems, terms, notes, subject, theme, orderDiscount, orderDiscountType, packageTier: selectedPackage || null, bank, footerNote, owner: owner || undefined };
       const r = await dispatch({ type:"CREATE_QUOTATION", payload });
       onCreated?.(r?.id);
       onClose();
@@ -2899,7 +2921,7 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
   };
 
   return (
-    <Modal title="Build quotation" sub={editableCustomer ? "All amounts in QAR" : `${customer} — all amounts in QAR`} onClose={onClose} width={860}>
+    <Modal title="Build quotation" sub={editableCustomer ? "All amounts in QAR" : `${customer} — all amounts in QAR`} onClose={onClose} width={620}>
       {editableCustomer && (
         <div className="row2">
           <div className="field">
@@ -2977,18 +2999,27 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
       )}
       <div className="field"><label>Subject</label><input value={subject} onChange={e=>setSubject(e.target.value)} placeholder="e.g. 100% FOREIGN OWNERSHIP COMPANY FORMATION - Government Fees" /></div>
 
-      <QuoteItemsEditor items={items} onChange={setItems} service={templateService} catalog={itemCatalog} />
-
-      <div className="row2" style={{ marginTop: 14 }}>
-        <div className="field"><label>Notes (shown as-is on the quotation)</label><textarea rows={4} value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Looking forward for your business..." /></div>
-        <div className="field"><label>Terms & Conditions (one per line — numbered automatically)</label><textarea rows={4} value={terms} onChange={e=>setTerms(e.target.value)} placeholder="100% of the Professional Fee to be paid in advance..." /></div>
+      <div className="agw-card" style={{ background:"var(--page)", marginBottom:14 }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: govLines.length ? 8 : 0 }}>
+          <strong style={{ fontSize:13 }}>Government Fee</strong>
+          <span className="mono" style={{ fontSize:13 }}>{money(govTotal)}</span>
+        </div>
+        {govLines.length === 0 ? (
+          <div style={{ fontSize:12.5, color:"var(--ink-soft)" }}>No Government Fee items in this template.</div>
+        ) : (
+          <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
+            {govLines.map((it,i) => (
+              <div key={i} style={{ display:"flex", justifyContent:"space-between", fontSize:12.5, color:"var(--ink-soft)" }}>
+                <span>{it.description || it.service}{it.qty > 1 ? ` × ${it.qty}` : ""}</span>
+                <span className="mono">{money(it.qty * it.price * (1 - (it.discountPct || 0) / 100))}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        <div style={{ fontSize:11, color:"var(--ink-soft)", marginTop:8 }}>Loaded from the {templateService} template — pass-through to the client, nothing to review here.</div>
       </div>
 
-      <div className="row2">
-        <OrderDiscountField value={orderDiscount} type={orderDiscountType} onValueChange={setOrderDiscount} onTypeChange={setOrderDiscountType} />
-        <div className="field"><label>Bank details override (optional — defaults to the standard account)</label><textarea rows={2} value={bank} onChange={e=>setBank(e.target.value)} placeholder="Leave blank to use the standard Address Gateway bank details" /></div>
-      </div>
-      <div className="field"><label>Footer note (optional — shown at the bottom of every page)</label><textarea rows={2} value={footerNote} onChange={e=>setFooterNote(e.target.value)} placeholder={DEFAULT_FOOTER_NOTE} /></div>
+      <div className="field"><label>Professional Fee (QAR)</label><input type="number" min="0" value={profFee} onChange={e=>setProfFee(Math.max(0, Number(e.target.value) || 0))} /></div>
 
       <div style={{ marginTop: 6, borderTop:"1px solid var(--hair)", paddingTop: 12 }}>
         {itemDiscountTotal > 0 && (
@@ -3017,7 +3048,7 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
       <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop: 16 }}>
         <button className="btn" onClick={onClose}>Cancel</button>
         <button className="btn btn-primary" disabled={saving || !customer} onClick={handleSubmit}>
-          {saving ? "Saving…" : "Save quotation"}
+          {saving ? "Saving…" : "Complete quotation"}
         </button>
       </div>
     </Modal>
@@ -3028,13 +3059,17 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
 /* QUOTATIONS                                                              */
 /* ---------------------------------------------------------------------- */
 
-function QuotationsPage({ state, dispatch, role, userId, highlightId, onHighlightHandled, setPage, onSalesOrderCreated }) {
+function QuotationsPage({ state, dispatch, role, userId, highlightId, autoOpenPdf=false, onHighlightHandled, setPage, onSalesOrderCreated }) {
   const [openId, setOpenId] = useState(null);
   // Set alongside openId when opened via the Edit action, so the modal jumps straight into Visual
   // edit instead of landing on Current view first — Draft/Pending Manager Approval quotations are
   // editable regardless of role, but that was only reachable by opening the row, switching to the
   // PDF preview tab, then clicking Visual edit, which wasn't an obvious path for most users.
   const [openInEdit, setOpenInEdit] = useState(false);
+  // Set instead of openInEdit right after a quotation is freshly created (see autoOpenPdf below) —
+  // lands straight on the PDF preview tab, read-only, so the salesperson sees the actual document
+  // immediately instead of a highlighted row they still have to click into.
+  const [openInPdf, setOpenInPdf] = useState(false);
   // Derived, not a frozen snapshot — so in-modal actions (favorite toggle, etc.) that refresh
   // state.quotations are reflected immediately instead of only after closing and reopening.
   const open = openId ? state.quotations.find(q => q.id === openId) : null;
@@ -3060,13 +3095,20 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, onHighligh
   const customerOptions = state.customers.map(c=>c.name);
   const isAdmin = ADMIN_LIKE.includes(role);
 
-  // Scrolls the row "View quotation" (from Deals) pointed at into view — otherwise it's easy to
-  // lose in a long list with no indication of which one to click.
+  // "View quotation" (from Deals) either scrolls the row into view (existing quotation), or — right
+  // after Build quotation creates a new one — opens it straight into the PDF preview tab, so the
+  // salesperson sees the actual document immediately instead of a highlighted row to click into.
   useEffect(() => {
     if (!highlightId) return;
+    if (autoOpenPdf) {
+      setOpenId(highlightId);
+      setOpenInPdf(true);
+      onHighlightHandled?.();
+      return;
+    }
     const el = document.getElementById(`quote-row-${highlightId}`);
     if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [highlightId]);
+  }, [highlightId, autoOpenPdf]);
 
   return (
     <div>
@@ -3135,7 +3177,7 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, onHighligh
         </table>)}
         <PaginationBar {...pg} />
       </div>
-      {open && <QuoteDetailModal quotation={open} state={state} dispatch={dispatch} role={role} userId={userId} customerOptions={customerOptions} templates={state.quotationTemplates} startInEdit={openInEdit} onClose={()=>{ setOpenId(null); setOpenInEdit(false); }}
+      {open && <QuoteDetailModal quotation={open} state={state} dispatch={dispatch} role={role} userId={userId} customerOptions={customerOptions} templates={state.quotationTemplates} startInEdit={openInEdit} startInPdf={openInPdf} onClose={()=>{ setOpenId(null); setOpenInEdit(false); setOpenInPdf(false); }}
         setPage={setPage} onSalesOrderCreated={onSalesOrderCreated} />}
       {cloneFor && <CloneQuoteModal quotation={cloneFor} customerOptions={customerOptions} dispatch={dispatch} onClose={()=>setCloneFor(null)} />}
       {removeQuote && <ConfirmModal title={`Remove ${removeQuote.id}?`} body={`${removeQuote.customer} — ${removeQuote.status}. This can't be undone. Blocked if it already has a Sales Order.`}
@@ -3174,8 +3216,8 @@ function CloneQuoteModal({ quotation: q, customerOptions, dispatch, onClose, onC
   );
 }
 
-function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, customerOptions=[], templates={}, onClose, startInEdit=false, setPage, onSalesOrderCreated }) {
-  const [view, setView] = useState(startInEdit ? "pdf" : "details");
+function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, customerOptions=[], templates={}, onClose, startInEdit=false, startInPdf=false, setPage, onSalesOrderCreated }) {
+  const [view, setView] = useState(startInEdit || startInPdf ? "pdf" : "details");
   const [cloning, setCloning] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [emailing, setEmailing] = useState(false);
