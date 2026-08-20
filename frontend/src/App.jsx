@@ -1487,6 +1487,18 @@ function Dashboard({ state, dispatch, role, userId, setPage }) {
   const canQuickAddLead = !isSalesRole(role) && role !== "viewer" && role !== "ops_manager" && role !== "ops_member" && role !== "pro_head" && role !== "pro";
   const [showQuickAddLead, setShowQuickAddLead] = useState(false);
 
+  // Operational, cross-service view of every Company Formation job card's progress — the people
+  // who actually run that work (Ops Manager, PRO Head/PRO) plus oversight roles (Admin-tier,
+  // Viewer). Everyone else already gets their own Dashboard tabs and doesn't need this one.
+  const canSeeFormations = ADMIN_LIKE.includes(role) || ["viewer", "pro_head", "pro", "ops_manager"].includes(role);
+  const [showDoneFormations, setShowDoneFormations] = useState(false);
+  const formationJobs = state.jobCards.filter(j => (j.service || "").includes("Company Formation"));
+  const formationStatusColors = { Created:"var(--ink-soft)", Assigned:"var(--info)", "In Progress":"var(--gold)", "On Hold":"var(--warning)", Completed:"var(--success)", Cancelled:"var(--danger)" };
+  const formationStatusCounts = Object.keys(formationStatusColors)
+    .map(s => ({ label: s, value: formationJobs.filter(j => j.status === s).length, color: formationStatusColors[s] }));
+  const visibleFormationJobs = (showDoneFormations ? formationJobs : formationJobs.filter(j => !["Completed", "Cancelled"].includes(j.status)))
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
   const dealStageColors = { Open:"var(--info)", "Quotation Sent":"var(--gold)", Won:"var(--success)", Lost:"var(--danger)" };
   const dealsByStage = ["Open","Quotation Sent","Won","Lost"].map(stage => ({
     label: stage, value: state.deals.filter(d=>d.stage===stage).length, color: dealStageColors[stage],
@@ -1581,6 +1593,7 @@ function Dashboard({ state, dispatch, role, userId, setPage }) {
         <div className="tabbar" style={{ marginBottom:0 }}>
           <button className={`tab ${chartTab==="overview"?"active":""}`} onClick={()=>setChartTab("overview")}>Overview</button>
           <button className={`tab ${chartTab==="charts"?"active":""}`} onClick={()=>setChartTab("charts")}>Charts</button>
+          {canSeeFormations && <button className={`tab ${chartTab==="formations"?"active":""}`} onClick={()=>setChartTab("formations")}>Formations status</button>}
         </div>
         <div style={{ display:"flex", alignItems:"center", gap:10 }}>
           {canQuickAddLead && <button className="btn btn-primary" onClick={()=>setShowQuickAddLead(true)}><Plus size={15}/> Log a lead</button>}
@@ -1893,6 +1906,56 @@ function Dashboard({ state, dispatch, role, userId, setPage }) {
                 </div>
               )}
             </>
+          )}
+        </div>
+      )}
+
+      {chartTab === "formations" && canSeeFormations && (
+        <div>
+          <div className="agw-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", marginBottom: 20 }}>
+            <div className="agw-card"><div className="kpi-label">Total formations</div><div className="kpi-value disp">{formationJobs.length}</div></div>
+            {formationStatusCounts.map(s => (
+              <div className="agw-card" key={s.label}>
+                <div className="kpi-label">{s.label}</div>
+                <div className="kpi-value disp" style={{ color: s.color }}>{s.value}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10, flexWrap:"wrap", gap:8 }}>
+            <strong style={{ fontSize:14 }}>Company Formation job cards</strong>
+            <label style={{ display:"flex", alignItems:"center", gap:6, fontSize:12.5, color:"var(--ink-soft)", cursor:"pointer" }}>
+              <input type="checkbox" checked={showDoneFormations} onChange={e=>setShowDoneFormations(e.target.checked)} />
+              Show completed & cancelled
+            </label>
+          </div>
+
+          {visibleFormationJobs.length === 0 ? (
+            <div className="agw-card"><Empty icon={ClipboardList} text={showDoneFormations ? "No Company Formation job cards yet." : "No active Company Formation job cards right now — everything's either not started or done."} /></div>
+          ) : (
+            <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+              {visibleFormationJobs.map(j => (
+                <div className="agw-card" key={j.id} style={{ padding:"14px 16px" }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:10, marginBottom:12, flexWrap:"wrap" }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:10, minWidth:0 }}>
+                      <span className="mono" style={{ fontSize:12, color:"var(--ink-soft)" }}>{j.id}</span>
+                      <strong style={{ fontSize:13.5, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{j.customer}</strong>
+                      <span style={{ fontSize:11.5, color:"var(--ink-soft)" }}>{j.service}</span>
+                    </div>
+                    <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
+                      <div className="avatars">
+                        {j.assignees.length === 0 ? <span className="pill">Unassigned</span> :
+                          j.assignees.map(a => <span className="avatar" key={a}>{state.employees.find(t=>t.id===a)?.initials}</span>)}
+                      </div>
+                      <Stamp tone={statusTone(j.status)}>{j.status}</Stamp>
+                    </div>
+                  </div>
+                  {j.status !== "Cancelled" && (
+                    <Rail steps={["Created","Assigned","In Progress","Completed"]} current={j.status === "On Hold" ? "In Progress" : j.status} />
+                  )}
+                </div>
+              ))}
+            </div>
           )}
         </div>
       )}
