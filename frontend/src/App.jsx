@@ -4475,7 +4475,7 @@ function CustomerDashboard({ customer: c, state, dispatch, role, userId }) {
         const linkedQuotation = linkedSo?.quotationId ? state.quotations.find(q=>q.id===linkedSo.quotationId) : null;
         return <InvoicePdfModal invoice={pdfInvoice} items={linkedQuotation?.items || []} role={role} onClose={()=>setPdfInvoice(null)} />;
       })()}
-      {openJob && <JobDetailModal job={openJob} dispatch={dispatch} role={role} userId={userId} employees={state.employees} approvalTypes={state.approvalTypes}
+      {openJob && <JobDetailModal job={openJob} state={state} dispatch={dispatch} role={role} userId={userId} employees={state.employees} approvalTypes={state.approvalTypes}
         onClose={()=>setOpenJobId(null)} onReassign={()=>setOpenJobId(null)} />}
     </div>
   );
@@ -5743,7 +5743,7 @@ function JobsPage({ state, dispatch, role, userId, highlightId, onHighlightHandl
       )}
 
       {assignFor && <AssignModal job={assignFor} dispatch={dispatch} employees={state.employees} onClose={()=>setAssignFor(null)} />}
-      {detail && <JobDetailModal job={detail} dispatch={dispatch} role={role} userId={userId} employees={state.employees} approvalTypes={state.approvalTypes} initialShowCancel={detailCancelOnOpen}
+      {detail && <JobDetailModal job={detail} state={state} dispatch={dispatch} role={role} userId={userId} employees={state.employees} approvalTypes={state.approvalTypes} initialShowCancel={detailCancelOnOpen}
         onClose={()=>{ setDetailId(null); setDetailCancelOnOpen(false); }} onReassign={()=>{ setAssignFor(detail); setDetailId(null); }} />}
       {newJob && <NewJobCardModal state={state} dispatch={dispatch} onClose={()=>setNewJob(false)} />}
     </div>
@@ -5810,7 +5810,8 @@ function AssignModal({ job, dispatch, employees, onClose }) {
   );
 }
 
-function JobDetailModal({ job, dispatch, role, userId, employees, approvalTypes=[], onClose, onReassign, initialShowCancel=false }) {
+function JobDetailModal({ job, state, dispatch, role, userId, employees, approvalTypes=[], onClose, onReassign, initialShowCancel=false }) {
+  const isGP = !!state && isGrowthPartnerCustomer(state, job.customer);
   const [cancelReason, setCancelReason] = useState("");
   const [showCancel, setShowCancel] = useState(initialShowCancel);
   const [showReject, setShowReject] = useState(false);
@@ -5863,7 +5864,12 @@ function JobDetailModal({ job, dispatch, role, userId, employees, approvalTypes=
 
   return (
     <>
-    <Modal title={job.id} sub={`${job.customer} — ${job.service}${job.packageTier ? ` (${job.packageTier})` : ""}${job.description && job.description.trim().toLowerCase() !== job.service.trim().toLowerCase() ? " — "+job.description : ""}`} onClose={onClose} width={640}>
+    <Modal title={<span style={{ display:"inline-flex", alignItems:"center", gap:10 }}>
+        {job.id}
+        {isGP && <span className="pill" style={{ background:"var(--gold-tint)", color:"var(--gold-dark)", fontSize:12, padding:"4px 10px 4px 8px", display:"inline-flex", alignItems:"center", gap:5 }} title="Growth Partner Program customer">
+          <Award size={18} fill="var(--gold)" fillOpacity={0.35} strokeWidth={2.25}/>Growth Partner{job.packageTier ? ` · ${job.packageTier}` : ""}
+        </span>}
+      </span>} sub={`${job.customer} — ${job.service}${job.packageTier ? ` (${job.packageTier})` : ""}${job.description && job.description.trim().toLowerCase() !== job.service.trim().toLowerCase() ? " — "+job.description : ""}`} onClose={onClose} width={640}>
       <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop:-6, marginBottom:6 }}>
         <button className="btn btn-sm" disabled={downloading} onClick={async ()=>{
           setDownloading(true);
