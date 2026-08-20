@@ -3007,12 +3007,12 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
         {govLines.length === 0 ? (
           <div style={{ fontSize:12.5, color:"var(--ink-soft)" }}>No Government Fee items in this template.</div>
         ) : (
-          <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr auto", rowGap:6, columnGap:16 }}>
             {govLines.map((it,i) => (
-              <div key={i} style={{ display:"flex", justifyContent:"space-between", fontSize:12.5, color:"var(--ink-soft)" }}>
-                <span>{it.description || it.service}{it.qty > 1 ? ` × ${it.qty}` : ""}</span>
-                <span className="mono">{money(it.qty * it.price * (1 - (it.discountPct || 0) / 100))}</span>
-              </div>
+              <React.Fragment key={i}>
+                <span style={{ fontSize:12.5, color:"var(--ink-soft)" }}>{it.description || it.service}{it.qty > 1 ? ` × ${it.qty}` : ""}</span>
+                <span className="mono" style={{ fontSize:12.5, color:"var(--ink-soft)", whiteSpace:"nowrap", textAlign:"right" }}>{money(it.qty * it.price * (1 - (it.discountPct || 0) / 100))}</span>
+              </React.Fragment>
             ))}
           </div>
         )}
