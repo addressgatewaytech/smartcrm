@@ -543,13 +543,19 @@ const daysFromNow = (n) => { const d = new Date(); d.setDate(d.getDate() + n); r
 // a job card has been open.
 const daysSince = (s) => Math.max(0, Math.floor((Date.now() - new Date(s).setHours(0,0,0,0)) / 86400000));
 
-// A small fixed palette of light background tints for Job Cards — the same service always hashes
-// to the same color, so scanning a busy Kanban board for "all the PRO Services jobs" is a
-// color-matching glance instead of reading every card's service line. Not tied to any specific
-// service name, so a newly-added service just gets whichever color its name happens to hash to.
-const JOB_CATEGORY_COLORS = ["#EAF7EF", "#E7F0FB", "#FDF3E4", "#F5EAFB", "#FCEBEB", "#E7FBF7", "#FBF3E1", "#EFEAFB"];
-const jobCategoryColor = (service) => {
+// A fixed palette of light background tints for Job Cards, so scanning a busy Kanban board for
+// "all the PRO Services jobs" is a color-matching glance instead of reading every card's service
+// line. Assigned by each service's position in the admin-configured services list (state.services)
+// rather than a hash of its name — a hash into a palette this size collides constantly once there
+// are more than a handful of services (e.g. "Bank Account Opening" and "PRO Services" used to land
+// on the exact same color), while an index only repeats once you actually run out of colors.
+const JOB_CATEGORY_COLORS = ["#EAF7EF", "#E7F0FB", "#FDF3E4", "#F5EAFB", "#FCEBEB", "#E7FBF7", "#FBF3E1", "#EFEAFB", "#FDE8F0", "#E9F5E1", "#F0E9FB", "#E1F5F5"];
+const jobCategoryColor = (service, services) => {
   if (!service) return null;
+  const idx = (services || []).indexOf(service);
+  if (idx !== -1) return JOB_CATEGORY_COLORS[idx % JOB_CATEGORY_COLORS.length];
+  // Unknown to the current services list (e.g. a legacy job card whose service was since renamed
+  // or removed) — fall back to a name hash so it's at least stable, just not collision-free.
   let hash = 0;
   for (let i = 0; i < service.length; i++) hash = (hash * 31 + service.charCodeAt(i)) >>> 0;
   return JOB_CATEGORY_COLORS[hash % JOB_CATEGORY_COLORS.length];
@@ -5652,7 +5658,7 @@ function JobsPage({ state, dispatch, role, userId, highlightId, onHighlightHandl
                     {isGrowthPartnerCustomer(state, j.customer) && <span className="pill" style={{ background:"var(--gold-tint)", color:"var(--gold-dark)", fontSize:10, padding:"3px 8px 3px 6px", flexShrink:0, display:"inline-flex", alignItems:"center", gap:4 }} title="Growth Partner Program customer"><Award size={16} fill="var(--gold)" fillOpacity={0.35} strokeWidth={2.25}/>{j.service==="Growth Partner Program" && j.packageTier ? j.packageTier : ""}</span>}
                   </td>
                   <td style={{maxWidth:220, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}} title={`${j.service}${j.description && j.description.trim().toLowerCase() !== j.service.trim().toLowerCase() ? ` — ${j.description}` : ""}`}>
-                    <span style={{ display:"inline-block", width:8, height:8, borderRadius:"50%", background:jobCategoryColor(j.service), marginRight:6, border:"1px solid var(--hair)" }} />
+                    <span style={{ display:"inline-block", width:8, height:8, borderRadius:"50%", background:jobCategoryColor(j.service, state.services), marginRight:6, border:"1px solid var(--hair)" }} />
                     {j.service}{j.description && j.description.trim().toLowerCase() !== j.service.trim().toLowerCase() && ` — ${j.description}`}
                   </td>
                   <td style={{fontSize:12,color:"var(--ink-soft)", whiteSpace:"nowrap"}}>{j.leadCreatorName || "—"}</td>
@@ -5688,7 +5694,7 @@ function JobsPage({ state, dispatch, role, userId, highlightId, onHighlightHandl
             onDrop={(e)=>{ e.preventDefault(); handleDrop(col); }}>
             <h4>{col}<span className="pill">{colJobs.length}</span></h4>
             {shownJobs.map(j => {
-              const catBg = jobCategoryColor(j.service);
+              const catBg = jobCategoryColor(j.service, state.services);
               const isHi = highlightId === j.id;
               // The category tint is a fixed light pastel in both themes (by design — see
               // jobCategoryColor), so text on it can't just inherit --ink/--ink-soft: those flip to
