@@ -1019,13 +1019,28 @@ export default function App() {
   }, [theme]);
   const toggleTheme = () => setTheme((t) => (t === "dark" ? "light" : "dark"));
 
+  // A multi-role user's "Acting as" choice used to reset to roles[0] on every login — someone
+  // whose roles array happens to list admin/hr/accounts before their actual day-to-day role (e.g.
+  // an Operations Team Member also tagged Admin Executive) landed on the full unfiltered company
+  // view every single session, with no obvious hint to switch, making their own assigned work look
+  // like it wasn't there at all. Remembering their last pick per-user fixes that permanently.
+  const activeRoleKey = (uid) => `agw_active_role_${uid}`;
+  const pickActiveRole = (user) => {
+    const saved = localStorage.getItem(activeRoleKey(user.id));
+    return saved && user.roles.includes(saved) ? saved : user.roles[0];
+  };
+  const changeActiveRole = (r) => {
+    setActiveRole(r);
+    if (currentUser?.id) localStorage.setItem(activeRoleKey(currentUser.id), r);
+  };
+
   // On load, if a token is already stored, verify it's still valid before showing the app.
   useEffect(() => {
     if (!getToken()) { setAuthChecked(true); return; }
-    api.auth.me().then((me) => { setCurrentUser(me); setActiveRole(me.roles[0]); }).catch(() => setToken(null)).finally(() => setAuthChecked(true));
+    api.auth.me().then((me) => { setCurrentUser(me); setActiveRole(pickActiveRole(me)); }).catch(() => setToken(null)).finally(() => setAuthChecked(true));
   }, []);
 
-  const handleLogin = (user) => { setCurrentUser(user); setActiveRole(user.roles[0]); };
+  const handleLogin = (user) => { setCurrentUser(user); setActiveRole(pickActiveRole(user)); };
   const handleLogout = () => { clearAllTokens(); setCurrentUser(null); };
 
   // Real impersonation (not a cosmetic relabel) — the admin gets an actual token for the target
@@ -1211,7 +1226,7 @@ export default function App() {
               {currentUser.roles.length > 1 && (
                 <>
                   <label>Acting as</label>
-                  <select value={role} onChange={e => setActiveRole(e.target.value)}>
+                  <select value={role} onChange={e => changeActiveRole(e.target.value)}>
                     {currentUser.roles.map(r => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
                   </select>
                 </>
@@ -1338,7 +1353,7 @@ export default function App() {
               {currentUser.roles.length > 1 && (
                 <>
                   <label>Acting as</label>
-                  <select value={role} onChange={e => setActiveRole(e.target.value)}>
+                  <select value={role} onChange={e => changeActiveRole(e.target.value)}>
                     {currentUser.roles.map(r => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
                   </select>
                 </>
@@ -2109,8 +2124,8 @@ function LeadsPage({ state, dispatch, userId, role }) {
               style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:8, padding:"7px 12px 7px 34px", fontSize:13, background:"var(--surface)" }} />
           </div>
           <button className="btn btn-sm" onClick={()=>exportCSV("leads.csv",
-            ["Lead ID","Created","Name","Company","Service","Lead Type","Source","Reference","Owner","Status","Next Follow-up"],
-            owned.map(l=>[l.id, l.createdAt, l.name, l.company, l.service, leadOrigin(l), l.source, l.reference||"", state.employees.find(t=>t.id===l.owner)?.name||"", l.status, l.nextFollowUp||""]))}>
+            ["Lead ID","Created","Name","Email","Phone","Company","Service","Lead Type","Source","Reference","Owner","Status","Next Follow-up"],
+            owned.map(l=>[l.id, l.createdAt, l.name, l.email||"", l.phone||"", l.company, l.service, leadOrigin(l), l.source, l.reference||"", state.employees.find(t=>t.id===l.owner)?.name||"", l.status, l.nextFollowUp||""]))}>
             <Download size={13}/> Export
           </button>
           {role !== "viewer" && <button className="btn btn-primary" onClick={()=>setShowAdd(true)}><Plus size={15}/> New lead</button>}
@@ -2121,15 +2136,16 @@ function LeadsPage({ state, dispatch, userId, role }) {
       <div className="agw-card" style={{ padding: 0 }}>
         {owned.length === 0 ? <Empty icon={Users} text="No leads yet. Add your first enquiry." /> : (
         <div style={{ overflowX: "auto" }}>
-        <table className="agw-table" style={{ minWidth: 900 }}>
-          <thead><tr><th>Lead</th><th>Created</th><th>Company</th><th>Service</th><th>Lead type</th><th>Source</th><th>Reference</th><th>Owner</th><th>Status</th><th>Next follow-up</th><th></th></tr></thead>
+        <table className="agw-table" style={{ minWidth: 1120 }}>
+          <thead><tr><th>Lead</th><th>Email</th><th>Phone</th><th>Created</th><th>Company</th><th>Service</th><th>Lead type</th><th>Source</th><th>Reference</th><th>Owner</th><th>Status</th><th>Next follow-up</th><th></th></tr></thead>
           <tbody>
             {pg.pageRows.map(l => (
               <tr key={l.id} style={l.status === "Converted" ? { background: "var(--success-tint)" } : undefined}>
                 <td>{l.name}
                   <div className="mono" style={{fontSize:11,color:"var(--ink-soft)"}}>{l.id}</div>
-                  {l.email && <div style={{fontSize:11,color:"var(--ink-soft)"}}>{l.email}</div>}
                 </td>
+                <td style={{fontSize:12}}>{l.email || "—"}</td>
+                <td className="mono" style={{fontSize:12}}>{l.phone || "—"}</td>
                 <td className="mono" style={{fontSize:12}}>{fmtDate(l.createdAt)}</td>
                 <td>{l.company}</td>
                 <td style={{maxWidth:180}}>{l.service}</td>
@@ -2187,7 +2203,7 @@ function LeadsPage({ state, dispatch, userId, role }) {
                     <h5 style={{ margin:0 }}>{l.company}</h5>
                     <RowActions onEdit={()=>openEdit(l)} onRemove={()=>setRemoveLead(l)} />
                   </div>
-                  <div className="meta" style={{ marginBottom: 2 }}>{l.name}{l.email && <> · {l.email}</>}</div>
+                  <div className="meta" style={{ marginBottom: 2 }}>{l.name}{l.email && <> · {l.email}</>}{l.phone && <> · {l.phone}</>}</div>
                   <div className="meta">{l.service}</div>
                   <div style={{ fontSize:11, color:"var(--ink-soft)", marginTop:2 }}>Created {fmtDate(l.createdAt)}</div>
                   <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginTop:6 }}>
