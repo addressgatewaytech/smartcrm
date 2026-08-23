@@ -1041,6 +1041,16 @@ export default function App() {
     return () => document.removeEventListener("wheel", onWheel);
   }, []);
 
+  // Clicking into a number field that's sitting at its default 0 (Professional Fee, Rate, Qty, ...)
+  // used to just place the cursor next to that "0" — typing "77" then landed as "077" instead of
+  // replacing it. Selecting the existing text on focus means the first keystroke always overwrites
+  // it cleanly, same as clicking into any amount field that already has a value.
+  useEffect(() => {
+    const onFocusIn = (e) => { if (e.target?.tagName === "INPUT" && e.target.type === "number") e.target.select(); };
+    document.addEventListener("focusin", onFocusIn);
+    return () => document.removeEventListener("focusin", onFocusIn);
+  }, []);
+
   // A multi-role user's "Acting as" choice used to reset to roles[0] on every login — someone
   // whose roles array happens to list admin/hr/accounts before their actual day-to-day role (e.g.
   // an Operations Team Member also tagged Admin Executive) landed on the full unfiltered company
