@@ -3041,7 +3041,12 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
         <div style={{ fontSize:11, color:"var(--ink-soft)", marginTop:8 }}>Loaded from the {templateService} template — pass-through to the client, nothing to review here.</div>
       </div>
 
-      <div className="field"><label>Professional Fee (QAR)</label><input type="number" min="0" value={profFee} onChange={e=>setProfFee(Math.max(0, Number(e.target.value) || 0))} /></div>
+      <div className="field">
+        <label>Professional Fee (QAR) <span style={{color:"var(--danger)"}}>*</span></label>
+        <input type="number" min="0" value={profFee} onChange={e=>setProfFee(Math.max(0, Number(e.target.value) || 0))}
+          style={profFee <= 0 ? { borderColor:"var(--danger)" } : undefined} />
+        {profFee <= 0 && <div style={{ fontSize:11.5, color:"var(--danger)", marginTop:4 }}>Required — enter the Professional Fee to complete this quotation.</div>}
+      </div>
 
       <div style={{ marginTop: 6, borderTop:"1px solid var(--hair)", paddingTop: 12 }}>
         {itemDiscountTotal > 0 && (
@@ -3069,7 +3074,7 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
       {saveError && <div className="side-note" style={{ color:"var(--danger)" }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{saveError}</div>}
       <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop: 16 }}>
         <button className="btn" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" disabled={saving || !customer} onClick={handleSubmit}>
+        <button className="btn btn-primary" disabled={saving || !customer || profFee <= 0} onClick={handleSubmit}>
           {saving ? "Saving…" : "Complete quotation"}
         </button>
       </div>
