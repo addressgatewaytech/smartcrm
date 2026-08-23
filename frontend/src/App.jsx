@@ -2618,7 +2618,7 @@ function DealsPage({ state, dispatch, setPage, onViewQuotation, role, userId }) 
         onCreated={(id)=>{ onViewQuotation(id, true); setPage("quotations"); }} />}
       {editDeal && <EditDealModal deal={editDeal} state={state} dispatch={dispatch} onClose={()=>setEditDeal(null)} />}
       {removeDeal && <ConfirmModal title={`Remove deal ${removeDeal.id}?`} body={`${removeDeal.customer} — ${money(removeDeal.value)}. This can't be undone.`} onConfirm={()=>dispatch({type:"DELETE_DEAL", id:removeDeal.id})} onClose={()=>setRemoveDeal(null)} />}
-      {newDeal && <NewDealModal state={state} dispatch={dispatch} userId={userId} onClose={()=>setNewDeal(false)} onCreated={setHighlightDealId} />}
+      {newDeal && <NewDealModal state={state} dispatch={dispatch} userId={userId} onClose={()=>setNewDeal(false)} onCreated={(deal)=>{ setHighlightDealId(deal.id); setQuoteFor(deal); }} />}
     </div>
   );
 }
@@ -2635,7 +2635,7 @@ function NewDealModal({ state, dispatch, userId, initialCustomer=null, onClose, 
     setSaveError("");
     try {
       const r = await dispatch({ type:"ADD_DEAL", payload: { ...form, owner: userId, stage: "Open" } });
-      onCreated?.(r?.id);
+      onCreated?.({ id: r?.id, customer: form.customer, service: form.service, owner: userId });
       onClose();
     } catch (err) {
       setSaveError(err instanceof ApiError ? err.message : "Couldn't save — please try again.");
