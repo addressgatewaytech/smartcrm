@@ -28,6 +28,14 @@ const DISCLAIMER_2 =
   "regulations in effect at that time. Approval timelines, including company formation and visa approval, are also dependent on the " +
   "decisions and processing timeframes of the relevant government authorities.";
 
+// IDs are always "AGBS" + a 2-letter entity code + a sequential number (see nextSequentialId in
+// helpers.js) — AGBSQS10220 splits into AGBS/QS/10220. Falls back to the raw id for anything that
+// doesn't match (should never happen given the ID generator, but a display glitch beats a crash).
+const formatQuoteNumber = (id) => {
+  const m = /^([A-Z]{4})([A-Z]{2})(\d+)$/.exec(id || "");
+  return m ? `${m[1]}/${m[2]}/${m[3]}` : id;
+};
+
 const MARGIN = 40;
 const GRAY = "#6b7178";
 const INK = "#151A1F";
@@ -137,7 +145,7 @@ function generateQuotationPdf(quotation, res) {
   // --- Header: "QUOTE" title + quote# on the left, brand wordmark + address on the right -------
   const headerTop = MARGIN;
   doc.font("Inter-Bold").fontSize(30).fillColor(INK).text("QUOTE", MARGIN, headerTop, { lineBreak: false });
-  doc.font("Inter").fontSize(9).fillColor(GRAY).text(`Quote# AGBS/${quotation.id}`, MARGIN, headerTop + 34, { lineBreak: false });
+  doc.font("Inter").fontSize(9).fillColor(GRAY).text(`Quote# ${formatQuoteNumber(quotation.id)}`, MARGIN, headerTop + 34, { lineBreak: false });
   const brandBottomY = drawBrandHeader(doc, tableRight, headerTop);
   let y = Math.max(headerTop + 50, brandBottomY) + 20;
 

@@ -425,6 +425,13 @@ const quotationFeeTypeLabel = (q) => {
   if (hasGov) return "Government Fee";
   return "Professional Fee";
 };
+// IDs are always "AGBS" + a 2-letter entity code + a sequential number (see nextSequentialId in
+// src/utils/helpers.js) — AGBSQS10220 splits into AGBS/QS/10220. Mirrors formatQuoteNumber in
+// src/utils/quotationPdf.js so the on-screen preview always matches the real generated PDF.
+const formatQuoteNumber = (id) => {
+  const m = /^([A-Z]{4})([A-Z]{2})(\d+)$/.exec(id || "");
+  return m ? `${m[1]}/${m[2]}/${m[3]}` : id;
+};
 // Turns a subscription tier (Subscriptions module — see mapTier in mappers.js) into the note a
 // quotation's package line item should show, so a Basic-tier quotation actually reads differently
 // from a Gold-tier one instead of every package sharing one generic description. Joined with " · "
@@ -3430,9 +3437,9 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
             <button className="btn btn-sm" onClick={()=>setEmailing(true)}>
               {q.emailedToClient ? <><BadgeCheck size={13}/> Emailed {fmtDate(q.emailedAt)}</> : <><Mail size={13}/> Email to customer</>}
             </button>
-            {/* Unconditional on status — available from Draft (right by Submit for approval,
-                below) straight through Approved, not just from the separate PDF preview tab. */}
-            <button className="btn btn-sm" disabled={downloading} onClick={async ()=>{
+            {/* Locked until the quotation has actually been approved & sent — downloading a Draft
+                risks it going out before pricing/discount sign-off is final. */}
+            <button className="btn btn-sm" disabled={downloading || q.status === "Draft"} title={q.status === "Draft" ? "Approve & send (or submit for approval) first" : undefined} onClick={async ()=>{
               setDownloading(true);
               try {
                 const blob = await api.quotations.downloadPdf(q.id);
@@ -3468,7 +3475,7 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
             {q.status === "Draft" && (hasDiscount || !canApprove) &&
               <button className="btn btn-primary" disabled={actionBusy} onClick={()=>runAction({type:"SUBMIT_QUOTATION_FOR_APPROVAL", id:q.id})}>Submit for approval</button>}
             {q.status === "Draft" && !hasDiscount && canApprove &&
-              <button className="btn btn-primary" disabled={actionBusy} onClick={()=>runAction({type:"SEND_QUOTATION", id:q.id})}>Send to client</button>}
+              <button className="btn btn-primary" disabled={actionBusy} onClick={()=>runAction({type:"SEND_QUOTATION", id:q.id})}><Check size={14}/> Approve & send</button>}
             {q.status === "Pending Manager Approval" && canApprove &&
               <button className="btn btn-primary" disabled={actionBusy} onClick={()=>runAction({type:"APPROVE_QUOTATION_DISCOUNT", id:q.id, by:"Sales Manager"})}><Check size={14}/> Approve & send</button>}
             {q.status === "Pending Manager Approval" && !canApprove &&
@@ -3557,14 +3564,27 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
         <div>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
             <span style={{ fontSize:12, color:"var(--ink-soft)" }}>{editingNow ? "Editing — changes are staged until you save." : "This is exactly what the client receives."}</span>
-            {editable && (editingNow ? (
-              <span style={{ display:"flex", gap:8 }}>
-                <button className="btn btn-sm" disabled={savingVisual} onClick={cancelVisualEdit}>Cancel</button>
-                <button className="btn btn-sm btn-primary" disabled={savingVisual} onClick={saveVisualEdit}><Check size={13}/> {savingVisual ? "Saving…" : "Save changes"}</button>
-              </span>
-            ) : (
-              <button className="btn btn-sm" onClick={startVisualEdit}><Pencil size={13}/> Visual edit</button>
-            ))}
+            <span style={{ display:"flex", gap:8 }}>
+              {editable && (editingNow ? (
+                <>
+                  <button className="btn btn-sm" disabled={savingVisual} onClick={cancelVisualEdit}>Cancel</button>
+                  <button className="btn btn-sm btn-primary" disabled={savingVisual} onClick={saveVisualEdit}><Check size={13}/> {savingVisual ? "Saving…" : "Save changes"}</button>
+                </>
+              ) : (
+                <button className="btn btn-sm" onClick={startVisualEdit}><Pencil size={13}/> Visual edit</button>
+              ))}
+              {!editingNow && (
+                <button className="btn btn-sm" disabled={downloading || q.status === "Draft"} title={q.status === "Draft" ? "Approve & send (or submit for approval) first" : undefined} onClick={async ()=>{
+                  setDownloading(true);
+                  try {
+                    const blob = await api.quotations.downloadPdf(q.id);
+                    downloadBlob(`Quotation-${q.id}.pdf`, blob);
+                  } finally {
+                    setDownloading(false);
+                  }
+                }}><Download size={13}/> {downloading ? "Generating…" : "Download PDF"}</button>
+              )}
+            </span>
           </div>
           {visualSaveError && <div className="side-note" style={{ color:"var(--danger)", marginBottom:12 }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{visualSaveError}</div>}
           {editingNow && (
@@ -3578,7 +3598,7 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:24 }}>
               <div>
                 <div className="disp" style={{ fontSize:30, fontWeight:500, letterSpacing:"-.01em" }}>QUOTE</div>
-                <div className="mono" style={{ fontSize:12, color:"var(--ink-soft)", marginTop:4 }}>Quote# AGBS/{q.id}</div>
+                <div className="mono" style={{ fontSize:12, color:"var(--ink-soft)", marginTop:4 }}>Quote# {formatQuoteNumber(q.id)}</div>
               </div>
               <div style={{ textAlign:"right" }}>
                 <div style={{ display:"inline-block", textAlign:"right" }}><BrandLogo scale={1} /></div>
@@ -3764,7 +3784,7 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
           </div>
 
           <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop: 14 }}>
-            <button className="btn btn-sm" disabled={editingNow || downloading} onClick={async ()=>{
+            <button className="btn btn-sm" disabled={editingNow || downloading || q.status === "Draft"} title={q.status === "Draft" ? "Approve & send (or submit for approval) first" : undefined} onClick={async ()=>{
               setDownloading(true);
               try {
                 const blob = await api.quotations.downloadPdf(q.id);
