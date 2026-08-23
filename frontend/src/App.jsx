@@ -3024,10 +3024,10 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
           ))}
           <button type="button" className="btn btn-sm" style={{ marginBottom: 16 }}
             onClick={()=>setActivityPrompt(p=>({ ...p, activities: [...p.activities, ""] }))}><Plus size={13}/> Add another activity</button>
-          <div className="side-note" style={{ marginTop:0 }}>Leave blank and continue to keep the template's generic single Activity Fees line instead.</div>
+          <div className="side-note" style={{ marginTop:0 }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>At least one business activity is required for Company Formation quotations.</div>
           <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop: 16 }}>
             <button className="btn" onClick={()=>setActivityPrompt(null)}>Cancel</button>
-            <button className="btn btn-primary" onClick={confirmActivities}>Continue</button>
+            <button className="btn btn-primary" disabled={!activityPrompt.activities.some(a=>a.trim())} onClick={confirmActivities}>Continue</button>
           </div>
         </Modal>
       )}
