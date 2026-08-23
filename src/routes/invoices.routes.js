@@ -8,29 +8,47 @@ const { generateInvoicePdf } = require("../utils/invoicePdf");
 const router = express.Router();
 router.use(requireAuth);
 
-// Admin-tier, Sales/Ops Manager, and Accounts see every invoice — Accounts processes every
-// client's invoice as part of the job and doesn't "own" a quotation the way a sales rep does, so
-// scoping them like everyone else would leave them seeing almost nothing.
+// Admin-tier, Sales/Ops Manager, Accounts, and Viewer see every invoice — Accounts processes
+// every client's invoice as part of the job and doesn't "own" a quotation the way a sales rep
+// does, so scoping them like everyone else would leave them seeing almost nothing.
 // Everyone else is traced via sales_order_id -> quotation_id -> owner (same as /sales-orders), or
-// via being assigned to the job card the sales order eventually produced — that second path is
-// what lets an Ops/PRO worker see the invoice for a job they're actually doing, since they never
-// "own" the originating quotation either. Subscription-billed invoices have no sales_order_id at
-// all (no quotation to trace ownership through), so — same leniency as everywhere else in this
-// pass — they stay visible to everyone rather than becoming invisible to whoever should collect on them.
+// via being assigned to the job card the sales order eventually produced — that lets an Ops/PRO
+// worker see the invoice for a job they're actually doing, since they never "own" the originating
+// quotation either. Subscription-billed invoices have no sales_order_id at all (no quotation to
+// trace ownership through), so those fall back to the invoiced customer's most recent deal owner —
+// same derivation used for Customers & Subscriptions — instead of the old blanket "show to
+// everyone", which let every sales rep see every customer's subscription invoices regardless of
+// whose customer it actually was.
 router.get("/", async (req, res) => {
   const canSeeAll = isAdminLike(req.user.roles) || req.user.roles.includes("viewer") || req.user.roles.includes("sales_manager") || req.user.roles.includes("ops_manager") || req.user.roles.includes("accounts");
-  const invoices = canSeeAll
-    ? await query("SELECT * FROM invoices ORDER BY created_at DESC")
-    : await query(
-        `SELECT DISTINCT inv.* FROM invoices inv
-         LEFT JOIN sales_orders so ON so.id = inv.sales_order_id
-         LEFT JOIN quotations q ON q.id = so.quotation_id
-         LEFT JOIN job_cards jc ON jc.sales_order_id = so.id
-         LEFT JOIN job_card_assignees jca ON jca.job_card_id = jc.id
-         WHERE inv.sales_order_id IS NULL OR q.owner = ? OR q.owner IS NULL OR jca.user_id = ?
-         ORDER BY inv.created_at DESC`,
-        [req.user.id, req.user.id]
-      );
+  let invoices;
+  if (canSeeAll) {
+    invoices = await query("SELECT * FROM invoices ORDER BY created_at DESC");
+  } else {
+    const rows = await query(
+      `SELECT inv.*, q.owner AS quotation_owner FROM invoices inv
+       LEFT JOIN sales_orders so ON so.id = inv.sales_order_id
+       LEFT JOIN quotations q ON q.id = so.quotation_id
+       ORDER BY inv.created_at DESC`
+    );
+    const assignedSalesOrderIds = new Set(
+      (await query(
+        `SELECT DISTINCT jc.sales_order_id FROM job_cards jc
+         JOIN job_card_assignees jca ON jca.job_card_id = jc.id
+         WHERE jca.user_id = ? AND jc.sales_order_id IS NOT NULL`,
+        [req.user.id]
+      )).map((r) => r.sales_order_id)
+    );
+    const deals = await query("SELECT customer, owner FROM deals ORDER BY created_at DESC");
+    const dealOwnerFor = (customerName) => deals.find((d) => d.customer === customerName)?.owner || null;
+    invoices = rows
+      .filter((r) =>
+        r.quotation_owner === req.user.id ||
+        assignedSalesOrderIds.has(r.sales_order_id) ||
+        (!r.sales_order_id && dealOwnerFor(r.customer) === req.user.id)
+      )
+      .map(({ quotation_owner, ...rest }) => rest);
+  }
   const payments = await query("SELECT * FROM invoice_payments ORDER BY paid_at DESC");
   res.json(invoices.map((inv) => ({
     ...inv,
