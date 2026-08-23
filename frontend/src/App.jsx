@@ -222,6 +222,11 @@ const CSS = `
   .field input, .field select, .field textarea { width: 100%; border: 1px solid var(--hair); border-radius: 8px;
     padding: 8px 10px; font-size: 13.5px; background: var(--surface); color: var(--ink); appearance: auto; -webkit-appearance: auto; }
   .field input:focus, .field select:focus, .field textarea:focus { outline: 2px solid var(--brand-tint); border-color: var(--brand); }
+  /* Plain typing for amount fields — no spinner arrows, and the mouse-wheel-over-a-focused-number-
+     input browser default (which silently bumps the value while someone's just scrolling the page)
+     is disabled globally via a wheel listener that blurs the field; see the App component. */
+  input[type=number] { -moz-appearance: textfield; }
+  input[type=number]::-webkit-outer-spin-button, input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
 
@@ -1018,6 +1023,16 @@ export default function App() {
     localStorage.setItem("agw_theme", theme);
   }, [theme]);
   const toggleTheme = () => setTheme((t) => (t === "dark" ? "light" : "dark"));
+
+  // Browsers change a focused <input type=number>'s value on mouse-wheel scroll by default — no
+  // opt-out attribute exists, so anyone scrolling the page while the cursor happens to be over a
+  // Qty/Rate/Fee field silently mutates it. Blurring on wheel is the standard workaround; typing
+  // is completely unaffected.
+  useEffect(() => {
+    const onWheel = (e) => { if (document.activeElement?.tagName === "INPUT" && document.activeElement.type === "number") document.activeElement.blur(); };
+    document.addEventListener("wheel", onWheel, { passive: true });
+    return () => document.removeEventListener("wheel", onWheel);
+  }, []);
 
   // A multi-role user's "Acting as" choice used to reset to roles[0] on every login — someone
   // whose roles array happens to list admin/hr/accounts before their actual day-to-day role (e.g.
@@ -2759,10 +2774,9 @@ function ItemSection({ title, bg, feeType, items, setItems, service, catalog, re
           <div className="field"><label>Note (optional)</label>
             <input value={it.note || ""} onChange={e=>update(i,"note",e.target.value)} placeholder="e.g. 50 QAR per partner" />
           </div>
-          <div className="row3">
+          <div className="row2">
             <div className="field"><label>Qty</label><input type="number" min={1} value={it.qty} onChange={e=>update(i,"qty",(e.target.value === "" ? "" : Number(e.target.value)))} /></div>
             <div className="field"><label>Rate (QAR)</label><input type="number" value={it.price} onChange={e=>update(i,"price",(e.target.value === "" ? "" : Number(e.target.value)))} /></div>
-            <div className="field"><label>Discount %</label><input type="number" min={0} max={100} value={it.discountPct} onChange={e=>update(i,"discountPct",(e.target.value === "" ? "" : Number(e.target.value)))} /></div>
           </div>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
             <span className="mono" style={{ fontSize:12, color:"var(--ink-soft)" }}>{money(it.qty*it.price*(1-(it.discountPct||0)/100))}</span>
@@ -3385,19 +3399,9 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
           )}
 
           {editable && (
-            <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:10 }}>
-              {editingNow ? (
-                <span style={{ display:"flex", gap:8 }}>
-                  <button className="btn btn-sm" disabled={savingVisual} onClick={cancelVisualEdit}>Cancel</button>
-                  <button className="btn btn-sm btn-primary" disabled={savingVisual} onClick={saveVisualEdit}><Check size={13}/> {savingVisual ? "Saving…" : "Save changes"}</button>
-                </span>
-              ) : (
-                <button className="btn btn-sm" onClick={startVisualEdit}><Pencil size={13}/> Edit items</button>
-              )}
-            </div>
+            <div className="side-note" style={{marginBottom:10}}>Use Visual edit under the PDF preview tab to make changes.</div>
           )}
-          {visualSaveError && <div className="side-note" style={{ color:"var(--danger)", marginTop:0, marginBottom:10 }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{visualSaveError}</div>}
-          <QuoteItemsEditor items={cq.items} onChange={(next)=>updDraft("items", next)} service={cq.items[0]?.service} catalog={state?.itemCatalog || []} quotationFeeType={q.feeType} readOnly={!editingNow} />
+          <QuoteItemsEditor items={cq.items} onChange={(next)=>updDraft("items", next)} service={cq.items[0]?.service} catalog={state?.itemCatalog || []} quotationFeeType={q.feeType} readOnly />
           {editingNow && (
             <div style={{ maxWidth:320, marginLeft:"auto", marginTop:10 }}>
               <OrderDiscountField value={cq.orderDiscount||0} type={cq.orderDiscountType||"amount"}
