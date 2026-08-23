@@ -7,16 +7,16 @@ const { nextSequentialId, findOrCreateCustomer } = require("../utils/helpers");
 const router = express.Router();
 router.use(requireAuth);
 
-// Same visibility rule as /leads: a sales_exec (or Ops team member, who now sees/manages their own
-// pipeline the same way once they've added a lead) only sees their own deals; sales managers and
-// admins see everyone's. (A deal with no owner shouldn't normally exist — POST always sets one —
-// but "OR owner IS NULL" is kept for parity with /leads in case of legacy/imported rows.)
-const isSalesExecOnly = (roles) => (roles.includes("sales_exec") || roles.includes("ops_manager") || roles.includes("ops_member") || roles.includes("pro_head") || roles.includes("pro")) && !isAdminLike(roles) && !roles.includes("sales_manager");
+// Same visibility rule as /leads: only Sales/Ops Manager and Admin-tier see everyone's deals —
+// everyone else (sales_exec, ops_member, pro_head, pro, accounts, ...) only sees their own. (A
+// deal with no owner shouldn't normally exist — POST always sets one — but "OR owner IS NULL" is
+// kept for parity with /leads in case of legacy/imported rows.)
+const canSeeAllDeals = (roles) => isAdminLike(roles) || roles.includes("viewer") || roles.includes("sales_manager") || roles.includes("ops_manager");
 
 router.get("/", async (req, res) => {
-  const rows = isSalesExecOnly(req.user.roles)
-    ? await query("SELECT * FROM deals WHERE owner = ? OR owner IS NULL ORDER BY created_at DESC", [req.user.id])
-    : await query("SELECT * FROM deals ORDER BY created_at DESC");
+  const rows = canSeeAllDeals(req.user.roles)
+    ? await query("SELECT * FROM deals ORDER BY created_at DESC")
+    : await query("SELECT * FROM deals WHERE owner = ? OR owner IS NULL ORDER BY created_at DESC", [req.user.id]);
   res.json(rows);
 });
 
@@ -45,10 +45,11 @@ router.post("/", async (req, res) => {
   res.status(201).json({ id });
 });
 
-// A sales_exec may only modify their own deal, even if they somehow know another deal's id —
-// GET already keeps them from seeing it, but nothing previously stopped a direct API call.
+// Anyone who doesn't see every deal on GET may only modify their own, even if they somehow know
+// another deal's id — GET already keeps them from seeing it, but nothing previously stopped a
+// direct API call.
 async function assertOwnsOrAdmin(req, res) {
-  if (!isSalesExecOnly(req.user.roles)) return true;
+  if (canSeeAllDeals(req.user.roles)) return true;
   const [deal] = await query("SELECT owner FROM deals WHERE id = ?", [req.params.id]);
   if (deal && deal.owner && deal.owner !== req.user.id) {
     res.status(403).json({ error: "You can only modify your own deals" });

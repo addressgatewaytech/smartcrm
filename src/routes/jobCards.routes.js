@@ -10,11 +10,15 @@ const router = express.Router();
 router.use(requireAuth);
 
 router.get("/", async (req, res) => {
-  const isOpsMember = (req.user.roles.includes("ops_member") || req.user.roles.includes("pro")) && !isAdminLike(req.user.roles) && !req.user.roles.includes("ops_manager") && !req.user.roles.includes("pro_head");
-  // Excludes ops_manager too — someone tagged both ops_manager and sales_exec (an Operations
-  // Manager who also carries a sales role) still needs to see every job card, not just the ones
-  // tied to their own quotations.
-  const isSalesExecOnly = req.user.roles.includes("sales_exec") && !isAdminLike(req.user.roles) && !req.user.roles.includes("sales_manager") && !req.user.roles.includes("ops_manager");
+  // Admin-tier, Sales/Ops Manager, and PRO Head see every job card — everyone else only theirs.
+  const isExempt = isAdminLike(req.user.roles) || req.user.roles.includes("viewer") || req.user.roles.includes("sales_manager") || req.user.roles.includes("ops_manager") || req.user.roles.includes("pro_head");
+  const isOpsMember = !isExempt && (req.user.roles.includes("ops_member") || req.user.roles.includes("pro"));
+  // Anyone not exempt and not scoped by assignment above (sales_exec, accounts, hr, data_manager,
+  // lead_manager, or any other role granted Job Cards access) falls back to the same traceable
+  // quotation-ownership scoping used everywhere else — accounts/hr/data_manager have no natural
+  // "assignee" concept here, so this is the closest available "did I bring this job in" proxy,
+  // and it's what previously left them unscoped entirely (seeing every job card in the company).
+  const isOwnerScoped = !isExempt && !isOpsMember;
   // Traces each job card back through its sales order -> quotation -> deal -> lead to find who
   // originally brought in the business — distinct from job_cards.created_by, which is whoever
   // triggered onboarding/direct-creation, not necessarily the original lead owner. Job cards
@@ -38,10 +42,10 @@ router.get("/", async (req, res) => {
     statusLog: logs.filter((l) => l.job_card_id === r.id),
   }));
   if (isOpsMember) out = out.filter((j) => j.assignees.includes(req.user.id));
-  // Same visibility rule as /deals, /sales-orders, /invoices: a sales_exec only sees job cards
-  // from their own quotations, plus anything they directly created themselves (no sales order to
-  // trace ownership through) or that has no traceable owner at all.
-  if (isSalesExecOnly) {
+  // Same visibility rule as /deals, /sales-orders, /invoices: only their own job cards — from a
+  // quotation they own, plus anything they directly created themselves (no sales order to trace
+  // ownership through) or that has no traceable owner at all.
+  if (isOwnerScoped) {
     out = out.filter((j) => j.quotation_owner === req.user.id || (!j.sales_order_id && j.created_by === req.user.id) || (j.sales_order_id && !j.quotation_owner));
   }
   out = out.map(({ quotation_owner, ...rest }) => rest);

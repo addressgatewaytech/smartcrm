@@ -9,8 +9,8 @@ const { nextSlaDeadline } = require("../utils/officeHours");
 const router = express.Router();
 router.use(requireAuth);
 
-// Lead Assignment Manager (and Sales Manager/Admin-tier) see every lead; everyone else only their own.
-const canManageAllLeads = (roles) => isAdminLike(roles) || roles.includes("sales_manager") || roles.includes("lead_manager");
+// Lead Assignment Manager (and Sales/Ops Manager, Admin-tier) see every lead; everyone else only their own.
+const canManageAllLeads = (roles) => isAdminLike(roles) || roles.includes("viewer") || roles.includes("sales_manager") || roles.includes("ops_manager") || roles.includes("lead_manager");
 // Only the Lead Manager role (or Admin-tier, as everywhere else in this app) brings in leads for
 // central distribution — a Sales Manager can see everything but no longer creates unassigned/
 // distributable leads or assigns them; their own new-lead-button use is just their own pipeline.

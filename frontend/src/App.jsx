@@ -4625,17 +4625,11 @@ function SubscriptionsPage({ state, dispatch, role, userId }) {
   const [removeSub, setRemoveSub] = useState(null);
   const isAdmin = ADMIN_LIKE.includes(role);
 
-  // Subscriptions have no owner column of their own — ownership is derived from the customer's
-  // most recent deal, the same lineage-tracing approach used for Job Cards' "lead created by".
-  // Managers and admins see every subscription; a sales_exec only sees their own customers'.
-  const subOwnerId = (sub) => {
-    const dealsForCustomer = state.deals.filter(d => d.customer === sub.customer);
-    if (!dealsForCustomer.length) return null;
-    return dealsForCustomer.reduce((latest, d) => (!latest || d.createdAt > latest.createdAt ? d : latest), null).owner;
-  };
-  const canSeeAllSubs = isAdmin || role === "sales_manager";
+  // Ownership scoping (who sees which subscriptions) is now enforced server-side in
+  // GET /subscriptions, same reasoning as everywhere else — state.subscriptions already IS "my
+  // visible subscriptions" by the time it reaches here, so no client-side re-filtering.
   const [query, setQuery] = useState("");
-  const visibleSubs = (canSeeAllSubs ? state.subscriptions : state.subscriptions.filter(s => subOwnerId(s) === userId))
+  const visibleSubs = state.subscriptions
     .filter(s => [s.customer, s.id, s.plan].filter(Boolean).join(" ").toLowerCase().includes(query.trim().toLowerCase()));
   const pg = usePagination(visibleSubs);
 

@@ -20,10 +20,12 @@ router.get("/", async (req, res) => {
   // created directly, or one linked to a lead/deal they own. Unlike before, a customer with no
   // traceable owner at all is now admin-only (not shown to everyone) — KYC records are sensitive
   // enough that "can't prove who it belongs to" should mean restricted, not wide open.
-  // Ops Manager is the one deliberate exception, seeing every customer like Admin-tier — they
-  // service KYC/onboarding across all clients operationally, not just ones they personally
-  // sourced as a lead (same reasoning as Ops Manager already seeing every Job Card).
-  const canSeeAll = isAdminLike(req.user.roles) || req.user.roles.includes("ops_manager") || req.user.roles.includes("pro_head") || req.user.roles.includes("pro");
+  // Sales Manager, Ops Manager, and PRO Head are the deliberate exceptions, seeing every customer
+  // like Admin-tier — they service KYC/onboarding or manage the pipeline across all clients
+  // operationally, not just ones they personally sourced as a lead (same reasoning as Ops Manager
+  // already seeing every Job Card). A plain "pro" is not exempted — same as any other individual
+  // contributor, they only see customers they can trace ownership to.
+  const canSeeAll = isAdminLike(req.user.roles) || req.user.roles.includes("viewer") || req.user.roles.includes("sales_manager") || req.user.roles.includes("ops_manager") || req.user.roles.includes("pro_head");
   let visible = customers;
   if (!canSeeAll) {
     // Customers have no direct owner column — ownership is derived from the customer's most

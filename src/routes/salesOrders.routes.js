@@ -8,19 +8,26 @@ const { generateSalesOrderPdf } = require("../utils/salesOrderPdf");
 const router = express.Router();
 router.use(requireAuth);
 
-// Same visibility rule as /leads and /deals: a sales_exec only sees sales orders created from
-// their own quotations (joined via quotation_id -> quotations.owner); managers/admins see all.
+// Admin-tier, Sales/Ops Manager, and Accounts see every sales order — Accounts processes every
+// client's sales order as part of the job and doesn't "own" a quotation the way a sales rep does,
+// so scoping them like everyone else would leave them seeing almost nothing.
+// Everyone else only sees sales orders created from their own quotations (joined via quotation_id
+// -> quotations.owner), or ones tied to a job card they're assigned to — that second path is what
+// lets an Ops/PRO worker see the sales order for a job they're actually doing, since they never
+// "own" the originating quotation either.
 router.get("/", async (req, res) => {
-  const isSalesExecOnly = req.user.roles.includes("sales_exec") && !isAdminLike(req.user.roles) && !req.user.roles.includes("sales_manager");
-  const rows = isSalesExecOnly
-    ? await query(
-        `SELECT so.* FROM sales_orders so
+  const canSeeAll = isAdminLike(req.user.roles) || req.user.roles.includes("viewer") || req.user.roles.includes("sales_manager") || req.user.roles.includes("ops_manager") || req.user.roles.includes("accounts");
+  const rows = canSeeAll
+    ? await query("SELECT * FROM sales_orders ORDER BY created_at DESC")
+    : await query(
+        `SELECT DISTINCT so.* FROM sales_orders so
          LEFT JOIN quotations q ON q.id = so.quotation_id
-         WHERE q.owner = ? OR q.owner IS NULL
+         LEFT JOIN job_cards jc ON jc.sales_order_id = so.id
+         LEFT JOIN job_card_assignees jca ON jca.job_card_id = jc.id
+         WHERE q.owner = ? OR q.owner IS NULL OR jca.user_id = ?
          ORDER BY so.created_at DESC`,
-        [req.user.id]
-      )
-    : await query("SELECT * FROM sales_orders ORDER BY created_at DESC");
+        [req.user.id, req.user.id]
+      );
   res.json(rows);
 });
 

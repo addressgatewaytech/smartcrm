@@ -8,22 +8,29 @@ const { generateInvoicePdf } = require("../utils/invoicePdf");
 const router = express.Router();
 router.use(requireAuth);
 
-// Same visibility rule as /sales-orders: traced via sales_order_id -> quotation_id -> owner.
-// Subscription-billed invoices have no sales_order_id at all (no quotation to trace ownership
-// through), so — same leniency as everywhere else in this pass — they stay visible to everyone
-// rather than becoming invisible to whoever should be collecting on them.
+// Admin-tier, Sales/Ops Manager, and Accounts see every invoice — Accounts processes every
+// client's invoice as part of the job and doesn't "own" a quotation the way a sales rep does, so
+// scoping them like everyone else would leave them seeing almost nothing.
+// Everyone else is traced via sales_order_id -> quotation_id -> owner (same as /sales-orders), or
+// via being assigned to the job card the sales order eventually produced — that second path is
+// what lets an Ops/PRO worker see the invoice for a job they're actually doing, since they never
+// "own" the originating quotation either. Subscription-billed invoices have no sales_order_id at
+// all (no quotation to trace ownership through), so — same leniency as everywhere else in this
+// pass — they stay visible to everyone rather than becoming invisible to whoever should collect on them.
 router.get("/", async (req, res) => {
-  const isSalesExecOnly = req.user.roles.includes("sales_exec") && !isAdminLike(req.user.roles) && !req.user.roles.includes("sales_manager");
-  const invoices = isSalesExecOnly
-    ? await query(
-        `SELECT inv.* FROM invoices inv
+  const canSeeAll = isAdminLike(req.user.roles) || req.user.roles.includes("viewer") || req.user.roles.includes("sales_manager") || req.user.roles.includes("ops_manager") || req.user.roles.includes("accounts");
+  const invoices = canSeeAll
+    ? await query("SELECT * FROM invoices ORDER BY created_at DESC")
+    : await query(
+        `SELECT DISTINCT inv.* FROM invoices inv
          LEFT JOIN sales_orders so ON so.id = inv.sales_order_id
          LEFT JOIN quotations q ON q.id = so.quotation_id
-         WHERE inv.sales_order_id IS NULL OR q.owner = ? OR q.owner IS NULL
+         LEFT JOIN job_cards jc ON jc.sales_order_id = so.id
+         LEFT JOIN job_card_assignees jca ON jca.job_card_id = jc.id
+         WHERE inv.sales_order_id IS NULL OR q.owner = ? OR q.owner IS NULL OR jca.user_id = ?
          ORDER BY inv.created_at DESC`,
-        [req.user.id]
-      )
-    : await query("SELECT * FROM invoices ORDER BY created_at DESC");
+        [req.user.id, req.user.id]
+      );
   const payments = await query("SELECT * FROM invoice_payments ORDER BY paid_at DESC");
   res.json(invoices.map((inv) => ({
     ...inv,

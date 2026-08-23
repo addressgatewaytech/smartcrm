@@ -1,7 +1,7 @@
 const express = require("express");
 const { query, withTransaction } = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
-const { requireRole } = require("../middleware/roles");
+const { requireRole, isAdminLike } = require("../middleware/roles");
 const { nextId, nextSequentialId, daysFromNow } = require("../utils/helpers");
 
 const router = express.Router();
@@ -79,7 +79,18 @@ async function transactionsUsed(customerName, startDate) {
 
 router.get("/", async (req, res) => {
   const rows = await query("SELECT * FROM customer_subscriptions ORDER BY created_at DESC");
-  const withUsage = await Promise.all(rows.map(async (s) => ({ ...s, transactionsUsed: await transactionsUsed(s.customer, s.start_date) })));
+  // Admin-tier and Sales/Ops Manager see every subscription; everyone else only ones tied to a
+  // customer whose most recent deal they own — the same ownership proxy the Subscriptions page
+  // already computed client-side, now actually enforced server-side (the full list was previously
+  // always sent regardless of what the UI chose to display, so anyone with API access could see it).
+  const canSeeAll = isAdminLike(req.user.roles) || req.user.roles.includes("viewer") || req.user.roles.includes("sales_manager") || req.user.roles.includes("ops_manager");
+  let visible = rows;
+  if (!canSeeAll) {
+    const deals = await query("SELECT customer, owner FROM deals ORDER BY created_at DESC");
+    const ownerFor = (customerName) => deals.find((d) => d.customer === customerName)?.owner || null;
+    visible = rows.filter((s) => ownerFor(s.customer) === req.user.id);
+  }
+  const withUsage = await Promise.all(visible.map(async (s) => ({ ...s, transactionsUsed: await transactionsUsed(s.customer, s.start_date) })));
   res.json(withUsage);
 });
 
