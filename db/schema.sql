@@ -671,10 +671,22 @@ CREATE TABLE IF NOT EXISTS notifications (
   title        VARCHAR(255) NOT NULL,
   body         TEXT,
   audience     JSON NOT NULL,   -- array mixing role keys and specific user IDs
-  read_flag    TINYINT(1) DEFAULT 0,
+  read_flag    TINYINT(1) DEFAULT 0,   -- superseded by notification_reads below; no longer read or written
   email_sent   TINYINT(1) DEFAULT 0,
   emailed_at   TIMESTAMP NULL,
   created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+-- Per-recipient read state. A notification's audience is often a shared role (e.g. "accounts"),
+-- so read status can't live on the notification row itself — one person opening it would mark it
+-- read for everyone else in that role too. Presence of a row = read by that user; absence = unread.
+CREATE TABLE IF NOT EXISTS notification_reads (
+  notification_id  VARCHAR(20) NOT NULL,
+  user_id           VARCHAR(20) NOT NULL,
+  read_at           TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (notification_id, user_id),
+  FOREIGN KEY (notification_id) REFERENCES notifications(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------------

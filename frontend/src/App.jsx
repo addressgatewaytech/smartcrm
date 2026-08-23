@@ -1159,7 +1159,12 @@ export default function App() {
   const role = (viewingUser.roles || currentUser.roles).includes(activeRole) ? activeRole : (viewingUser.roles || currentUser.roles)[0];
   const userId = currentUser.id;
 
-  const myNotifs = state.notifications.filter(n => n.audience.includes(role) || n.audience.includes(userId));
+  // The server already scopes state.notifications to this account's full role set (see GET
+  // /notifications) — re-filtering by just the single "Acting as" role here would silently hide
+  // a multi-role user's own notifications addressed to a role they hold but aren't currently
+  // acting as, so this has to check every role they hold, not just the active one.
+  const myRoles = viewingUser.roles || currentUser.roles;
+  const myNotifs = state.notifications.filter(n => n.audience.some(a => myRoles.includes(a)) || n.audience.includes(userId));
   const unreadCount = myNotifs.filter(n => !n.read).length;
 
   // Job Cards needing this viewer's attention — mirrors the notifications badge.
