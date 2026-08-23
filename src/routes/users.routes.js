@@ -1,7 +1,7 @@
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const multer = require("multer");
-const { query } = require("../config/db");
+const { query, withTransaction } = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
 const { requireRole, ROLE_LABEL } = require("../middleware/roles");
 const { nextId, today } = require("../utils/helpers");
@@ -147,6 +147,53 @@ router.patch("/:id/docs/:docId", requireRole(["super_admin", "admin", "admin_exe
 });
 router.delete("/:id/docs/:docId", requireRole(["super_admin", "admin", "admin_exec", "hr"]), async (req, res) => {
   await query("DELETE FROM staff_docs WHERE id = ? AND user_id = ?", [req.params.docId, req.params.id]);
+  res.json({ ok: true });
+});
+
+// --- Module Access (per-user permission grid) ----------------------------------------------
+// Explicit, per-user page/module access — the source of truth for nav visibility and (for
+// can_view) actual API access, replacing role-array matching against NAV items. Keys here mirror
+// the NAV item `key`s in frontend/src/App.jsx 1:1 — kept as a plain list since the backend has no
+// visibility into that file; keep the two in sync by hand if a module is ever added/renamed.
+const MODULES = [
+  "dashboard", "leads", "deals", "quotations", "customers", "orders", "invoices", "jobs", "tasks",
+  "subscriptions", "incentives", "hr", "attendance", "knowledgeBase", "users", "dataManager",
+  "leadAssignment", "reports", "quotationTemplates", "templates", "notifications", "settings",
+];
+const emptyPermissionGrid = () => Object.fromEntries(MODULES.map((m) => [m, { canView: false, canAdd: false, canEdit: false, canDelete: false }]));
+const rowsToGrid = (rows) => {
+  const grid = emptyPermissionGrid();
+  for (const r of rows) grid[r.module] = { canView: !!r.can_view, canAdd: !!r.can_add, canEdit: !!r.can_edit, canDelete: !!r.can_delete };
+  return grid;
+};
+
+// Any authenticated user reads their own grid — this is what drives their own nav on load.
+router.get("/me/permissions", async (req, res) => {
+  const rows = await query("SELECT module, can_view, can_add, can_edit, can_delete FROM user_module_permissions WHERE user_id = ?", [req.user.id]);
+  res.json(rowsToGrid(rows));
+});
+
+router.get("/:id/permissions", requireRole(["super_admin", "admin"]), async (req, res) => {
+  const rows = await query("SELECT module, can_view, can_add, can_edit, can_delete FROM user_module_permissions WHERE user_id = ?", [req.params.id]);
+  res.json(rowsToGrid(rows));
+});
+
+// Replaces the whole grid in one call — simplest to reason about from the admin UI's save button
+// (one full grid in, one full grid out), same "delete then re-insert" pattern as job card
+// assignment (see /job-cards/:id/assign in jobCards.routes.js).
+router.put("/:id/permissions", requireRole(["super_admin", "admin"]), async (req, res) => {
+  const grid = req.body.permissions || {};
+  await withTransaction(async (conn) => {
+    await conn.execute("DELETE FROM user_module_permissions WHERE user_id = ?", [req.params.id]);
+    for (const m of MODULES) {
+      const g = grid[m];
+      if (!g || (!g.canView && !g.canAdd && !g.canEdit && !g.canDelete)) continue;
+      await conn.execute(
+        "INSERT INTO user_module_permissions (user_id, module, can_view, can_add, can_edit, can_delete) VALUES (?,?,?,?,?,?)",
+        [req.params.id, m, g.canView ? 1 : 0, g.canAdd ? 1 : 0, g.canEdit ? 1 : 0, g.canDelete ? 1 : 0]
+      );
+    }
+  });
   res.json({ ok: true });
 });
 

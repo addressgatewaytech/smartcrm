@@ -1,3 +1,5 @@
+const { query } = require("../config/db");
+
 // Mirrors the role model from the prototype exactly — keep this in sync with any frontend role list.
 const ADMIN_LIKE = ["super_admin", "admin", "admin_exec"];
 
@@ -36,4 +38,22 @@ function requireRole(allowed) {
   };
 }
 
-module.exports = { ADMIN_LIKE, ROLE_LABEL, isAdminLike, requireRole };
+// Gates a module's own list/read route behind the explicit per-user Module Access grid
+// (user_module_permissions — see Users & Roles > Module Access) instead of a role check. Admin-tier
+// always passes (they're never restricted by the grid). Additive alongside whatever requireRole/
+// ownership-scoping a route already has — this only adds a new way to be blocked, never removes
+// an existing one.
+function requireModuleView(moduleKey) {
+  return async (req, res, next) => {
+    if (isAdminLike(req.user?.roles)) return next();
+    try {
+      const [row] = await query("SELECT can_view FROM user_module_permissions WHERE user_id = ? AND module = ?", [req.user.id, moduleKey]);
+      if (row?.can_view) return next();
+      return res.status(403).json({ error: "You do not have access to this module" });
+    } catch (err) {
+      next(err);
+    }
+  };
+}
+
+module.exports = { ADMIN_LIKE, ROLE_LABEL, isAdminLike, requireRole, requireModuleView };

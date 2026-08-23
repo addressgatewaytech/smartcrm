@@ -3,12 +3,15 @@ const multer = require("multer");
 const XLSX = require("xlsx");
 const { query } = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
-const { requireRole, isAdminLike } = require("../middleware/roles");
+const { requireRole, isAdminLike, requireModuleView } = require("../middleware/roles");
 const { nextId, today, normPhone, normEmail, normCompany } = require("../utils/helpers");
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 router.use(requireAuth);
+// Data Manager is self-contained — nothing outside this module reads data_records — so unlike
+// most other modules this can gate the whole router at once instead of picking routes by hand.
+router.use(requireModuleView("dataManager"));
 const canManage = (roles) => isAdminLike(roles) || roles.includes("data_manager");
 
 // --- Duplicate check (mandatory across the whole database, every entry path) ---------------

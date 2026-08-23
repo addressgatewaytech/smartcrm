@@ -105,6 +105,9 @@ export const api = {
     updateDoc: (id, docId, payload) => patch(`/users/${id}/docs/${docId}`, payload),
     removeDoc: (id, docId) => del(`/users/${id}/docs/${docId}`),
     setCloudLink: (id, url) => patch(`/users/${id}/cloud-link`, { url }),
+    myPermissions: () => get("/users/me/permissions"),
+    permissions: (id) => get(`/users/${id}/permissions`),
+    setPermissions: (id, grid) => request("PUT", `/users/${id}/permissions`, { permissions: grid }),
   },
   leads: {
     list: () => get("/leads"),

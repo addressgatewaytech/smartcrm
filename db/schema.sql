@@ -66,6 +66,24 @@ CREATE TABLE IF NOT EXISTS password_reset_otps (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
+-- Explicit, per-user module access — the source of truth for both nav visibility and (for
+-- can_view) actual API access, replacing role-array matching against NAV items. A user can hold
+-- several roles at once, but this table answers "what can this specific person access" directly,
+-- without having to reason through which of their roles grants what. No row for a module = no
+-- access at all. can_add/can_edit/can_delete are captured now for a future per-action rollout —
+-- only can_view is enforced today (see requireModuleView in src/middleware/roles.js). Admin-tier
+-- users (super_admin/admin/admin_exec) bypass this table entirely and always see everything.
+CREATE TABLE IF NOT EXISTS user_module_permissions (
+  user_id     VARCHAR(20) NOT NULL,
+  module      VARCHAR(40) NOT NULL,   -- matches a NAV item's `key` in frontend/src/App.jsx, e.g. "leads", "invoices"
+  can_view    TINYINT(1) NOT NULL DEFAULT 0,
+  can_add     TINYINT(1) NOT NULL DEFAULT 0,
+  can_edit    TINYINT(1) NOT NULL DEFAULT 0,
+  can_delete  TINYINT(1) NOT NULL DEFAULT 0,
+  PRIMARY KEY (user_id, module),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
 CREATE TABLE IF NOT EXISTS attendance (
   id          VARCHAR(30) PRIMARY KEY,
   user_id     VARCHAR(20) NOT NULL,

@@ -1178,12 +1178,15 @@ export default function App() {
     : state.tasks.filter(t => t.status === "Assigned" && t.assignedTo === userId).length;
   const navBadge = (key) => key === "notifications" ? unreadCount : key === "jobs" ? jobsBadgeCount : key === "tasks" ? tasksBadgeCount : 0;
 
-  // A Viewer sees every module read-only without needing to be added to each item's roles array
-  // individually — except Settings and Users & Roles, which stay admin-only meta-administration
-  // (backup download, user credentials) rather than a business "module" to observe.
-  const VIEWER_EXCLUDED_NAV = ["users", "settings"];
+  // "all" modules (Dashboard, Tasks, Incentives, HR, Attendance, Knowledge Base, Reports,
+  // Notifications) stay universally visible — that's a deliberate "every employee sees this"
+  // choice, not something that needs per-user granting. Everything else is gated by the explicit
+  // Module Access grid (Users & Roles > Module Access) instead of role-array matching — a
+  // multi-role user's visible nav no longer depends on reasoning through which of their roles
+  // happens to be listed on which item, or which one they're currently "Acting as". Admin-tier
+  // always sees everything, matching the backend's requireModuleView bypass.
   const visibleNav = NAV.map(g => ({ ...g, items: g.items.filter(i =>
-    i.roles === "all" || i.roles.includes(role) || (role === "viewer" && !VIEWER_EXCLUDED_NAV.includes(i.key))
+    i.roles === "all" || ADMIN_LIKE.includes(role) || state.myModulePermissions[i.key]?.canView
   ) })).filter(g => g.items.length);
 
   // Bottom tab bar (mobile only): Dashboard + up to 2 role-relevant items + Notifications + More.
@@ -7427,6 +7430,7 @@ function UsersPage({ state, dispatch, role }) {
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 14, flexWrap:"wrap", gap:10 }}>
         <div className="tabbar" style={{ marginBottom:0, borderBottom:"none" }}>
           <button className={`tab ${tab==="users"?"active":""}`} onClick={()=>setTab("users")}>Users</button>
+          <button className={`tab ${tab==="access"?"active":""}`} onClick={()=>setTab("access")}>Module Access</button>
           <button className={`tab ${tab==="approval"?"active":""}`} onClick={()=>setTab("approval")}>Approval Process Workflow</button>
         </div>
         {tab === "users" && (
@@ -7446,6 +7450,7 @@ function UsersPage({ state, dispatch, role }) {
         )}
       </div>
 
+      {tab === "access" && <ModuleAccessPage state={state} dispatch={dispatch} />}
       {tab === "approval" && <ApprovalWorkflowPage state={state} dispatch={dispatch} role={role} />}
 
       {tab === "users" && <>
@@ -7582,6 +7587,111 @@ function ApprovalWorkflowPage({ state, dispatch, role }) {
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+// Explicit, per-user page access — replaces role-array matching against NAV items as the source
+// of truth for what a user's sidebar shows (see visibleNav) and, for View, what the backend
+// actually allows (requireModuleView in src/middleware/roles.js). Doesn't touch users.roles —
+// roles keep driving backend ownership-scoping and every other business-logic branch exactly as
+// before; this only answers "which pages does this specific person get," directly, without
+// reasoning through which of their (possibly several) roles happens to grant what.
+const MODULE_ACCESS_ITEMS = NAV.flatMap(g => g.items).filter(i => i.roles !== "all");
+
+function ModuleAccessPage({ state, dispatch }) {
+  const [userId, setUserId] = useState("");
+  const [grid, setGrid] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const [saved, setSaved] = useState(false);
+
+  const loadFor = async (id) => {
+    setUserId(id);
+    setSaved(false);
+    setSaveError("");
+    setGrid(null);
+    if (!id) return;
+    setLoading(true);
+    try {
+      setGrid(await api.users.permissions(id));
+    } catch (err) {
+      setSaveError(err instanceof ApiError ? err.message : "Couldn't load — please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggle = (moduleKey, field) => {
+    setGrid(g => ({ ...g, [moduleKey]: { ...g[moduleKey], [field]: !g[moduleKey][field] } }));
+    setSaved(false);
+  };
+
+  const save = async () => {
+    setSaving(true);
+    setSaveError("");
+    try {
+      await dispatch({ type:"SET_USER_MODULE_PERMISSIONS", userId, grid });
+      setSaved(true);
+    } catch (err) {
+      setSaveError(err instanceof ApiError ? err.message : "Couldn't save — please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const selectedUser = state.employees.find(e => e.id === userId);
+  const selectedIsAdmin = selectedUser && ADMIN_LIKE.some(r => selectedUser.roles.includes(r));
+
+  return (
+    <div>
+      <div className="agw-card" style={{ marginBottom: 18 }}>
+        <strong style={{ fontSize:14 }}>Module Access</strong>
+        <p className="modal-sub">Exactly which pages this person can see and use — set directly per person, not derived from their roles. Dashboard, Tasks, Incentives, HR, Attendance, Knowledge Base, Reports and Notifications are always visible to everyone and aren't listed here. Admin-tier users always see every module and don't need a grid.</p>
+        <div className="field" style={{ maxWidth: 320, marginTop: 10, marginBottom:0 }}>
+          <label>User</label>
+          <select value={userId} onChange={e=>loadFor(e.target.value)}>
+            <option value="">Select a user…</option>
+            {state.employees.filter(e => e.active !== false).slice().sort((a,b)=>a.name.localeCompare(b.name)).map(e => (
+              <option key={e.id} value={e.id}>{e.name}</option>
+            ))}
+          </select>
+        </div>
+        {selectedIsAdmin && (
+          <div className="side-note" style={{marginTop:10}}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{selectedUser.name} is Admin-tier — they see every module regardless of this grid.</div>
+        )}
+      </div>
+
+      {loading && <div className="agw-card">Loading…</div>}
+
+      {grid && !loading && (
+        <div className="agw-card" style={{ padding: 0 }}>
+          <table className="agw-table">
+            <thead><tr><th>Module</th><th style={{textAlign:"center"}}>View</th><th style={{textAlign:"center"}}>Add</th><th style={{textAlign:"center"}}>Edit</th><th style={{textAlign:"center"}}>Delete</th></tr></thead>
+            <tbody>
+              {MODULE_ACCESS_ITEMS.map(m => (
+                <tr key={m.key}>
+                  <td style={{ display:"flex", alignItems:"center", gap:8 }}><m.icon size={14} style={{color:"var(--ink-soft)"}}/>{m.label}</td>
+                  {["canView","canAdd","canEdit","canDelete"].map(field => (
+                    <td key={field} style={{textAlign:"center"}}>
+                      <input type="checkbox" checked={!!grid[m.key]?.[field]} onChange={()=>toggle(m.key, field)} />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {saveError && <div className="side-note" style={{ color:"var(--danger)" }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{saveError}</div>}
+      {grid && !loading && (
+        <div style={{ display:"flex", justifyContent:"flex-end", alignItems:"center", gap:10, marginTop: 14 }}>
+          {saved && <span style={{fontSize:12.5,color:"var(--success)"}}>Saved</span>}
+          <button className="btn btn-primary" disabled={saving} onClick={save}>{saving ? "Saving…" : "Save changes"}</button>
+        </div>
+      )}
     </div>
   );
 }

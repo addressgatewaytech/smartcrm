@@ -1,7 +1,7 @@
 const express = require("express");
 const { query } = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
-const { requireRole } = require("../middleware/roles");
+const { requireRole, requireModuleView } = require("../middleware/roles");
 const { nextId } = require("../utils/helpers");
 
 const router = express.Router();
@@ -106,7 +106,10 @@ router.delete("/quotation-templates/:service", requireRole(["admin_like", "sales
 });
 
 // --- Checklist templates (per service, used to seed Job Card checklists) -----------------
-router.get("/checklist-templates", async (req, res) => {
+// Unlike /quotation-templates above (read inside the Quote Builder by anyone with quotations
+// access) or /services and /item-catalog (base data read everywhere), this GET is only ever
+// consulted by the Templates admin page itself — safe to gate on its own module permission.
+router.get("/checklist-templates", requireModuleView("templates"), async (req, res) => {
   const rows = await query("SELECT * FROM checklist_templates");
   const out = {};
   for (const r of rows) out[r.service] = r.steps || [];

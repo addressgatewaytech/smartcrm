@@ -17,6 +17,10 @@ const emptyState = () => ({
   appSettings: { emailNotificationsEnabled: true },
   approvalTypes: [],
   activity: [],
+  // The logged-in user's own Module Access grid — {[moduleKey]: {canView,canAdd,canEdit,canDelete}}
+  // — drives sidebar nav visibility. Admin-tier users never consult this (they always see
+  // everything); see visibleNav in App.jsx.
+  myModulePermissions: {},
 });
 
 export function useApiStore(enabled) {
@@ -57,6 +61,7 @@ export function useApiStore(enabled) {
       dataUserActivity: async () => ({ dataUserActivity: (await api.dataManager.activity()).map(mapDataActivity) }),
       appSettings: async () => ({ appSettings: mapAppSettings(await api.settings.get()) }),
       approvalTypes: async () => ({ approvalTypes: await api.approvalWorkflow.types() }),
+      myModulePermissions: async () => ({ myModulePermissions: await api.users.myPermissions() }),
     };
     const list = keys || Object.keys(tasks);
     // allSettled, not all — some tasks (e.g. Data Manager export history) are admin/data_manager-only
@@ -166,6 +171,10 @@ export function useApiStore(enabled) {
       case "UPDATE_ITEM_CATALOG_ENTRY": await api.itemCatalog.update(action.id, action.payload); return refresh(["itemCatalog"]);
       case "REMOVE_ITEM_CATALOG_ENTRY": await api.itemCatalog.remove(action.id); return refresh(["itemCatalog"]);
       case "UPDATE_SERVICE_COST": await api.serviceCosts.update(action.service, action.cost); return refresh(["serviceCosts"]);
+      // Saves another user's Module Access grid (admin-only, Users & Roles > Module Access) — not
+      // the caller's own, so no local state to refresh; the admin UI re-fetches that user's grid
+      // itself after saving.
+      case "SET_USER_MODULE_PERMISSIONS": return api.users.setPermissions(action.userId, action.grid);
 
       // --- Customers -----------------------------------------------------------------------
       case "ADD_CUSTOMER": await api.customers.create(action.payload); return refresh(["customers"]);
