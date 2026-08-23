@@ -5947,10 +5947,15 @@ function JobDetailModal({ job, state, dispatch, role, userId, employees, approva
     }
   };
   const canManage = role === "ops_manager" || role === "ops_member" || role === "pro_head" || role === "pro" || ADMIN_LIKE.includes(role);
-  const canApproveJob = role === "accounts" || ADMIN_LIKE.includes(role);
+  const myDesignation = employees.find(e=>e.id===userId)?.designation;
+  // Job Card Sign-off (Pending Approval -> Created) is Accounts-only by default, but — same as
+  // completion approval below — an admin can additively grant it to other designations via
+  // Approval Process Workflow (job_card_signoff), which the backend already honors; this was
+  // missing here so an assigned designation approver never saw the button.
+  const signoffApproverDesignations = approvalTypes.find(t=>t.key==="job_card_signoff")?.approverDesignations || [];
+  const canApproveJob = role === "accounts" || ADMIN_LIKE.includes(role) || (myDesignation && signoffApproverDesignations.includes(myDesignation));
   // Marking a job card Completed needs Operations Manager sign-off — narrower than canManage,
   // which the assigned ops_member still needs for holds/checklist/cancel.
-  const myDesignation = employees.find(e=>e.id===userId)?.designation;
   const completionApproverDesignations = approvalTypes.find(t=>t.key==="job_card_completion")?.approverDesignations || [];
   const canCompleteJob = role === "ops_manager" || role === "pro_head" || ADMIN_LIKE.includes(role) || (myDesignation && completionApproverDesignations.includes(myDesignation));
   const allDone = job.checklist.length > 0 && job.checklist.every(c => c.done);
