@@ -3545,6 +3545,13 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
         const pdfSplit = govProfSplit(src.items, q.feeType);
         const termLines = (src.terms || "").split("\n").map(t=>t.trim()).filter(Boolean);
         const noteLines = (src.notes || "").split("\n").map(t=>t.trim()).filter(Boolean);
+        // Editing happens right on this same table (dashed-underline inputs in place of static
+        // text) instead of swapping to a separate form — the whole point of "Visual edit" is that
+        // what you're looking at while editing is the actual document, not a different-shaped form
+        // you have to mentally translate back into it.
+        const updateItemField = (idx, field, val) => updDraft("items", src.items.map((it,i) => i===idx ? { ...it, [field]: val } : it));
+        const removeItemAt = (idx) => updDraft("items", src.items.filter((_,i) => i!==idx));
+        const addItem = (feeType) => ({ description, note, price }) => updDraft("items", [...src.items, { category:"", service: src.items[0]?.service, description, note, qty:1, price, discountPct:0, feeType }]);
 
         return (
         <div>
@@ -3599,22 +3606,21 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
               <div style={{ fontSize:13.5, marginBottom:20 }}>{src.subject || src.items[0]?.service || "Quotation"}</div>
             )}
 
-            {editingNow ? (
-              <QuoteItemsEditor items={src.items} onChange={(next)=>updDraft("items", next)} service={src.items[0]?.service} catalog={state?.itemCatalog || []} quotationFeeType={q.feeType} />
-            ) : (
             <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12.5, marginBottom:8 }}>
               <thead>
                 <tr style={{ background:themeColors.headerBg }}>
                   <th style={{ color:"#fff", textAlign:"left", padding:"9px 10px", fontWeight:500, width:30 }}>#</th>
                   <th style={{ color:"#fff", textAlign:"left", padding:"9px 10px", fontWeight:500 }}>Item & Description</th>
+                  {editingNow && <th style={{ color:"#fff", textAlign:"right", padding:"9px 10px", fontWeight:500, width:50 }}>Qty</th>}
                   <th style={{ color:"#fff", textAlign:"right", padding:"9px 10px", fontWeight:500, width:90 }}>Rate</th>
                   <th style={{ color:"#fff", textAlign:"right", padding:"9px 10px", fontWeight:500, width:90 }}>Amount</th>
+                  {editingNow && <th style={{ width:26 }}></th>}
                 </tr>
               </thead>
               <tbody>
                 {rows.map(r => r.kind === "category" ? (
                   <tr key={r.key} style={{ background:r.bg }}>
-                    <td colSpan={4} style={{ padding:"9px 10px", fontWeight:600, fontSize:12, borderBottom:"1px solid var(--hair)" }}>
+                    <td colSpan={editingNow ? 6 : 4} style={{ padding:"9px 10px", fontWeight:600, fontSize:12, borderBottom:"1px solid var(--hair)" }}>
                       {r.label}
                     </td>
                   </tr>
@@ -3622,15 +3628,41 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
                   <tr key={r.key} style={{ borderBottom:"1px solid var(--hair)", background:r.bg }}>
                     <td style={{ padding:"9px 10px", verticalAlign:"top" }}>{r.number}</td>
                     <td style={{ padding:"9px 10px" }}>
-                      {r.it.description || r.it.service}
-                      {r.it.note && <div style={{ fontSize:11, color:"var(--ink-soft)", marginTop:2 }}>{r.it.note}</div>}
+                      {editingNow ? (
+                        <>
+                          <input style={inputStyle} value={r.it.description || ""} onChange={e=>updateItemField(r.idx,"description",e.target.value)} placeholder="Item description" />
+                          <input style={{ ...inputStyle, fontSize:11, color:"var(--ink-soft)", marginTop:3 }} value={r.it.note || ""} onChange={e=>updateItemField(r.idx,"note",e.target.value)} placeholder="Note (optional)" />
+                        </>
+                      ) : (<>
+                        {r.it.description || r.it.service}
+                        {r.it.note && <div style={{ fontSize:11, color:"var(--ink-soft)", marginTop:2 }}>{r.it.note}</div>}
+                      </>)}
                     </td>
-                    <td className="mono" style={{ padding:"9px 10px", textAlign:"right", verticalAlign:"top" }}>{Number(r.it.price).toFixed(2)}</td>
+                    {editingNow && (
+                      <td style={{ padding:"9px 10px", verticalAlign:"top" }}>
+                        <input type="number" min={1} style={{ ...inputStyle, textAlign:"right" }} value={r.it.qty} onChange={e=>updateItemField(r.idx,"qty",(e.target.value === "" ? "" : Number(e.target.value)))} />
+                      </td>
+                    )}
+                    <td className="mono" style={{ padding:"9px 10px", textAlign:"right", verticalAlign:"top" }}>
+                      {editingNow ? (
+                        <input type="number" style={{ ...inputStyle, textAlign:"right" }} value={r.it.price} onChange={e=>updateItemField(r.idx,"price",(e.target.value === "" ? "" : Number(e.target.value)))} />
+                      ) : Number(r.it.price).toFixed(2)}
+                    </td>
                     <td className="mono" style={{ padding:"9px 10px", textAlign:"right", verticalAlign:"top" }}>{(r.it.qty*r.it.price*(1-(r.it.discountPct||0)/100)).toFixed(2)}</td>
+                    {editingNow && (
+                      <td style={{ padding:"9px 10px", verticalAlign:"top", textAlign:"center" }}>
+                        <button type="button" className="btn btn-sm btn-ghost" style={{color:"var(--danger)", padding:2}} title="Remove" onClick={()=>removeItemAt(r.idx)}><X size={13}/></button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
             </table>
+            {editingNow && (
+              <div className="row2" style={{ marginBottom:16 }}>
+                <AddItemControl catalog={state?.itemCatalog || []} feeType="Government Fee" service={src.items[0]?.service} label="Add government fee item" onAdd={addItem("Government Fee")} />
+                <AddItemControl catalog={state?.itemCatalog || []} feeType="Professional Fee" service={src.items[0]?.service} label="Add professional fee item" onAdd={addItem("Professional Fee")} />
+              </div>
             )}
 
             <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:24 }}>
