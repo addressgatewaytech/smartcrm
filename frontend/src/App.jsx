@@ -6432,7 +6432,7 @@ function HrPage({ state, dispatch, role, userId }) {
 
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 14, flexWrap:"wrap", gap:10 }}>
         <div className="tabbar" style={{ marginBottom:0, borderBottom:"none" }}>
-          {!isAdmin && <button className={`tab ${tab==="me"?"active":""}`} onClick={()=>setTab("me")}>My HR</button>}
+          <button className={`tab ${tab==="me"?"active":""}`} onClick={()=>setTab("me")}>Profile</button>
           {isAdmin && <button className={`tab ${tab==="team"?"active":""}`} onClick={()=>setTab("team")}>Team</button>}
           {isAdmin && <button className={`tab ${tab==="attendance"?"active":""}`} onClick={()=>setTab("attendance")}>Attendance</button>}
           <button className={`tab ${tab==="leave"?"active":""}`} onClick={()=>setTab("leave")}>
