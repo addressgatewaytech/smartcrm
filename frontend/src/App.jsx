@@ -1044,9 +1044,18 @@ export default function App() {
   // Clicking into a number field that's sitting at its default 0 (Professional Fee, Rate, Qty, ...)
   // used to just place the cursor next to that "0" — typing "77" then landed as "077" instead of
   // replacing it. Selecting the existing text on focus means the first keystroke always overwrites
-  // it cleanly, same as clicking into any amount field that already has a value.
+  // it cleanly, same as clicking into any amount field that already has a value. The select() has
+  // to happen on a deferred tick (not synchronously in the focusin handler) — a mouse click's own
+  // focus fires on mousedown, and the browser's mouseup right after collapses whatever selection
+  // was made back down to a plain caret at the click position, silently undoing it. Deferring with
+  // setTimeout(0) runs the select() after that mouseup has already happened, so it sticks.
   useEffect(() => {
-    const onFocusIn = (e) => { if (e.target?.tagName === "INPUT" && e.target.type === "number") e.target.select(); };
+    const onFocusIn = (e) => {
+      if (e.target?.tagName === "INPUT" && e.target.type === "number") {
+        const el = e.target;
+        setTimeout(() => { if (document.activeElement === el) el.select(); }, 0);
+      }
+    };
     document.addEventListener("focusin", onFocusIn);
     return () => document.removeEventListener("focusin", onFocusIn);
   }, []);
