@@ -5062,6 +5062,7 @@ function SubscriptionDetailModal({ subscription: sub, state, dispatch, isAdmin, 
   const tier = state.subscriptionPlans[sub.plan]?.tiers.find(t=>t.name===sub.tier);
   const status = subStatusOf(sub);
   const [renewing, setRenewing] = useState(false);
+  const [editing, setEditing] = useState(false);
   const confirm = useConfirm();
   const txUsed = subTransactionsUsed(sub, state);
   const txOver = tier && txUsed > tier.transactionsIncluded;
@@ -5166,6 +5167,7 @@ function SubscriptionDetailModal({ subscription: sub, state, dispatch, isAdmin, 
 
       {isAdmin && status !== "Cancelled" && (
         <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+          <button className="btn" onClick={()=>setEditing(true)}><Pencil size={13}/> Edit dates & tier</button>
           <button className="btn btn-primary" onClick={()=>setRenewing(true)}><Repeat size={13}/> Renew for 12 months</button>
           <button className="btn" style={{color:"var(--danger)"}} onClick={async ()=>{
             if (await confirm({ title:"Cancel this subscription?", body:`${sub.customer} — ${sub.plan} (${sub.tier}). This stops future renewals; it can't be undone from here.`, confirmLabel:"Cancel subscription" })) {
@@ -5176,6 +5178,7 @@ function SubscriptionDetailModal({ subscription: sub, state, dispatch, isAdmin, 
       )}
 
       {renewing && <RenewSubscriptionModal subscription={sub} dispatch={dispatch} onClose={()=>{setRenewing(false); onClose();}} />}
+      {editing && <EditSubscriptionModal subscription={sub} state={state} dispatch={dispatch} onClose={()=>setEditing(false)} />}
     </Modal>
   );
 }
