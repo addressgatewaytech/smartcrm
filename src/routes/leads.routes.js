@@ -89,6 +89,9 @@ router.patch("/:id", async (req, res) => {
   for (const [col, key] of [["name", "name"], ["company", "company"], ["phone", "phone"], ["email", "email"], ["reference", "reference"], ["source", "source"], ["service", "service"], ["status", "status"], ["next_follow_up", "nextFollowUp"]]) {
     if (b[key] !== undefined) { fields.push(`${col} = ?`); params.push(b[key]); }
   }
+  // A changed follow-up date needs its own fresh reminder, not to stay silently "already sent"
+  // from whatever the previous date was.
+  if (b.nextFollowUp !== undefined) fields.push("follow_up_reminder_sent = 0");
   // Editing the company name means it may now belong to a different (or new) Customer profile —
   // re-resolve rather than leaving customer_id pointed at the old one.
   if (b.company !== undefined) {
@@ -121,7 +124,7 @@ router.post("/:id/assign", requireRole(["lead_manager", "admin_like"]), async (r
 router.post("/:id/follow-up", async (req, res) => {
   const { note, status, nextFollowUp } = req.body;
   await query("INSERT INTO lead_followups (id, lead_id, note, outcome) VALUES (?,?,?,?)", [nextId("FU"), req.params.id, note, status]);
-  await query("UPDATE leads SET status = COALESCE(?, status), next_follow_up = ? WHERE id = ?", [status || null, nextFollowUp || null, req.params.id]);
+  await query("UPDATE leads SET status = COALESCE(?, status), next_follow_up = ?, follow_up_reminder_sent = 0 WHERE id = ?", [status || null, nextFollowUp || null, req.params.id]);
   res.json({ ok: true });
 });
 

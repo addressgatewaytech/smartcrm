@@ -116,6 +116,10 @@ if (process.env.NODE_ENV === "production") {
   cron.schedule("*/5 * * * *", () => checkChequeDeposits().catch((e) => console.error("Cron cheque-deposit sweep failed", e)));
   cron.schedule("*/5 * * * *", () => checkSoftwareRenewals().catch((e) => console.error("Cron software-renewal sweep failed", e)));
   console.log("Company Finance reminder sweeps scheduled (every 5 minutes).");
+
+  const { checkFollowUpReminders } = require("./src/services/leadFollowUpReminderJob");
+  cron.schedule("*/5 * * * *", () => checkFollowUpReminders().catch((e) => console.error("Cron lead follow-up reminder sweep failed", e)));
+  console.log("Lead follow-up reminder sweep scheduled (every 5 minutes).");
 }
 
 const PORT = process.env.PORT || 3000;

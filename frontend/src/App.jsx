@@ -8086,6 +8086,7 @@ function NotificationsPage({ state, dispatch, myNotifs }) {
     : type==="task_approval" ? { icon: ShieldCheck, tone:"info" }
     : type==="lead_assigned" ? { icon: UserPlus, tone:"info" }
     : type==="lead_sla" ? { icon: AlertTriangle, tone:"danger" }
+    : type==="lead_followup" ? { icon: CalendarClock, tone:"warning" }
     : type==="todo_reminder" ? { icon: Clock, tone:"warning" }
     : type==="cheque_deposit" ? { icon: Landmark, tone:"warning" }
     : type==="software_renewal" ? { icon: Landmark, tone:"info" }

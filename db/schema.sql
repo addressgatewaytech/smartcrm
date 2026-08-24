@@ -233,6 +233,11 @@ CREATE TABLE IF NOT EXISTS leads (
   assigned_at    TIMESTAMP NULL,
   sla_due_at     DATETIME NULL,
   sla_violated   TINYINT(1) DEFAULT 0,
+  -- Whether the owner has already been reminded about the CURRENT next_follow_up date (see
+  -- checkFollowUpReminders in src/services/leadFollowUpReminderJob.js). Reset to 0 every time
+  -- next_follow_up itself changes (PATCH /:id, POST /:id/follow-up), so scheduling a new
+  -- follow-up date always gets its own fresh reminder rather than staying silently "already sent".
+  follow_up_reminder_sent TINYINT(1) DEFAULT 0,
   -- Links this lead's free-text `company` to its real Customer profile (resolved/created at
   -- POST time via findOrCreateCustomer) — nullable so pre-existing rows keep working unlinked
   -- until backfilled. Lets a customer name correction cascade here instead of going stale.
