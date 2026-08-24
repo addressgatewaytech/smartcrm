@@ -4659,6 +4659,9 @@ function subTransactionsUsed(sub, state) {
   return state.jobCards.filter(j => {
     if (j.customer !== sub.customer) return false;
     if (j.status === "Cancelled" || j.status === "Pending Approval") return false;
+    // Excludes the plan's own service (e.g. Growth Partner Program) — that job card is what
+    // creates or renews the subscription itself, not a client transaction spent under it.
+    if (j.service === sub.plan) return false;
     const createdAt = j.statusLog?.[0]?.at || sub.startDate;
     return createdAt >= sub.startDate;
   }).length;
@@ -5079,7 +5082,9 @@ function SubscriptionDetailModal({ subscription: sub, state, dispatch, isAdmin, 
   const confirm = useConfirm();
   const txUsed = subTransactionsUsed(sub, state);
   const txOver = tier && txUsed > tier.transactionsIncluded;
-  const linkedJobs = state.jobCards.filter(j => j.customer === sub.customer && j.status !== "Cancelled" && (j.statusLog?.[0]?.at || sub.startDate) >= sub.startDate);
+  // Same exclusion as subTransactionsUsed — kept in sync since this list's length is what the
+  // "N job cards linked" caption below reports right next to that same meter.
+  const linkedJobs = state.jobCards.filter(j => j.customer === sub.customer && j.status !== "Cancelled" && j.service !== sub.plan && (j.statusLog?.[0]?.at || sub.startDate) >= sub.startDate);
   // Office Space Assistance (and any future plan without transaction/training/etc. allowances)
   // has no meaningful "usage" to meter — its tier row is all nulls apart from the fee. Showing
   // the Job Card meter there just reads as a permanently-stuck "0/—" with no real signal.

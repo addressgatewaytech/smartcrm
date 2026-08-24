@@ -69,10 +69,13 @@ router.delete("/plans/:name/tiers/:tierName", requireRole(["admin_like"]), async
 // Helper: "transactions used" is ALWAYS computed live from job_cards — never stored.
 // A job card counts if created on/after the subscription's current startDate, and its status
 // is neither Cancelled nor Pending Approval (unapproved/cancelled work was never really done).
-async function transactionsUsed(customerName, startDate) {
+// Excludes the plan's own service (e.g. Growth Partner Program) — that job card is what creates
+// or renews the subscription itself (see handleGrowthPartnerCompletion in jobCards.routes.js),
+// not a client transaction spent under an already-active package.
+async function transactionsUsed(customerName, startDate, planService) {
   const [{ cnt }] = await query(
-    `SELECT COUNT(*) AS cnt FROM job_cards WHERE customer = ? AND created_at >= ? AND status NOT IN ('Cancelled','Pending Approval')`,
-    [customerName, startDate]
+    `SELECT COUNT(*) AS cnt FROM job_cards WHERE customer = ? AND created_at >= ? AND status NOT IN ('Cancelled','Pending Approval') AND service != ?`,
+    [customerName, startDate, planService]
   );
   return cnt;
 }
@@ -90,7 +93,7 @@ router.get("/", async (req, res) => {
     const ownerFor = (customerName) => deals.find((d) => d.customer === customerName)?.owner || null;
     visible = rows.filter((s) => ownerFor(s.customer) === req.user.id);
   }
-  const withUsage = await Promise.all(visible.map(async (s) => ({ ...s, transactionsUsed: await transactionsUsed(s.customer, s.start_date) })));
+  const withUsage = await Promise.all(visible.map(async (s) => ({ ...s, transactionsUsed: await transactionsUsed(s.customer, s.start_date, s.plan_name) })));
   res.json(withUsage);
 });
 
