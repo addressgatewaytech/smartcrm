@@ -56,4 +56,31 @@ function requireModuleView(moduleKey) {
   };
 }
 
-module.exports = { ADMIN_LIKE, ROLE_LABEL, isAdminLike, requireRole, requireModuleView };
+// Same additive shape as requireModuleView above and requireRoleOrApprovalTypeDesignation
+// (designationApproval.js) — lets a caller through if their own Module Access grid has an
+// explicit can_edit grant for `moduleKey`, on top of whatever requireRole(baseRoles) already
+// allows. Never removes access, only adds a new way in — for granting one specific person edit
+// rights on a module without changing their role (and everything role-driven that comes with it).
+function requireRoleOrModuleEdit(baseRoles, moduleKey) {
+  return async (req, res, next) => {
+    const userRoles = req.user?.roles || [];
+    const roleOk = baseRoles.some((role) => (role === "admin_like" ? isAdminLike(userRoles) : userRoles.includes(role)));
+    if (roleOk) return next();
+    try {
+      const [row] = await query("SELECT can_edit FROM user_module_permissions WHERE user_id = ? AND module = ?", [req.user.id, moduleKey]);
+      if (row?.can_edit) return next();
+      return res.status(403).json({ error: "You do not have permission to perform this action" });
+    } catch (err) {
+      next(err);
+    }
+  };
+}
+
+// Non-middleware version — for branching inline (e.g. deciding how much of GET /customers to
+// return) rather than gating a whole route.
+async function hasModuleEdit(userId, moduleKey) {
+  const [row] = await query("SELECT can_edit FROM user_module_permissions WHERE user_id = ? AND module = ?", [userId, moduleKey]);
+  return !!row?.can_edit;
+}
+
+module.exports = { ADMIN_LIKE, ROLE_LABEL, isAdminLike, requireRole, requireModuleView, requireRoleOrModuleEdit, hasModuleEdit };

@@ -2,7 +2,7 @@ const express = require("express");
 const crypto = require("crypto");
 const { query, withTransaction } = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
-const { requireRole, isAdminLike } = require("../middleware/roles");
+const { requireRole, isAdminLike, requireRoleOrModuleEdit, hasModuleEdit } = require("../middleware/roles");
 const { nextId, nextSequentialId, quoteTotal, findDuplicateCustomer } = require("../utils/helpers");
 const { generateOnboardingFormPdf } = require("../utils/onboardingFormPdf");
 const { generateAccountStatementPdf } = require("../utils/accountStatementPdf");
@@ -25,7 +25,11 @@ router.get("/", async (req, res) => {
   // operationally, not just ones they personally sourced as a lead (same reasoning as Ops Manager
   // already seeing every Job Card). A plain "pro" is not exempted — same as any other individual
   // contributor, they only see customers they can trace ownership to.
-  const canSeeAll = isAdminLike(req.user.roles) || req.user.roles.includes("viewer") || req.user.roles.includes("sales_manager") || req.user.roles.includes("ops_manager") || req.user.roles.includes("pro_head");
+  // An explicit can_edit grant on the Customers module (Users & Roles > Module Access) is also
+  // exempt — a deliberate per-person elevation (e.g. someone whose whole job is KYC upkeep across
+  // the client base) without changing their actual role and everything role-driven that comes
+  // with it (approval authority, KPI shape, other module access, ...).
+  const canSeeAll = isAdminLike(req.user.roles) || req.user.roles.includes("viewer") || req.user.roles.includes("sales_manager") || req.user.roles.includes("ops_manager") || req.user.roles.includes("pro_head") || (await hasModuleEdit(req.user.id, "customers"));
   let visible = customers;
   if (!canSeeAll) {
     // Customers have no direct owner column — ownership is derived from the customer's most
@@ -72,7 +76,7 @@ router.post("/", async (req, res) => {
 // Ops Manager can update a customer's profile (name/contact/KYC-adjacent fields) as part of the
 // same "update options" access — deletion stays Admin-tier only below, since that's destructive
 // and wasn't asked for.
-router.patch("/:id", requireRole(["admin_like", "ops_manager", "pro_head", "pro"]), async (req, res) => {
+router.patch("/:id", requireRoleOrModuleEdit(["admin_like", "ops_manager", "pro_head", "pro"], "customers"), async (req, res) => {
   const b = req.body;
   const dup = await findDuplicateCustomer(query, { name: b.name, phone: b.phone, email: b.email }, req.params.id);
   if (dup) {
