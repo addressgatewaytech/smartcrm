@@ -420,6 +420,46 @@ CREATE TABLE IF NOT EXISTS invoice_payments (
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------------
+-- COMPANY FINANCE (cheques both directions, and the company's own software
+-- subscription expenses — distinct from customer_subscriptions below, which is revenue)
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS cheques (
+  id              VARCHAR(20) PRIMARY KEY,
+  direction       ENUM('Incoming','Outgoing') NOT NULL,
+  cheque_number   VARCHAR(50) NOT NULL,
+  bank_name       VARCHAR(150),
+  amount          DECIMAL(12,2) NOT NULL,
+  party_name      VARCHAR(200) NOT NULL,   -- customer (Incoming) or payee/vendor (Outgoing)
+  purpose         VARCHAR(255),            -- mainly for Outgoing (e.g. "Office rent - August")
+  invoice_id      VARCHAR(20) NULL,        -- optional link, Incoming only
+  cheque_date     DATE,
+  deposit_date    DATE NOT NULL,           -- the reminder trigger date
+  status          ENUM('Pending','Deposited','Cleared','Bounced','Cancelled') DEFAULT 'Pending',
+  reminder_notified TINYINT(1) DEFAULT 0,
+  notes           VARCHAR(500),
+  created_by      VARCHAR(20),
+  created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE SET NULL,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS company_software_subscriptions (
+  id              VARCHAR(20) PRIMARY KEY,
+  software_name   VARCHAR(150) NOT NULL,
+  vendor          VARCHAR(150),
+  cost            DECIMAL(12,2) NOT NULL,
+  billing_cycle   ENUM('Monthly','Yearly','One-time') DEFAULT 'Yearly',
+  renewal_date    DATE NOT NULL,           -- the reminder trigger date
+  payment_method  VARCHAR(50),
+  status          ENUM('Active','Cancelled') DEFAULT 'Active',
+  reminder_notified TINYINT(1) DEFAULT 0,
+  notes           VARCHAR(500),
+  created_by      VARCHAR(20),
+  created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+-- ---------------------------------------------------------------------------
 -- JOB CARDS
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS job_cards (

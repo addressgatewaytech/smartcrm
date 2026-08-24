@@ -148,6 +148,19 @@ export const mapSubscription = (s) => ({
   legalAdvisingUsed: s.legal_advising_used, translationPagesUsed: s.translation_pages_used,
 });
 
+export const mapCheque = (c) => ({
+  id: c.id, direction: c.direction, chequeNumber: c.cheque_number, bankName: c.bank_name,
+  amount: Number(c.amount), partyName: c.party_name, purpose: c.purpose, invoiceId: c.invoice_id,
+  chequeDate: c.cheque_date, depositDate: c.deposit_date, status: c.status, notes: c.notes,
+  createdBy: c.created_by, createdAt: c.created_at,
+});
+
+export const mapCompanySoftwareSubscription = (s) => ({
+  id: s.id, softwareName: s.software_name, vendor: s.vendor, cost: Number(s.cost),
+  billingCycle: s.billing_cycle, renewalDate: s.renewal_date, paymentMethod: s.payment_method,
+  status: s.status, notes: s.notes, createdBy: s.created_by, createdAt: s.created_at,
+});
+
 // Backend returns { [service]: {..., order_discount, footer_note} } — one template per service
 // (Government Fee lines are tagged per-item within the same items array); flatten field names.
 export const mapQuotationTemplates = (raw) => {

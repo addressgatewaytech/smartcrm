@@ -296,6 +296,16 @@ export const api = {
     cancel: (id) => post(`/subscriptions/${id}/cancel`),
     logUsage: (id, field, amount) => post(`/subscriptions/${id}/log-usage`, { field, amount }),
   },
+  companyFinance: {
+    cheques: () => get("/company-finance/cheques"),
+    addCheque: (payload) => post("/company-finance/cheques", payload),
+    updateCheque: (id, payload) => patch(`/company-finance/cheques/${id}`, payload),
+    removeCheque: (id) => del(`/company-finance/cheques/${id}`),
+    softwareSubscriptions: () => get("/company-finance/software-subscriptions"),
+    addSoftwareSubscription: (payload) => post("/company-finance/software-subscriptions", payload),
+    updateSoftwareSubscription: (id, payload) => patch(`/company-finance/software-subscriptions/${id}`, payload),
+    removeSoftwareSubscription: (id) => del(`/company-finance/software-subscriptions/${id}`),
+  },
   hr: {
     markAttendance: (userId, date, status) => post("/hr/attendance/mark", { userId, date, status }),
     attendanceFor: (userId, from, to) => get(`/hr/attendance/${userId}?from=${from || ""}&to=${to || ""}`),

@@ -9,7 +9,7 @@ import {
   UserPlus, ShieldCheck, Ban, Clock, ArrowRight, Search, Mail, Phone,
   BadgeCheck, CalendarClock, Briefcase, Copy, Files, Link2, Pencil, Trash2, Repeat, BarChart3, Download, MoreHorizontal, ChevronsLeft, ChevronsRight, Camera, Star,
   Database, Upload, MessageCircle, ArchiveX, ShieldAlert, Settings as SettingsIcon,
-  Sun, Moon, BookOpen, Award
+  Sun, Moon, BookOpen, Award, Landmark
 } from "lucide-react";
 import { money, fmtDate, fmtDateDMY, Stamp, statusTone, Rail, DonutChart, LineChart, BarChart, SalesPersonBars, ProgressRing, progressColor, Modal, Empty, ConfirmModal, RowActions, exportCSV, usePagination, PaginationBar, TableScrollHint, useConfirm, ADMIN_LIKE, ROLE_LABEL, isSalesRole, isAssignable } from "./ui.jsx";
 import { todayStr as salesTaskToday, firstOfWeekStr, firstOfMonthStr, userTaskSnapshot, dailyCompletionColor } from "./salesTasksHelpers";
@@ -783,6 +783,7 @@ const NAV = [
   { group: "Finance", items: [
     { key: "orders", label: "Sales Orders", icon: ShoppingCart, roles: [...ADMIN_LIKE,"sales_manager","accounts"] },
     { key: "invoices", label: "Invoices", icon: Receipt, roles: [...ADMIN_LIKE,"accounts","sales_manager"] },
+    { key: "companyFinance", label: "Company Finance", icon: Landmark, roles: [...ADMIN_LIKE,"accounts"] },
   ]},
   { group: "Operations", items: [
     { key: "jobs", label: "Job Cards", icon: ClipboardList, roles: [...ADMIN_LIKE,"ops_manager","ops_member","accounts","sales_manager","sales_exec","pro_head","pro"] },
@@ -1211,6 +1212,7 @@ export default function App() {
     subscriptions: ["Subscriptions", "Growth Partner Program packages and customer subscription tracking"],
     orders: ["Sales Orders", "Confirmed orders converted from approved quotations"],
     invoices: ["Invoices", "Billing, payments and outstanding balances"],
+    companyFinance: ["Company Finance", "Cheques (in and out) and company software subscription expenses"],
     jobs: ["Job Cards", "Operations board — assignment through completion"],
     tasks: ["Tasks", "Assign, track and approve employee tasks through to completion"],
     incentives: ["Incentives", "Daily, weekly and monthly incentive tracking"],
@@ -1344,6 +1346,7 @@ export default function App() {
               onInvoiceCreated={setHighlightInvoiceId} />}
             {page === "invoices" && <InvoicesPage {...ctx} setPage={setPage} highlightId={highlightInvoiceId} onHighlightHandled={()=>setHighlightInvoiceId(null)}
               onJobCardTarget={setHighlightJobCardId} />}
+            {page === "companyFinance" && <CompanyFinancePage {...ctx} />}
             {page === "jobs" && <JobsPage {...ctx} highlightId={highlightJobCardId} onHighlightHandled={()=>setHighlightJobCardId(null)} />}
             {page === "tasks" && <TasksPage {...ctx} />}
             {page === "incentives" && <IncentivesPage {...ctx} />}
@@ -1488,6 +1491,13 @@ function Dashboard({ state, dispatch, role, userId, setPage }) {
     ...c.docs.filter(d => docState(d.expiry).label !== "Valid").map(d => ({ ...d, label: c.name })),
     ...c.employees.flatMap(emp => emp.docs.filter(d => docState(d.expiry).label !== "Valid").map(d => ({ ...d, label: `${c.name} — ${emp.name}` }))),
   ]);
+
+  // Admin/Accounts-only reminder feed — a one-time notification+email already fired for these (see
+  // src/services/companyFinanceJobs.js) once they crossed their due window, but this card stays
+  // live and visible the whole time something is unresolved, same as the expiry watchlist above.
+  const canSeeCompanyFinance = ADMIN_LIKE.includes(role) || role === "accounts";
+  const upcomingCheques = state.cheques.filter(c => c.status === "Pending" && new Date(c.depositDate) - new Date() <= 7*86400000);
+  const upcomingRenewals = state.companySoftwareSubscriptions.filter(s => s.status === "Active" && new Date(s.renewalDate) - new Date() <= 14*86400000);
 
   const myJobs = state.jobCards.filter(j => j.assignees.includes(userId));
 
@@ -1846,6 +1856,30 @@ function Dashboard({ state, dispatch, role, userId, setPage }) {
           {expiringDocs.length > 0 && <button className="btn btn-sm btn-ghost" style={{marginTop:10}} onClick={()=>setPage("customers")}>View all customers <ChevronRight size={14}/></button>}
         </div>
       </div>
+
+      {canSeeCompanyFinance && (upcomingCheques.length > 0 || upcomingRenewals.length > 0) && (
+        <div className="agw-card" style={{ marginTop: 16 }}>
+          <strong style={{ fontSize: 14 }}>Upcoming cheques & renewals</strong>
+          <div style={{ marginTop: 10 }}>
+            {[...upcomingCheques.map(c => ({ key:c.id, label:`${c.direction} cheque — ${c.partyName}`, sub:c.chequeNumber, date:c.depositDate })),
+              ...upcomingRenewals.map(s => ({ key:s.id, label:s.softwareName, sub:"Software renewal", date:s.renewalDate }))]
+              .sort((a,b) => new Date(a.date) - new Date(b.date))
+              .map(item => {
+                const due = dueState(item.date);
+                return (
+                  <div key={item.key} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom:"1px solid var(--hair)" }}>
+                    <div>
+                      <div style={{ fontSize:13, fontWeight:500 }}>{item.label}</div>
+                      <div style={{ fontSize:11.5, color:"var(--ink-soft)" }}>{item.sub}</div>
+                    </div>
+                    <Stamp tone={due.cls.replace("stamp-","")}>{due.label}</Stamp>
+                  </div>
+                );
+              })}
+          </div>
+          <button className="btn btn-sm btn-ghost" style={{marginTop:10}} onClick={()=>setPage("companyFinance")}>View all <ChevronRight size={14}/></button>
+        </div>
+      )}
 
       {showPeriod && (
         <div className="agw-card" style={{ marginTop: 16 }}>
@@ -5625,6 +5659,256 @@ function PaymentHistoryModal({ invoice: inv, dispatch, onClose }) {
 }
 
 /* ---------------------------------------------------------------------- */
+/* COMPANY FINANCE (cheques both directions, company software subscriptions) */
+/* ---------------------------------------------------------------------- */
+
+// Same day-math as docState above, worded for a money-due date rather than a document expiry.
+function dueState(dateStr) {
+  const days = Math.ceil((new Date(dateStr) - new Date()) / 86400000);
+  if (days < 0) return { label: `${Math.abs(days)}d overdue`, cls: "stamp-danger" };
+  if (days === 0) return { label: "Due today", cls: "stamp-danger" };
+  if (days <= 7) return { label: `Due in ${days}d`, cls: "stamp-warning" };
+  return { label: "Upcoming", cls: "stamp-success" };
+}
+
+function CompanyFinancePage({ state, dispatch }) {
+  const [tab, setTab] = useState("cheques");
+  return (
+    <div>
+      <div className="tabbar" style={{ marginBottom: 14 }}>
+        <button className={`tab ${tab==="cheques"?"active":""}`} onClick={()=>setTab("cheques")}>Cheques</button>
+        <button className={`tab ${tab==="software"?"active":""}`} onClick={()=>setTab("software")}>Software Subscriptions</button>
+      </div>
+      {tab === "cheques" && <ChequesTab state={state} dispatch={dispatch} />}
+      {tab === "software" && <SoftwareSubscriptionsTab state={state} dispatch={dispatch} />}
+    </div>
+  );
+}
+
+function ChequesTab({ state, dispatch }) {
+  const [showNew, setShowNew] = useState(false);
+  const [directionFilter, setDirectionFilter] = useState("");
+  const [removeCheque, setRemoveCheque] = useState(null);
+  const filtered = state.cheques.filter(c => !directionFilter || c.direction === directionFilter);
+  const pg = usePagination(filtered);
+
+  const setStatus = (c, status) => dispatch({ type:"UPDATE_CHEQUE", id:c.id, payload:{ status, clearedAt: status==="Cleared" ? daysFromNow(0) : undefined } });
+
+  return (
+    <div>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 14, flexWrap:"wrap", gap:10 }}>
+        <select value={directionFilter} onChange={e=>setDirectionFilter(e.target.value)} style={{ maxWidth:180 }}>
+          <option value="">All directions</option>
+          <option value="Incoming">Incoming</option>
+          <option value="Outgoing">Outgoing</option>
+        </select>
+        <button className="btn btn-primary" onClick={()=>setShowNew(true)}><Plus size={15}/> New cheque</button>
+      </div>
+      <div className="agw-card" style={{ padding: 0 }}>
+        {filtered.length === 0 ? <Empty icon={Landmark} text="No cheques recorded yet." /> : (
+          <div style={{ overflowX:"auto" }}>
+          <table className="agw-table" style={{ minWidth: 960 }}>
+            <thead><tr><th>Direction</th><th>Cheque #</th><th>Bank</th><th>Party</th><th>Amount</th><th>Cheque date</th><th>Deposit date</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+              {pg.pageRows.map(c => {
+                const due = dueState(c.depositDate);
+                const resolved = ["Deposited","Cleared","Bounced","Cancelled"].includes(c.status);
+                return (
+                  <tr key={c.id}>
+                    <td><Stamp tone={c.direction==="Incoming"?"success":"info"}>{c.direction}</Stamp></td>
+                    <td className="mono">{c.chequeNumber}</td>
+                    <td style={{fontSize:12.5}}>{c.bankName || "—"}</td>
+                    <td>{c.partyName}{c.purpose ? <div style={{fontSize:11.5,color:"var(--ink-soft)"}}>{c.purpose}</div> : null}</td>
+                    <td className="mono">{money(c.amount)}</td>
+                    <td className="mono" style={{fontSize:12}}>{c.chequeDate ? fmtDate(c.chequeDate) : "—"}</td>
+                    <td className="mono" style={{fontSize:12}}>{fmtDate(c.depositDate)}</td>
+                    <td>
+                      <Stamp tone={c.status==="Cleared"?"success":c.status==="Bounced"?"danger":c.status==="Cancelled"?"neutral":c.status==="Deposited"?"info":due.cls.replace("stamp-","")}>
+                        {resolved ? c.status : due.label}
+                      </Stamp>
+                    </td>
+                    <td style={{ display:"flex", gap:6, flexWrap:"wrap", alignItems:"center" }}>
+                      {!resolved && <>
+                        <button className="btn btn-sm btn-ghost" onClick={()=>setStatus(c,"Deposited")}>Mark deposited</button>
+                        <button className="btn btn-sm btn-ghost" onClick={()=>setStatus(c,"Cleared")}>Mark cleared</button>
+                        <button className="btn btn-sm btn-ghost" style={{color:"var(--danger)"}} onClick={()=>setStatus(c,"Bounced")}>Bounced</button>
+                      </>}
+                      <RowActions onRemove={()=>setRemoveCheque(c)} />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          </div>
+        )}
+        <PaginationBar {...pg} />
+      </div>
+      {showNew && <NewChequeModal state={state} dispatch={dispatch} onClose={()=>setShowNew(false)} />}
+      {removeCheque && <ConfirmModal title="Delete this cheque record?"
+        body={`${removeCheque.chequeNumber} — ${money(removeCheque.amount)}. This only removes the tracking record; any invoice payment already recorded from it stays.`}
+        onConfirm={()=>{ dispatch({type:"DELETE_CHEQUE", id:removeCheque.id}); setRemoveCheque(null); }} onClose={()=>setRemoveCheque(null)} />}
+    </div>
+  );
+}
+
+function NewChequeModal({ state, dispatch, onClose }) {
+  const [direction, setDirection] = useState("Incoming");
+  const [chequeNumber, setChequeNumber] = useState("");
+  const [bankName, setBankName] = useState("");
+  const [amount, setAmount] = useState("");
+  const [partyName, setPartyName] = useState("");
+  const [purpose, setPurpose] = useState("");
+  const [invoiceId, setInvoiceId] = useState("");
+  const [chequeDate, setChequeDate] = useState(daysFromNow(0));
+  const [depositDate, setDepositDate] = useState(daysFromNow(0));
+  const [notes, setNotes] = useState("");
+
+  const invoiceBalance = (i) => i.professionalFeeAmount - i.payments.reduce((a,p)=>a+p.amount,0);
+  const unpaidInvoices = state.invoices.filter(i => i.status !== "Paid" && (!partyName || i.customer === partyName));
+
+  return (
+    <Modal title="New cheque" sub="Record a cheque received from a customer, or one the company is writing to a vendor." onClose={onClose} width={560}>
+      <div className="field">
+        <label>Direction</label>
+        <div className="tabbar" style={{ marginBottom:0 }}>
+          <button type="button" className={`tab ${direction==="Incoming"?"active":""}`} onClick={()=>{setDirection("Incoming"); setPurpose("");}}>Incoming (from customer)</button>
+          <button type="button" className={`tab ${direction==="Outgoing"?"active":""}`} onClick={()=>{setDirection("Outgoing"); setInvoiceId("");}}>Outgoing (to vendor)</button>
+        </div>
+      </div>
+      <div className="row2">
+        <div className="field"><label>Cheque number</label><input value={chequeNumber} onChange={e=>setChequeNumber(e.target.value)} /></div>
+        <div className="field"><label>Bank</label><input value={bankName} onChange={e=>setBankName(e.target.value)} /></div>
+      </div>
+      <div className="row2">
+        <div className="field"><label>{direction==="Incoming" ? "Customer" : "Payee / vendor"}</label>
+          {direction === "Incoming" ? (
+            <><input list="cheque-customer-options" value={partyName} onChange={e=>setPartyName(e.target.value)} placeholder="Type or pick a customer" />
+              <datalist id="cheque-customer-options">{state.customers.map(c=><option key={c.id} value={c.name} />)}</datalist></>
+          ) : (
+            <input value={partyName} onChange={e=>setPartyName(e.target.value)} placeholder="Vendor name" />
+          )}
+        </div>
+        <div className="field"><label>Amount (QAR)</label><input type="number" min="0" value={amount} onChange={e=>setAmount(e.target.value)} /></div>
+      </div>
+      {direction === "Incoming" ? (
+        <div className="field"><label>Link to invoice (optional)</label>
+          <select value={invoiceId} onChange={e=>setInvoiceId(e.target.value)}>
+            <option value="">Not linked to a specific invoice</option>
+            {unpaidInvoices.map(i=><option key={i.id} value={i.id}>{i.id} — {i.customer} — {money(invoiceBalance(i))} due</option>)}
+          </select>
+        </div>
+      ) : (
+        <div className="field"><label>Purpose</label><input value={purpose} onChange={e=>setPurpose(e.target.value)} placeholder="e.g. Office rent - August" /></div>
+      )}
+      <div className="row2">
+        <div className="field"><label>Cheque date</label><input type="date" value={chequeDate} onChange={e=>setChequeDate(e.target.value)} /></div>
+        <div className="field"><label>Deposit date</label><input type="date" value={depositDate} onChange={e=>setDepositDate(e.target.value)} /></div>
+      </div>
+      <div className="field"><label>Notes</label><input value={notes} onChange={e=>setNotes(e.target.value)} /></div>
+      <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop: 16 }}>
+        <button className="btn" onClick={onClose}>Cancel</button>
+        <button className="btn btn-primary" disabled={!chequeNumber.trim() || !amount || !partyName.trim() || !depositDate} onClick={()=>{
+          dispatch({ type:"ADD_CHEQUE", payload:{
+            direction, chequeNumber: chequeNumber.trim(), bankName: bankName.trim()||null, amount: Number(amount),
+            partyName: partyName.trim(), purpose: purpose.trim()||null, invoiceId: invoiceId||null, chequeDate, depositDate, notes: notes.trim()||null,
+          }});
+          onClose();
+        }}>Save cheque</button>
+      </div>
+    </Modal>
+  );
+}
+
+function SoftwareSubscriptionsTab({ state, dispatch }) {
+  const [showNew, setShowNew] = useState(false);
+  const [editSub, setEditSub] = useState(null);
+  const [removeSub, setRemoveSub] = useState(null);
+  const pg = usePagination(state.companySoftwareSubscriptions);
+
+  return (
+    <div>
+      <div style={{ display:"flex", justifyContent:"flex-end", marginBottom: 14 }}>
+        <button className="btn btn-primary" onClick={()=>setShowNew(true)}><Plus size={15}/> New subscription</button>
+      </div>
+      <div className="agw-card" style={{ padding: 0 }}>
+        {state.companySoftwareSubscriptions.length === 0 ? <Empty icon={Landmark} text="No software subscriptions tracked yet." /> : (
+          <div style={{ overflowX:"auto" }}>
+          <table className="agw-table" style={{ minWidth: 860 }}>
+            <thead><tr><th>Software</th><th>Vendor</th><th>Cost</th><th>Billing cycle</th><th>Renewal date</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+              {pg.pageRows.map(s => {
+                const due = dueState(s.renewalDate);
+                return (
+                  <tr key={s.id}>
+                    <td>{s.softwareName}</td>
+                    <td style={{fontSize:12.5}}>{s.vendor || "—"}</td>
+                    <td className="mono">{money(s.cost)}</td>
+                    <td>{s.billingCycle}</td>
+                    <td className="mono" style={{fontSize:12}}>{fmtDate(s.renewalDate)}</td>
+                    <td><Stamp tone={s.status==="Cancelled"?"neutral":due.cls.replace("stamp-","")}>{s.status==="Cancelled"?"Cancelled":due.label}</Stamp></td>
+                    <td><RowActions onEdit={()=>setEditSub(s)} onRemove={()=>setRemoveSub(s)} /></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          </div>
+        )}
+        <PaginationBar {...pg} />
+      </div>
+      {showNew && <SoftwareSubscriptionModal dispatch={dispatch} onClose={()=>setShowNew(false)} />}
+      {editSub && <SoftwareSubscriptionModal subscription={editSub} dispatch={dispatch} onClose={()=>setEditSub(null)} />}
+      {removeSub && <ConfirmModal title="Delete this subscription record?" body={`${removeSub.softwareName} will no longer be tracked or remind on renewal.`}
+        onConfirm={()=>{ dispatch({type:"DELETE_SOFTWARE_SUBSCRIPTION", id:removeSub.id}); setRemoveSub(null); }} onClose={()=>setRemoveSub(null)} />}
+    </div>
+  );
+}
+
+// Doubles as both "New" (no `subscription` prop) and "Edit / renew" (pass the existing record) —
+// editing renewalDate is literally how you "renew" one, since the backend resets the reminder flag.
+function SoftwareSubscriptionModal({ subscription: s, dispatch, onClose }) {
+  const [softwareName, setSoftwareName] = useState(s?.softwareName || "");
+  const [vendor, setVendor] = useState(s?.vendor || "");
+  const [cost, setCost] = useState(s?.cost ?? "");
+  const [billingCycle, setBillingCycle] = useState(s?.billingCycle || "Yearly");
+  const [renewalDate, setRenewalDate] = useState(s?.renewalDate || daysFromNow(30));
+  const [paymentMethod, setPaymentMethod] = useState(s?.paymentMethod || "");
+  const [notes, setNotes] = useState(s?.notes || "");
+
+  return (
+    <Modal title={s ? `Edit ${s.softwareName}` : "New software subscription"} sub={s ? "Updating the renewal date also resets its reminder." : "Track a company SaaS/tool expense and get reminded before it renews."} onClose={onClose} width={520}>
+      <div className="row2">
+        <div className="field"><label>Software name</label><input value={softwareName} onChange={e=>setSoftwareName(e.target.value)} /></div>
+        <div className="field"><label>Vendor</label><input value={vendor} onChange={e=>setVendor(e.target.value)} /></div>
+      </div>
+      <div className="row2">
+        <div className="field"><label>Cost (QAR)</label><input type="number" min="0" value={cost} onChange={e=>setCost(e.target.value)} /></div>
+        <div className="field"><label>Billing cycle</label>
+          <select value={billingCycle} onChange={e=>setBillingCycle(e.target.value)}>
+            <option>Monthly</option><option>Yearly</option><option>One-time</option>
+          </select>
+        </div>
+      </div>
+      <div className="row2">
+        <div className="field"><label>Renewal date</label><input type="date" value={renewalDate} onChange={e=>setRenewalDate(e.target.value)} /></div>
+        <div className="field"><label>Payment method</label><input value={paymentMethod} onChange={e=>setPaymentMethod(e.target.value)} placeholder="e.g. Company card" /></div>
+      </div>
+      <div className="field"><label>Notes</label><input value={notes} onChange={e=>setNotes(e.target.value)} /></div>
+      <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop: 16 }}>
+        <button className="btn" onClick={onClose}>Cancel</button>
+        <button className="btn btn-primary" disabled={!softwareName.trim() || !cost || !renewalDate} onClick={()=>{
+          const payload = { softwareName: softwareName.trim(), vendor: vendor.trim()||null, cost: Number(cost), billingCycle, renewalDate, paymentMethod: paymentMethod.trim()||null, notes: notes.trim()||null };
+          if (s) dispatch({ type:"UPDATE_SOFTWARE_SUBSCRIPTION", id:s.id, payload });
+          else dispatch({ type:"ADD_SOFTWARE_SUBSCRIPTION", payload });
+          onClose();
+        }}>{s ? "Save changes" : "Create subscription"}</button>
+      </div>
+    </Modal>
+  );
+}
+
+/* ---------------------------------------------------------------------- */
 /* JOB CARDS                                                               */
 /* ---------------------------------------------------------------------- */
 
@@ -7767,6 +8051,8 @@ function NotificationsPage({ state, dispatch, myNotifs }) {
     : type==="lead_assigned" ? { icon: UserPlus, tone:"info" }
     : type==="lead_sla" ? { icon: AlertTriangle, tone:"danger" }
     : type==="todo_reminder" ? { icon: Clock, tone:"warning" }
+    : type==="cheque_deposit" ? { icon: Landmark, tone:"warning" }
+    : type==="software_renewal" ? { icon: Landmark, tone:"info" }
     : { icon: Ban, tone:"danger" };
 
   const audienceLabel = (aud) => aud.map(a => ROLE_LABEL[a] || state.employees.find(e=>e.id===a)?.name || a).join(", ");

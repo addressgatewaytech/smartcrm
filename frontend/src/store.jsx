@@ -5,6 +5,7 @@ import {
   mapNotification, mapDataRecord, mapDataSettings, mapDataActivity, mapExportHistoryEntry, mapSubscriptionPlans,
   mapSubscription, mapQuotationTemplates, mapIncentiveRule, mapLeaveRequest, mapPunchRequest, mapAttendance,
   mapAppSettings, mapTask, mapTodo, mapTaskTemplate, mapSalesTaskDef, mapSalesTaskLog, mapItemCatalogEntry,
+  mapCheque, mapCompanySoftwareSubscription,
 } from "./mappers";
 
 const emptyState = () => ({
@@ -12,7 +13,8 @@ const emptyState = () => ({
   salesOrders: [], invoices: [], jobCards: [], tasks: [], todos: [], notifications: [], quotationTemplates: {},
   taskTemplates: [], salesTaskDefs: [], salesTaskLogs: [],
   checklistTemplates: {}, incentiveRules: [], leaveRequests: [], punchRequests: [],
-  subscriptionPlans: {}, subscriptions: [], dataRecords: [], dataExportHistory: [], dataUserActivity: [],
+  subscriptionPlans: {}, subscriptions: [], cheques: [], companySoftwareSubscriptions: [],
+  dataRecords: [], dataExportHistory: [], dataUserActivity: [],
   dataSettings: { dailyEmailTarget: 10, dailyWhatsappTarget: 10, dailyCallTarget: 10, emailIntervalMinutes: 5, whatsappIntervalMinutes: 10, recyclingEnabled: true, recyclingDays: 30, emailTemplate: { subject: "", body: "" }, whatsappTemplate: { body: "" } },
   appSettings: { emailNotificationsEnabled: true },
   approvalTypes: [],
@@ -54,6 +56,8 @@ export function useApiStore(enabled) {
       leaveRequests: async () => ({ leaveRequests: (await api.hr.leaveRequests()).map(mapLeaveRequest) }),
       punchRequests: async () => ({ punchRequests: (await api.hr.punchRequests()).map(mapPunchRequest) }),
       subscriptionPlans: async () => ({ subscriptionPlans: mapSubscriptionPlans(await api.subscriptions.plans()) }),
+      cheques: async () => ({ cheques: (await api.companyFinance.cheques()).map(mapCheque) }),
+      companySoftwareSubscriptions: async () => ({ companySoftwareSubscriptions: (await api.companyFinance.softwareSubscriptions()).map(mapCompanySoftwareSubscription) }),
       subscriptions: async () => ({ subscriptions: (await api.subscriptions.list()).map(mapSubscription) }),
       dataRecords: async () => ({ dataRecords: (await api.dataManager.list()).map(mapDataRecord) }),
       dataExportHistory: async () => ({ dataExportHistory: (await api.dataManager.exportHistory()).map(mapExportHistoryEntry) }),
@@ -193,6 +197,16 @@ export function useApiStore(enabled) {
       case "DELETE_SUBSCRIPTION_PLAN": await api.subscriptions.removePlan(action.name); return refresh(["subscriptionPlans"]);
       case "ADD_PLAN_TIER": await api.subscriptions.addTier(action.plan, action.tierName); return refresh(["subscriptionPlans"]);
       case "DELETE_PLAN_TIER": await api.subscriptions.removeTier?.(action.plan, action.tierName); return refresh(["subscriptionPlans"]);
+
+      // --- Company Finance (cheques + internal software subscriptions) ---------------------
+      case "ADD_CHEQUE": await api.companyFinance.addCheque(action.payload); return refresh(["cheques"]);
+      // Marking an Incoming cheque "Cleared" also records an invoice payment server-side (see
+      // companyFinance.routes.js) — refresh invoices too so the balance shown elsewhere updates.
+      case "UPDATE_CHEQUE": await api.companyFinance.updateCheque(action.id, action.payload); return refresh(["cheques", "invoices"]);
+      case "DELETE_CHEQUE": await api.companyFinance.removeCheque(action.id); return refresh(["cheques"]);
+      case "ADD_SOFTWARE_SUBSCRIPTION": await api.companyFinance.addSoftwareSubscription(action.payload); return refresh(["companySoftwareSubscriptions"]);
+      case "UPDATE_SOFTWARE_SUBSCRIPTION": await api.companyFinance.updateSoftwareSubscription(action.id, action.payload); return refresh(["companySoftwareSubscriptions"]);
+      case "DELETE_SOFTWARE_SUBSCRIPTION": await api.companyFinance.removeSoftwareSubscription(action.id); return refresh(["companySoftwareSubscriptions"]);
 
       // --- KYC docs --------------------------------------------------------------------------
       case "ADD_KYC_DOC": await api.customers.addDoc(action.customerId, action.doc); return refresh(["customers"]);

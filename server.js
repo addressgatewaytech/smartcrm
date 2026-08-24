@@ -53,6 +53,7 @@ app.use("/api/task-templates", require("./src/routes/taskTemplates.routes"));
 app.use("/api/sales-tasks", require("./src/routes/salesTasks.routes"));
 app.use("/api/todos", require("./src/routes/todos.routes"));
 app.use("/api/subscriptions", require("./src/routes/subscriptions.routes"));
+app.use("/api/company-finance", require("./src/routes/companyFinance.routes"));
 app.use("/api/hr", require("./src/routes/hr.routes"));
 app.use("/api/incentives", require("./src/routes/incentives.routes"));
 app.use("/api/notifications", require("./src/routes/notifications.routes"));
@@ -110,6 +111,11 @@ if (process.env.NODE_ENV === "production") {
   const { checkDueReminders } = require("./src/services/todoReminderJob");
   cron.schedule("*/5 * * * *", () => checkDueReminders().catch((e) => console.error("Cron to-do reminder sweep failed", e)));
   console.log("My To-Do List reminder sweep scheduled (every 5 minutes).");
+
+  const { checkChequeDeposits, checkSoftwareRenewals } = require("./src/services/companyFinanceJobs");
+  cron.schedule("*/5 * * * *", () => checkChequeDeposits().catch((e) => console.error("Cron cheque-deposit sweep failed", e)));
+  cron.schedule("*/5 * * * *", () => checkSoftwareRenewals().catch((e) => console.error("Cron software-renewal sweep failed", e)));
+  console.log("Company Finance reminder sweeps scheduled (every 5 minutes).");
 }
 
 const PORT = process.env.PORT || 3000;
