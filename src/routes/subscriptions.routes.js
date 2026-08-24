@@ -150,6 +150,9 @@ router.patch("/:id", async (req, res) => {
   if (b.annualFee !== undefined) { fields.push("annual_fee = ?"); params.push(b.annualFee); }
   if (b.startDate !== undefined) { fields.push("start_date = ?"); params.push(b.startDate); }
   if (b.expiryDate !== undefined) { fields.push("expiry_date = ?"); params.push(b.expiryDate); }
+  // Was silently dropped — EditSubscriptionModal's Status dropdown (Active/Cancelled) had no
+  // effect at all, which meant there was no way to reactivate a mistakenly-cancelled subscription.
+  if (b.status !== undefined) { fields.push("status = ?"); params.push(b.status); }
   if (!fields.length) return res.status(400).json({ error: "Nothing to update" });
   params.push(req.params.id);
   await query(`UPDATE customer_subscriptions SET ${fields.join(", ")} WHERE id = ?`, params);

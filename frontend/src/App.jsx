@@ -5165,15 +5165,18 @@ function SubscriptionDetailModal({ subscription: sub, state, dispatch, isAdmin, 
         </div>
       )}
 
-      {isAdmin && status !== "Cancelled" && (
+      {isAdmin && (
         <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+          {/* Available even when Cancelled — its Status field is the only way to fix a wrong date
+              or reactivate a mistakenly-cancelled subscription; Renew/Cancel below don't apply
+              to an already-cancelled one, so those stay conditional. */}
           <button className="btn" onClick={()=>setEditing(true)}><Pencil size={13}/> Edit dates & tier</button>
-          <button className="btn btn-primary" onClick={()=>setRenewing(true)}><Repeat size={13}/> Renew for 12 months</button>
-          <button className="btn" style={{color:"var(--danger)"}} onClick={async ()=>{
+          {status !== "Cancelled" && <button className="btn btn-primary" onClick={()=>setRenewing(true)}><Repeat size={13}/> Renew for 12 months</button>}
+          {status !== "Cancelled" && <button className="btn" style={{color:"var(--danger)"}} onClick={async ()=>{
             if (await confirm({ title:"Cancel this subscription?", body:`${sub.customer} — ${sub.plan} (${sub.tier}). This stops future renewals; it can't be undone from here.`, confirmLabel:"Cancel subscription" })) {
               dispatch({type:"UPDATE_SUBSCRIPTION", id:sub.id, payload:{status:"Cancelled"}}); onClose();
             }
-          }}>Cancel subscription</button>
+          }}>Cancel subscription</button>}
         </div>
       )}
 
