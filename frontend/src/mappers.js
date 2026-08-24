@@ -60,7 +60,7 @@ export const mapQuotation = (q) => ({
 export const mapCustomer = (c) => ({
   id: c.id, name: c.name, type: c.type, contact: c.contact, phone: c.phone,
   landline: c.landline, contactMobile: c.contact_mobile, email: c.email,
-  address: c.address, companySize: c.company_size, createdAt: c.created_at,
+  address: c.address, companySize: c.company_size, createdAt: c.created_at, cloudLink: c.cloud_link || "",
   docs: (c.docs || []).map((d) => ({ id: d.id, type: d.type, number: d.number, expiry: d.expiry, cloudLink: d.cloud_link || "" })),
   employees: (c.employees || []).map((e) => ({
     id: e.id, name: e.name, designation: e.designation,

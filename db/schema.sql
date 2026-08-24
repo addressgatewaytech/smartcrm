@@ -290,6 +290,10 @@ CREATE TABLE IF NOT EXISTS customers (
   -- creator doesn't lose visibility of their own record. NULL for customers predating this column,
   -- or created through the lead/deal pipeline (findOrCreateCustomer), which don't set it.
   created_by   VARCHAR(20) NULL,
+  -- One shared cloud storage link for this customer's whole KYC set (Drive/OneDrive/SharePoint
+  -- folder) — replaces per-document links on customer_docs.cloud_link below, which meant
+  -- re-pasting a different file link for every single document instead of one folder link.
+  cloud_link   VARCHAR(500) NULL,
   created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
@@ -300,7 +304,7 @@ CREATE TABLE IF NOT EXISTS customer_docs (
   type        VARCHAR(100) NOT NULL,
   number      VARCHAR(100),
   expiry      DATE,
-  cloud_link  VARCHAR(500),
+  cloud_link  VARCHAR(500),   -- superseded by customers.cloud_link above; kept for historical rows, no longer written to
   FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 

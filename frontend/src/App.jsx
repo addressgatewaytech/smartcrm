@@ -708,28 +708,31 @@ function AddServiceOptionModal({ dispatch, onClose, onCreated }) {
   );
 }
 
-function CloudLinkButton({ url, onSave }) {
+// `big` renders a full-size primary button instead of the small inline pill — used for a
+// customer's one shared cloud folder link (prominent, in the modal header) vs. the compact
+// per-row style still used for employee/staff document links elsewhere.
+function CloudLinkButton({ url, onSave, big=false }) {
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState(url || "");
   if (editing) {
     return (
       <span style={{ display:"inline-flex", gap:4, alignItems:"center" }} onClick={e=>e.stopPropagation()}>
-        <input style={{ width:170, border:"1px solid var(--hair)", borderRadius:6, padding:"3px 6px", fontSize:11.5 }}
+        <input style={{ width: big?260:170, border:"1px solid var(--hair)", borderRadius:6, padding: big?"7px 10px":"3px 6px", fontSize: big?13:11.5 }}
           placeholder="Paste cloud folder link" value={val} onChange={e=>setVal(e.target.value)} autoFocus />
-        <button className="btn btn-sm btn-ghost" onClick={()=>{ onSave(val); setEditing(false); }}><Check size={12}/></button>
-        <button className="btn btn-sm btn-ghost" onClick={()=>setEditing(false)}><X size={12}/></button>
+        <button className={big?"btn":"btn btn-sm btn-ghost"} onClick={()=>{ onSave(val); setEditing(false); }}><Check size={big?14:12}/></button>
+        <button className={big?"btn":"btn btn-sm btn-ghost"} onClick={()=>setEditing(false)}><X size={big?14:12}/></button>
       </span>
     );
   }
   return url ? (
     <span style={{ display:"inline-flex", alignItems:"center", gap:4 }} onClick={e=>e.stopPropagation()}>
-      <a href={url} target="_blank" rel="noreferrer" className="pill" style={{ display:"inline-flex", alignItems:"center", gap:4, color:"var(--info)", textDecoration:"none" }}>
-        <Link2 size={11}/> Cloud file
+      <a href={url} target="_blank" rel="noreferrer" className={big?"btn btn-primary":"pill"} style={big?undefined:{ display:"inline-flex", alignItems:"center", gap:4, color:"var(--info)", textDecoration:"none" }}>
+        <Link2 size={big?15:11}/> {big?"Open cloud folder":"Cloud file"}
       </a>
-      <button className="btn btn-sm btn-ghost" style={{ fontSize:11, padding:"3px 7px" }} onClick={()=>setEditing(true)}>Edit</button>
+      <button className={big?"btn":"btn btn-sm btn-ghost"} style={big?undefined:{ fontSize:11, padding:"3px 7px" }} onClick={()=>setEditing(true)}>Edit</button>
     </span>
   ) : (
-    <button className="btn btn-sm btn-ghost" onClick={(e)=>{ e.stopPropagation(); setEditing(true); }}><Link2 size={11}/> Add link</button>
+    <button className={big?"btn btn-primary":"btn btn-sm btn-ghost"} onClick={(e)=>{ e.stopPropagation(); setEditing(true); }}><Link2 size={big?15:11}/> {big?"Add cloud folder link":"Add link"}</button>
   );
 }
 
@@ -4314,7 +4317,7 @@ function NewCustomerModal({ dispatch, onClose, onCreated, customer=null }) {
 function CustomerDetailModal({ customer: c, state, dispatch, role, userId, onClose }) {
   const [tab, setTab] = useState("profile");
   const [creatingDeal, setCreatingDeal] = useState(false);
-  const blankDoc = { type: "Passport", number: "", expiry: daysFromNow(365), cloudLink: "" };
+  const blankDoc = { type: "Passport", number: "", expiry: daysFromNow(365) };
   const [doc, setDoc] = useState(blankDoc);
   const [docEditingId, setDocEditingId] = useState(null);
   const [removeDoc, setRemoveDoc] = useState(null);
@@ -4330,7 +4333,7 @@ function CustomerDetailModal({ customer: c, state, dispatch, role, userId, onClo
   const [empDoc, setEmpDoc] = useState(blankEmpDoc);
   const [removeEmpDoc, setRemoveEmpDoc] = useState(null);
 
-  const startEditDoc = (d) => { setDocEditingId(d.id); setDoc({ type:d.type, number:d.number, expiry:d.expiry, cloudLink:d.cloudLink||"" }); };
+  const startEditDoc = (d) => { setDocEditingId(d.id); setDoc({ type:d.type, number:d.number, expiry:d.expiry }); };
   const cancelEditDoc = () => { setDocEditingId(null); setDoc(blankDoc); };
   const saveDoc = () => {
     if (docEditingId) dispatch({ type:"UPDATE_KYC_DOC", customerId:c.id, docId:docEditingId, payload:doc });
@@ -4401,15 +4404,25 @@ function CustomerDetailModal({ customer: c, state, dispatch, role, userId, onClo
         <div className="agw-card"><div className="kpi-label">Landline</div><div style={{ fontSize:14, fontWeight:500, marginTop:4, display:"flex", alignItems:"center", gap:4 }}>{c.landline || "—"}<CopyButton value={c.landline} /></div></div>
         <div className="agw-card"><div className="kpi-label">Email</div><div style={{ fontSize:14, fontWeight:500, marginTop:4, display:"flex", alignItems:"center", gap:4, wordBreak:"break-all" }}>{c.email || "—"}<CopyButton value={c.email} /></div></div>
       </div>
+
+      {/* One shared cloud folder for the whole KYC set, not a separate link per document —
+          see CloudLinkButton's `big` variant and PATCH /customers/:id/cloud-link. */}
+      <div className="agw-card" style={{ marginBottom: 16, display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:10 }}>
+        <div>
+          <strong style={{ fontSize:13.5 }}>KYC cloud folder</strong>
+          <div style={{ fontSize:11.5, color:"var(--ink-soft)", marginTop:2 }}>One shared Drive/OneDrive/SharePoint link for all of this customer's documents.</div>
+        </div>
+        <CloudLinkButton big url={c.cloudLink} onSave={(url)=>dispatch({type:"SET_CUSTOMER_CLOUD_LINK", id:c.id, url})} />
+      </div>
+
       <table className="agw-table">
-        <thead><tr><th>Document</th><th>Number</th><th>Expiry</th><th>Status</th><th>Cloud copy</th><th></th></tr></thead>
+        <thead><tr><th>Document</th><th>Number</th><th>Expiry</th><th>Status</th><th></th></tr></thead>
         <tbody>
           {c.docs.map(d => {
             const st = docState(d.expiry);
             return <tr key={d.id}>
               <td>{d.type}</td><td className="mono" style={{display:"flex",alignItems:"center",gap:4}}>{d.number}<CopyButton value={d.number} /></td><td className="mono" style={{fontSize:12}}>{fmtDate(d.expiry)}</td>
               <td><Stamp tone={st.cls.replace("stamp-","")}>{st.label}</Stamp></td>
-              <td><CloudLinkButton url={d.cloudLink} onSave={(url)=>dispatch({type:"SET_DOC_CLOUD_LINK", customerId:c.id, docId:d.id, url})} /></td>
               <td><RowActions onEdit={()=>startEditDoc(d)} onRemove={()=>setRemoveDoc(d)} /></td>
             </tr>;
           })}
@@ -4423,7 +4436,6 @@ function CustomerDetailModal({ customer: c, state, dispatch, role, userId, onClo
           <div className="field"><label>Number</label><input value={doc.number} onChange={e=>setDoc({...doc,number:e.target.value})} /></div>
           <div className="field"><label>Expiry date</label><input type="date" value={doc.expiry} onChange={e=>setDoc({...doc,expiry:e.target.value})} /></div>
         </div>
-        <div className="field"><label>Cloud storage link (optional)</label><input value={doc.cloudLink} onChange={e=>setDoc({...doc,cloudLink:e.target.value})} placeholder="Google Drive / OneDrive / SharePoint link" /></div>
         <div style={{ display:"flex", gap:8 }}>
           <button className="btn btn-primary btn-sm" onClick={saveDoc}>{docEditingId ? "Save changes" : "Add document"}</button>
           {docEditingId && <button className="btn btn-sm" onClick={cancelEditDoc}>Cancel</button>}

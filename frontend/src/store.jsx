@@ -217,6 +217,7 @@ export function useApiStore(enabled) {
       case "UPDATE_CUSTOMER_EMPLOYEE_DOC": await api.customers.updateEmployeeDoc?.(action.customerId, action.employeeId, action.docId, action.payload); return refresh(["customers"]);
       case "DELETE_CUSTOMER_EMPLOYEE_DOC": await api.customers.removeEmployeeDoc?.(action.customerId, action.employeeId, action.docId); return refresh(["customers"]);
       case "SET_DOC_CLOUD_LINK": await api.customers.updateDoc(action.customerId, action.docId, { cloudLink: action.url }); return refresh(["customers"]);
+      case "SET_CUSTOMER_CLOUD_LINK": await api.customers.setCloudLink(action.id, action.url); return refresh(["customers"]);
       case "UPDATE_KYC_DOC": await api.customers.updateDoc(action.customerId, action.docId, action.payload); return refresh(["customers"]);
       case "DELETE_KYC_DOC": await api.customers.removeDoc(action.customerId, action.docId); return refresh(["customers"]);
       case "SET_EMPLOYEE_DOC_CLOUD_LINK": await api.customers.updateEmployeeDoc?.(action.customerId, action.employeeId, action.docId, { cloudLink: action.url }); return refresh(["customers"]);

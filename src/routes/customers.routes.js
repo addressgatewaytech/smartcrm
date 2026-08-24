@@ -97,6 +97,15 @@ router.patch("/:id", requireRole(["admin_like", "ops_manager", "pro_head", "pro"
   res.json({ ok: true });
 });
 
+// One shared cloud storage link for the customer's whole KYC set — replaces the old per-document
+// links on customer_docs (see schema.sql), which meant a different file link for every document
+// instead of one folder link for the customer.
+router.patch("/:id/cloud-link", requireRole(["admin_like", "ops_manager", "pro_head", "pro"]), async (req, res) => {
+  const { url } = req.body;
+  await query("UPDATE customers SET cloud_link = ? WHERE id = ?", [url || null, req.params.id]);
+  res.json({ ok: true });
+});
+
 router.delete("/:id", requireRole(["admin_like"]), async (req, res) => {
   await query("DELETE FROM customers WHERE id = ?", [req.params.id]);
   res.json({ ok: true });
@@ -112,7 +121,9 @@ router.post("/:id/docs", async (req, res) => {
 });
 router.patch("/:id/docs/:docId", async (req, res) => {
   const b = req.body;
-  await query("UPDATE customer_docs SET type=COALESCE(?,type), number=?, expiry=?, cloud_link=? WHERE id=? AND customer_id=?",
+  // cloud_link is COALESCE'd, not overwritten — the form no longer sends it (superseded by the
+  // customer-level link), so an edit here must not silently wipe a document's historical value.
+  await query("UPDATE customer_docs SET type=COALESCE(?,type), number=?, expiry=?, cloud_link=COALESCE(?,cloud_link) WHERE id=? AND customer_id=?",
     [b.type, b.number || null, b.expiry || null, b.cloudLink || null, req.params.docId, req.params.id]);
   res.json({ ok: true });
 });
