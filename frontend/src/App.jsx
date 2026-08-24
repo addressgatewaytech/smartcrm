@@ -2675,7 +2675,7 @@ function DealsPage({ state, dispatch, setPage, onViewQuotation, role, userId }) 
         </div>
       )}
 
-      {quoteFor && <QuoteBuilderModal dealId={quoteFor.id} customerName={quoteFor.customer} defaultService={quoteFor.service} services={state.services} itemCatalog={state.itemCatalog} dispatch={dispatch} templates={state.quotationTemplates} subscriptionPlans={state.subscriptionPlans} role={role} employees={state.employees} defaultOwner={quoteFor.owner} onClose={()=>setQuoteFor(null)}
+      {quoteFor && <QuoteBuilderModal dealId={quoteFor.id} customerName={quoteFor.customer} defaultService={quoteFor.service} services={state.services} itemCatalog={state.itemCatalog} dispatch={dispatch} templates={state.quotationTemplates} subscriptionPlans={state.subscriptionPlans} subscriptions={state.subscriptions} role={role} employees={state.employees} defaultOwner={quoteFor.owner} onClose={()=>setQuoteFor(null)}
         onCreated={(id)=>{ onViewQuotation(id, true); setPage("quotations"); }} />}
       {editDeal && <EditDealModal deal={editDeal} state={state} dispatch={dispatch} onClose={()=>setEditDeal(null)} />}
       {removeDeal && <ConfirmModal title={`Remove deal ${removeDeal.id}?`} body={`${removeDeal.customer} — ${money(removeDeal.value)}. This can't be undone.`} onConfirm={()=>dispatch({type:"DELETE_DEAL", id:removeDeal.id})} onClose={()=>setRemoveDeal(null)} />}
@@ -2880,7 +2880,7 @@ function QuoteItemsEditor({ items, onChange, service, catalog = [], quotationFee
   );
 }
 
-function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVICES[0], editableCustomer=false, customerOptions=[], services=SERVICES, itemCatalog=[], dispatch, templates, subscriptionPlans={}, role=null, employees=[], defaultOwner="", onClose, onCreated }) {
+function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVICES[0], editableCustomer=false, customerOptions=[], services=SERVICES, itemCatalog=[], dispatch, templates, subscriptionPlans={}, subscriptions=[], role=null, employees=[], defaultOwner="", onClose, onCreated }) {
   const [showNewService, setShowNewService] = useState(false);
   const [customer, setCustomer] = useState(customerName);
   // Admin-only: lets whoever is building the quotation attribute it to a different salesperson
@@ -2940,6 +2940,13 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
   // tier list from the Subscriptions module (not a separate hardcoded list) keeps a quotation's
   // package pricing from ever drifting out of sync with what Subscriptions actually sells.
   const packageTiers = subscriptionPlans[templateService]?.tiers || [];
+  // Flags a customer who already has a live subscription for this exact structured-subscription
+  // service (matched by name, same as isGrowthPartnerCustomer elsewhere) — building a second
+  // quotation for it is almost always a mistake (the previous one's already active), caught here
+  // before it turns into a duplicate sales order/job card/subscription later in the pipeline.
+  const existingSub = customer && packageTiers.length > 0
+    ? subscriptions.find(s => s.customer === customer && s.plan === templateService && !["Cancelled","Expired"].includes(subStatusOf(s)))
+    : null;
   const [selectedPackage, setSelectedPackage] = useState("");
   useEffect(() => { setSelectedPackage(""); }, [templateService]);
   const applyPackage = (tierName) => {
@@ -3052,6 +3059,12 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
       {tpl && (
         <div style={{ fontSize:12, color:"var(--ink-soft)", marginBottom:14 }}>
           <Files size={13} style={{verticalAlign:-2,marginRight:5}}/>Loaded the saved {templateService} template — edit any line below if this job needs something different.
+        </div>
+      )}
+      {existingSub && (
+        <div className="side-note" style={{ marginTop:0, borderColor:"#F2C089", background:"var(--gold-tint)" }}>
+          <AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>
+          {customer} already has an active {templateService} subscription ({existingSub.tier}, expires {fmtDate(existingSub.expiryDate)}) — check this isn't a duplicate before continuing.
         </div>
       )}
       {packageTiers.length > 0 && (
