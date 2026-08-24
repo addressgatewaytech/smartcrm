@@ -111,9 +111,27 @@ router.post("/:id/assign", requireRole(["ops_manager", "pro_head", "admin_like"]
 // existing subscription is on a *different* tier — leave it alone and flag it, since an upgrade/
 // downgrade is a billing decision a person should make, not something to silently resolve.
 async function handleGrowthPartnerCompletion(jobId, job, byUserId) {
-  if (job.service !== "Growth Partner Program" || !job.package_tier) return;
-  const [tier] = await query("SELECT annual_fee FROM subscription_tiers WHERE plan_name = 'Growth Partner Program' AND tier_name = ?", [job.package_tier]);
-  if (!tier) return; // the tier was renamed/removed since this job's quotation was made — nothing safe to infer
+  if (job.service !== "Growth Partner Program") return;
+  // No package_tier (or a since-renamed/removed tier) means there's nothing safe to auto-create
+  // from — silently doing nothing here previously left the subscription just never appearing,
+  // with no record anywhere that the automation had even tried. Flag it instead, so Accounts/Admin
+  // know to set the tier or create the subscription by hand.
+  const tier = job.package_tier
+    ? (await query("SELECT annual_fee FROM subscription_tiers WHERE plan_name = 'Growth Partner Program' AND tier_name = ?", [job.package_tier]))[0]
+    : null;
+  if (!tier) {
+    const reason = job.package_tier
+      ? `its package tier ("${job.package_tier}") no longer exists in the plan catalog`
+      : `its quotation never had a package tier set (added as a plain line item instead of via the Package picker)`;
+    const note = `Growth Partner Program subscription NOT created automatically — ${reason}. Create it manually on the Subscriptions page.`;
+    await query("INSERT INTO job_card_status_log (job_card_id, status, by_user, note) VALUES (?, 'Updated', ?, ?)", [jobId, byUserId, note]);
+    await query("INSERT INTO notifications (id, type, title, body, audience) VALUES (?, 'accounts', ?, ?, ?)", [
+      nextId("NT"), "Growth Partner subscription needs manual setup",
+      `${jobId} — ${job.customer} — ${reason}.`,
+      JSON.stringify(["super_admin", "admin", "admin_exec", "accounts"]),
+    ]);
+    return;
+  }
   const [existing] = await query(
     `SELECT id, tier_name FROM customer_subscriptions WHERE customer_id = ? AND plan_name = 'Growth Partner Program' AND status = 'Active' AND expiry_date >= CURDATE() ORDER BY expiry_date DESC LIMIT 1`,
     [job.customer_id]
