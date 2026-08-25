@@ -4127,7 +4127,7 @@ function CustomersPage({ state, dispatch, role, userId }) {
   // people rely on (also enforced server-side: PATCH allows admin_like+ops_manager, DELETE admin_like only).
   // An explicit can_edit grant on the Customers module (Module Access) also qualifies — see
   // requireRoleOrModuleEdit on the backend PATCH route for the matching server-side check.
-  const canEditCustomer = isAdmin || role === "ops_manager" || role === "pro_head" || role === "pro" || !!state.myModulePermissions?.customers?.canEdit;
+  const canEditCustomer = isAdmin || role === "ops_manager" || role === "ops_member" || role === "pro_head" || role === "pro" || !!state.myModulePermissions?.customers?.canEdit;
   // Visibility (a sales_exec only sees their own customers) is enforced server-side in
   // GET /customers, since that's the only place with enough data to derive ownership correctly —
   // /leads itself is already scoped to the requesting user for a sales_exec, so state.leads here
