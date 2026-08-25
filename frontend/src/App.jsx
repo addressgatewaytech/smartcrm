@@ -4124,6 +4124,9 @@ function ItemCatalogManager({ catalog, services, dispatch }) {
 // three have an expiry date filled in (enforced server-side in PATCH /customers/:id).
 const COMPULSORY_KYC_TYPES = ["CR", "CL", "EC"];
 const CUSTOMER_STATUSES = ["Active", "Administrative Block", "Scarified/Closed", "Pending"];
+// Computed server-side (GET /customers) from whether real business exists yet — a Sales Order,
+// Invoice, or Job Card — not stored, so it can never drift as those get created or removed.
+const CUSTOMER_CATEGORIES = ["Address Gateway Customers", "Others"];
 
 const EXPIRY_FILTERS = [
   { key:"", label:"Any expiry" },
@@ -4157,6 +4160,7 @@ function CustomersPage({ state, dispatch, role, userId }) {
   const [expiryFilter, setExpiryFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [letterFilter, setLetterFilter] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [editCustomer, setEditCustomer] = useState(null);
   const [removeCustomer, setRemoveCustomer] = useState(null);
@@ -4178,7 +4182,8 @@ function CustomersPage({ state, dispatch, role, userId }) {
   const filtered = visibleCustomers.filter(c => {
     const haystack = [c.name, c.contact, c.phone, c.email].filter(Boolean).join(" ").toLowerCase();
     return haystack.includes(query.trim().toLowerCase()) && (!sizeFilter || c.companySize === sizeFilter) && matchesExpiryFilter(c, expiryFilter)
-      && (!statusFilter || c.status === statusFilter) && (!letterFilter || c.name.trim().toUpperCase().startsWith(letterFilter));
+      && (!statusFilter || c.status === statusFilter) && (!letterFilter || c.name.trim().toUpperCase().startsWith(letterFilter))
+      && (!categoryFilter || c.category === categoryFilter);
   });
   const pg = usePagination(filtered);
   const kycDocOf = (c, type) => c.docs.find(d => d.type === type);
@@ -4204,15 +4209,19 @@ function CustomersPage({ state, dispatch, role, userId }) {
             <option value="">All statuses</option>
             {CUSTOMER_STATUSES.map(s=><option key={s} value={s}>{s}</option>)}
           </select>
+          <select value={categoryFilter} onChange={e=>setCategoryFilter(e.target.value)} style={{ maxWidth:220 }}>
+            <option value="">All customers</option>
+            {CUSTOMER_CATEGORIES.map(c=><option key={c} value={c}>{c}</option>)}
+          </select>
         </div>
         <div style={{ display:"flex", gap:8 }}>
           <button className="btn btn-sm" onClick={()=>exportCSV("customers-kyc.csv",
-            ["Customer ID","Customer","Type","Contact","Phone","Contact Mobile","Landline","Email","Address","Company Size","Status",
+            ["Customer ID","Customer","Category","Type","Contact","Phone","Contact Mobile","Landline","Email","Address","Company Size","Status",
              "CR Number","CR Expiry","CL Number","CL Expiry","EC Number","EC Expiry","Cloud Folder Link","Created","KYC Status"],
             filtered.map(c=>{
               const flagged = [...c.docs, ...c.employees.flatMap(e=>e.docs)].filter(d => docState(d.expiry).label !== "Valid").length;
               const doc = (type) => kycDocOf(c, type) || {};
-              return [c.id, c.name, c.type||"", c.contact||"", c.phone||"", c.contactMobile||"", c.landline||"", c.email||"", c.address||"", c.companySize||"", c.status,
+              return [c.id, c.name, c.category, c.type||"", c.contact||"", c.phone||"", c.contactMobile||"", c.landline||"", c.email||"", c.address||"", c.companySize||"", c.status,
                 doc("CR").number||"", doc("CR").expiry||"", doc("CL").number||"", doc("CL").expiry||"", doc("EC").number||"", doc("EC").expiry||"",
                 c.cloudLink||"", c.createdAt, flagged>0?`${flagged} flagged`:"Clear"];
             }))}>
@@ -4244,8 +4253,8 @@ function CustomersPage({ state, dispatch, role, userId }) {
               : <Empty icon={Search} text="No customers match these filters." />
           ) : (
           <div style={{ overflowX:"auto" }}>
-          <table className="agw-table" style={{ minWidth: 1080 }}>
-            <thead><tr><th>Customer</th><th>Created</th><th>Contact</th><th>Phone</th><th>Email</th><th>Company size</th><th>Status</th><th>CR</th><th>CL</th><th>EC</th><th>KYC</th><th></th></tr></thead>
+          <table className="agw-table" style={{ minWidth: 1220 }}>
+            <thead><tr><th>Customer</th><th>Category</th><th>Created</th><th>Contact</th><th>Phone</th><th>Email</th><th>Company size</th><th>Status</th><th>CR</th><th>CL</th><th>EC</th><th>KYC</th><th></th></tr></thead>
             <tbody>
               {pg.pageRows.map(c => {
                 const flagged = [...c.docs, ...c.employees.flatMap(e=>e.docs)].filter(d => docState(d.expiry).label !== "Valid").length;
@@ -4254,6 +4263,7 @@ function CustomersPage({ state, dispatch, role, userId }) {
                     <td>{c.name}
                       <div className="mono" style={{fontSize:11,color:"var(--ink-soft)"}}>{c.id}</div>
                     </td>
+                    <td><Stamp tone={c.category==="Address Gateway Customers"?"success":"neutral"}>{c.category}</Stamp></td>
                     <td className="mono" style={{fontSize:12}}>{fmtDate(c.createdAt)}</td>
                     <td>{c.contact || "—"}</td>
                     <td className="mono" style={{fontSize:12}}>{c.phone || "—"}</td>
@@ -4291,7 +4301,10 @@ function CustomersPage({ state, dispatch, role, userId }) {
                   <strong style={{ fontSize: 14.5 }}>{c.name}</strong>
                   <div className="mono" style={{ fontSize:11, color:"var(--ink-soft)" }}>{c.id}</div>
                   <div style={{ fontSize:12, color:"var(--ink-soft)", marginTop:2 }}>{c.contact || "—"} · {c.phone || "no phone on file"}</div>
-                  {c.companySize && <span className="pill" style={{ marginTop:6, display:"inline-block" }}>{c.companySize}</span>}
+                  <div style={{ marginTop:6, display:"flex", gap:6, flexWrap:"wrap" }}>
+                    {c.companySize && <span className="pill">{c.companySize}</span>}
+                    <span className="pill" style={c.category==="Address Gateway Customers"?{background:"var(--success-tint)",color:"var(--success)"}:undefined}>{c.category}</span>
+                  </div>
                 </div>
                 <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                   <Stamp tone={customerStatusTone[c.status] || "neutral"}>{c.status}</Stamp>

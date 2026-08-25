@@ -16,6 +16,16 @@ router.get("/", async (req, res) => {
   const staff = await query("SELECT * FROM customer_staff");
   const staffDocs = await query("SELECT * FROM customer_staff_docs");
 
+  // Computed, not stored — a customer only counts as an "Address Gateway Customer" once real
+  // business exists (a Sales Order, Invoice, or Job Card), not merely from a lead/deal/quotation
+  // or direct data entry. Computed live (like transactionsUsed on subscriptions elsewhere) rather
+  // than a stored flag, so it can never drift out of sync as those records get created or removed.
+  const confirmedIds = new Set([
+    ...(await query("SELECT DISTINCT customer_id FROM sales_orders WHERE customer_id IS NOT NULL")).map((r) => r.customer_id),
+    ...(await query("SELECT DISTINCT customer_id FROM invoices WHERE customer_id IS NOT NULL")).map((r) => r.customer_id),
+    ...(await query("SELECT DISTINCT customer_id FROM job_cards WHERE customer_id IS NOT NULL")).map((r) => r.customer_id),
+  ]);
+
   // Only Admin-tier sees every customer; everyone else sees only their own — a customer they
   // created directly, or one linked to a lead/deal they own. Unlike before, a customer with no
   // traceable owner at all is now admin-only (not shown to everyone) — KYC records are sensitive
@@ -57,6 +67,7 @@ router.get("/", async (req, res) => {
 
   res.json(visible.map((c) => ({
     ...c,
+    category: confirmedIds.has(c.id) ? "Address Gateway Customers" : "Others",
     docs: docs.filter((d) => d.customer_id === c.id),
     employees: staff.filter((s) => s.customer_id === c.id).map((s) => ({ ...s, docs: staffDocs.filter((d) => d.customer_staff_id === s.id) })),
   })));
