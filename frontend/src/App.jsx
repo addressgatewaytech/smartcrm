@@ -4119,6 +4119,12 @@ function ItemCatalogManager({ catalog, services, dispatch }) {
 /* CUSTOMERS / KYC                                                         */
 /* ---------------------------------------------------------------------- */
 
+// The three compulsory KYC documents (see seedDefaultKycDocs, src/utils/helpers.js) every
+// customer gets seeded with automatically — a customer can only reach Active status once all
+// three have an expiry date filled in (enforced server-side in PATCH /customers/:id).
+const COMPULSORY_KYC_TYPES = ["CR", "CL", "EC"];
+const CUSTOMER_STATUSES = ["Active", "Administrative Block", "Scarified/Closed", "Pending"];
+
 const EXPIRY_FILTERS = [
   { key:"", label:"Any expiry" },
   { key:"expired", label:"Expired" },
@@ -4149,6 +4155,8 @@ function CustomersPage({ state, dispatch, role, userId }) {
   const [query, setQuery] = useState("");
   const [sizeFilter, setSizeFilter] = useState("");
   const [expiryFilter, setExpiryFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [letterFilter, setLetterFilter] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [editCustomer, setEditCustomer] = useState(null);
   const [removeCustomer, setRemoveCustomer] = useState(null);
@@ -4169,9 +4177,12 @@ function CustomersPage({ state, dispatch, role, userId }) {
 
   const filtered = visibleCustomers.filter(c => {
     const haystack = [c.name, c.contact, c.phone, c.email].filter(Boolean).join(" ").toLowerCase();
-    return haystack.includes(query.trim().toLowerCase()) && (!sizeFilter || c.companySize === sizeFilter) && matchesExpiryFilter(c, expiryFilter);
+    return haystack.includes(query.trim().toLowerCase()) && (!sizeFilter || c.companySize === sizeFilter) && matchesExpiryFilter(c, expiryFilter)
+      && (!statusFilter || c.status === statusFilter) && (!letterFilter || c.name.trim().toUpperCase().startsWith(letterFilter));
   });
   const pg = usePagination(filtered);
+  const kycDocOf = (c, type) => c.docs.find(d => d.type === type);
+  const customerStatusTone = { Active:"success", "Administrative Block":"warning", "Scarified/Closed":"danger", Pending:"neutral" };
 
   return (
     <div>
@@ -4189,15 +4200,28 @@ function CustomersPage({ state, dispatch, role, userId }) {
           <select value={expiryFilter} onChange={e=>setExpiryFilter(e.target.value)} style={{ maxWidth:210 }}>
             {EXPIRY_FILTERS.map(f=><option key={f.key} value={f.key}>{f.label}</option>)}
           </select>
+          <select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)} style={{ maxWidth:190 }}>
+            <option value="">All statuses</option>
+            {CUSTOMER_STATUSES.map(s=><option key={s} value={s}>{s}</option>)}
+          </select>
         </div>
         <div style={{ display:"flex", gap:8 }}>
           <button className="btn btn-sm" onClick={()=>exportCSV("customers-kyc.csv",
-            ["Customer","Created","Contact","Phone","Email","Company Size","KYC Status"],
-            filtered.map(c=>{ const flagged = [...c.docs, ...c.employees.flatMap(e=>e.docs)].filter(d => docState(d.expiry).label !== "Valid").length; return [c.name, c.createdAt, c.contact||"", c.phone||"", c.email||"", c.companySize||"", flagged>0?`${flagged} flagged`:"Clear"]; }))}>
+            ["Customer","Created","Contact","Phone","Email","Company Size","Status","KYC Status"],
+            filtered.map(c=>{ const flagged = [...c.docs, ...c.employees.flatMap(e=>e.docs)].filter(d => docState(d.expiry).label !== "Valid").length; return [c.name, c.createdAt, c.contact||"", c.phone||"", c.email||"", c.companySize||"", c.status, flagged>0?`${flagged} flagged`:"Clear"]; }))}>
             <Download size={13}/> Export
           </button>
           {role !== "viewer" && <button className="btn btn-primary" onClick={()=>setShowAdd(true)}><Plus size={15}/> New customer</button>}
         </div>
+      </div>
+
+      <div style={{ display:"flex", gap:4, marginBottom: 14, flexWrap:"wrap" }}>
+        <button className={`pill ${!letterFilter?"active":""}`} style={{ cursor:"pointer", border:"1px solid var(--hair)", background: !letterFilter?"var(--brand)":"var(--surface)", color: !letterFilter?"#fff":"var(--ink)" }} onClick={()=>setLetterFilter("")}>All</button>
+        {"ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").map(l => (
+          <button key={l} className="pill" style={{ cursor:"pointer", border:"1px solid var(--hair)", width:26, textAlign:"center", padding:"5px 0",
+            background: letterFilter===l?"var(--brand)":"var(--surface)", color: letterFilter===l?"#fff":"var(--ink)" }}
+            onClick={()=>setLetterFilter(letterFilter===l?"":l)}>{l}</button>
+        ))}
       </div>
 
       <div className="tabbar" style={{ marginBottom: 14 }}>
@@ -4213,8 +4237,8 @@ function CustomersPage({ state, dispatch, role, userId }) {
               : <Empty icon={Search} text="No customers match these filters." />
           ) : (
           <div style={{ overflowX:"auto" }}>
-          <table className="agw-table" style={{ minWidth: 780 }}>
-            <thead><tr><th>Customer</th><th>Created</th><th>Contact</th><th>Phone</th><th>Email</th><th>Company size</th><th>KYC</th><th></th></tr></thead>
+          <table className="agw-table" style={{ minWidth: 1080 }}>
+            <thead><tr><th>Customer</th><th>Created</th><th>Contact</th><th>Phone</th><th>Email</th><th>Company size</th><th>Status</th><th>CR</th><th>CL</th><th>EC</th><th>KYC</th><th></th></tr></thead>
             <tbody>
               {pg.pageRows.map(c => {
                 const flagged = [...c.docs, ...c.employees.flatMap(e=>e.docs)].filter(d => docState(d.expiry).label !== "Valid").length;
@@ -4228,6 +4252,14 @@ function CustomersPage({ state, dispatch, role, userId }) {
                     <td className="mono" style={{fontSize:12}}>{c.phone || "—"}</td>
                     <td style={{fontSize:12.5}}>{c.email || "—"}</td>
                     <td>{c.companySize || "—"}</td>
+                    <td><Stamp tone={customerStatusTone[c.status] || "neutral"}>{c.status}</Stamp></td>
+                    {COMPULSORY_KYC_TYPES.map(type => {
+                      const d = kycDocOf(c, type);
+                      const st = d?.expiry ? docState(d.expiry) : { label:"Missing", cls:"stamp-warning" };
+                      return <td key={type} className="mono" style={{fontSize:11.5}} title={d?.expiry ? fmtDate(d.expiry) : "No expiry on file"}>
+                        <Stamp tone={st.cls.replace("stamp-","")}>{d?.expiry ? fmtDate(d.expiry) : st.label}</Stamp>
+                      </td>;
+                    })}
                     <td>{flagged > 0 ? <Stamp tone="warning">{flagged} flagged</Stamp> : <Stamp tone="success">Clear</Stamp>}</td>
                     <td><RowActions onEdit={canEditCustomer ? ()=>setEditCustomer(c) : null} onRemove={isAdmin ? ()=>setRemoveCustomer(c) : null} /></td>
                   </tr>
@@ -4254,13 +4286,14 @@ function CustomersPage({ state, dispatch, role, userId }) {
                   {c.companySize && <span className="pill" style={{ marginTop:6, display:"inline-block" }}>{c.companySize}</span>}
                 </div>
                 <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                  <Stamp tone={customerStatusTone[c.status] || "neutral"}>{c.status}</Stamp>
                   {flagged > 0 ? <Stamp tone="warning">{flagged} doc{flagged>1?"s":""} flagged</Stamp> : <Stamp tone="success">KYC clear</Stamp>}
                   <RowActions onEdit={canEditCustomer ? ()=>setEditCustomer(c) : null} onRemove={isAdmin ? ()=>setRemoveCustomer(c) : null} />
                 </div>
               </div>
               <div style={{ display:"flex", gap:6, marginTop: 12, flexWrap:"wrap" }}>
                 {c.docs.map(d => {
-                  const st = docState(d.expiry);
+                  const st = d.expiry ? docState(d.expiry) : { label:"Missing" };
                   return <span key={d.id} className="pill" style={{ background: "var(--page)" }}>{d.type}: <span style={{color: st.label==="Valid"?"var(--success)":st.label==="Expired"?"var(--danger)":"var(--warning)"}}>{st.label}</span></span>;
                 })}
                 {c.docs.length===0 && <span className="pill">No KYC documents yet</span>}
@@ -4371,7 +4404,13 @@ function CustomerDetailModal({ customer: c, state, dispatch, role, userId, onClo
 
   const startEditDoc = (d) => { setDocEditingId(d.id); setDoc({ type:d.type, number:d.number, expiry:d.expiry }); };
   const cancelEditDoc = () => { setDocEditingId(null); setDoc(blankDoc); };
+  // CR/CL/EC need an expiry before they can be saved — a customer can't reach Active without one
+  // (see PATCH /customers/:id) — everything else stays optional, same as before this existed.
+  const isCompulsoryDocType = COMPULSORY_KYC_TYPES.includes(doc.type);
+  const docTypeChoice = isCompulsoryDocType ? doc.type : "Other";
+  const canSaveDoc = doc.type.trim() && (!isCompulsoryDocType || doc.expiry);
   const saveDoc = () => {
+    if (!canSaveDoc) return;
     if (docEditingId) dispatch({ type:"UPDATE_KYC_DOC", customerId:c.id, docId:docEditingId, payload:doc });
     else dispatch({ type:"ADD_KYC_DOC", customerId:c.id, doc });
     cancelEditDoc();
@@ -4435,6 +4474,23 @@ function CustomerDetailModal({ customer: c, state, dispatch, role, userId, onClo
 
       {tab === "profile" && (
       <>
+      {/* Active is only selectable once CR, CL, and EC each have an expiry — mirrors the
+          server-side check in PATCH /customers/:id (see COMPULSORY_KYC_TYPES). */}
+      {(() => {
+        const canBeActive = COMPULSORY_KYC_TYPES.every(t => c.docs.some(d => d.type === t && d.expiry));
+        return (
+          <div className="agw-card" style={{ marginBottom: 16, display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:10 }}>
+            <div>
+              <strong style={{ fontSize:13.5 }}>Company status</strong>
+              {!canBeActive && <div style={{ fontSize:11.5, color:"var(--ink-soft)", marginTop:2 }}>CR, CL, and EC all need an expiry date before this can be set Active.</div>}
+            </div>
+            <select value={c.status} disabled={!isAdmin && role!=="ops_manager" && role!=="ops_member" && role!=="pro_head" && role!=="pro"}
+              onChange={e=>dispatch({type:"UPDATE_CUSTOMER", id:c.id, payload:{status:e.target.value}})} style={{ maxWidth:220 }}>
+              {CUSTOMER_STATUSES.map(s=><option key={s} value={s} disabled={s==="Active" && !canBeActive && c.status!=="Active"}>{s}</option>)}
+            </select>
+          </div>
+        );
+      })()}
       <div className="agw-grid" style={{ gridTemplateColumns: "repeat(3,1fr)", marginBottom: 16 }}>
         <div className="agw-card"><div className="kpi-label">Created</div><div style={{ fontSize:14, fontWeight:500, marginTop:4 }}>{fmtDate(c.createdAt)}</div></div>
         <div className="agw-card"><div className="kpi-label">Contact person</div><div style={{ fontSize:14, fontWeight:500, marginTop:4 }}>{c.contact || "—"}</div></div>
@@ -4458,9 +4514,11 @@ function CustomerDetailModal({ customer: c, state, dispatch, role, userId, onClo
         <thead><tr><th>Document</th><th>Number</th><th>Expiry</th><th>Status</th><th></th></tr></thead>
         <tbody>
           {c.docs.map(d => {
-            const st = docState(d.expiry);
+            // A compulsory type with no expiry yet is a still-empty placeholder, not literally
+            // "Expired" — docState(null) would otherwise read that way (day-math against epoch).
+            const st = d.expiry ? docState(d.expiry) : { label: "Missing", cls: "stamp-warning" };
             return <tr key={d.id}>
-              <td>{d.type}</td><td className="mono" style={{display:"flex",alignItems:"center",gap:4}}>{d.number}<CopyButton value={d.number} /></td><td className="mono" style={{fontSize:12}}>{fmtDate(d.expiry)}</td>
+              <td>{d.type}</td><td className="mono" style={{display:"flex",alignItems:"center",gap:4}}>{d.number}<CopyButton value={d.number} /></td><td className="mono" style={{fontSize:12}}>{d.expiry ? fmtDate(d.expiry) : "—"}</td>
               <td><Stamp tone={st.cls.replace("stamp-","")}>{st.label}</Stamp></td>
               <td><RowActions onEdit={()=>startEditDoc(d)} onRemove={()=>setRemoveDoc(d)} /></td>
             </tr>;
@@ -4471,12 +4529,28 @@ function CustomerDetailModal({ customer: c, state, dispatch, role, userId, onClo
       <div className="agw-card" style={{ marginTop: 16 }}>
         <strong style={{ fontSize: 13 }}>{docEditingId ? "Edit KYC document" : "Add KYC document"}</strong>
         <div className="row3" style={{ marginTop: 10 }}>
-          <div className="field"><label>Type</label><input value={doc.type} onChange={e=>setDoc({...doc,type:e.target.value})} /></div>
-          <div className="field"><label>Number</label><input value={doc.number} onChange={e=>setDoc({...doc,number:e.target.value})} /></div>
-          <div className="field"><label>Expiry date</label><input type="date" value={doc.expiry} onChange={e=>setDoc({...doc,expiry:e.target.value})} /></div>
+          <div className="field"><label>Type</label>
+            <select value={docTypeChoice} onChange={e=>setDoc({...doc, type: e.target.value==="Other" ? "" : e.target.value})}>
+              {COMPULSORY_KYC_TYPES.map(t=><option key={t} value={t}>{t}</option>)}
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          {docTypeChoice === "Other"
+            ? <div className="field"><label>Document name</label><input value={doc.type} onChange={e=>setDoc({...doc,type:e.target.value})} placeholder="e.g. Passport" /></div>
+            : <div className="field"><label>Number</label><input value={doc.number} onChange={e=>setDoc({...doc,number:e.target.value})} /></div>}
+          <div className="field">
+            <label>Expiry date{isCompulsoryDocType ? " (required)" : ""}</label>
+            <input type="date" value={doc.expiry} onChange={e=>setDoc({...doc,expiry:e.target.value})} />
+          </div>
         </div>
+        {docTypeChoice === "Other" && (
+          <div className="field"><label>Number</label><input value={doc.number} onChange={e=>setDoc({...doc,number:e.target.value})} /></div>
+        )}
+        {isCompulsoryDocType && !doc.expiry && (
+          <div className="side-note" style={{ marginTop:0 }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{doc.type} needs an expiry date before it can be saved.</div>
+        )}
         <div style={{ display:"flex", gap:8 }}>
-          <button className="btn btn-primary btn-sm" onClick={saveDoc}>{docEditingId ? "Save changes" : "Add document"}</button>
+          <button className="btn btn-primary btn-sm" disabled={!canSaveDoc} onClick={saveDoc}>{docEditingId ? "Save changes" : "Add document"}</button>
           {docEditingId && <button className="btn btn-sm" onClick={cancelEditDoc}>Cancel</button>}
         </div>
       </div>

@@ -66,6 +66,18 @@ async function findDuplicateCustomer(query, { name, phone, email }, excludeId = 
   return null;
 }
 
+// The three KYC documents every customer needs before they can become Active (see PATCH
+// /customers/:id) — CR (Commercial Registration), CL (Commercial License), EC (Establishment
+// Card). Every customer gets an empty placeholder row for each the moment it's created, whichever
+// path created it, so there's always something on file to fill in rather than a document that has
+// to be remembered and added by hand later.
+const COMPULSORY_KYC_DOC_TYPES = ["CR", "CL", "EC"];
+async function seedDefaultKycDocs(query, customerId) {
+  for (const type of COMPULSORY_KYC_DOC_TYPES) {
+    await query("INSERT INTO customer_docs (id, customer_id, type, number, expiry, cloud_link) VALUES (?,?,?,NULL,NULL,NULL)", [nextId("DOC"), customerId, type]);
+  }
+}
+
 /**
  * Resolves the Customer a freehand "customer name" typed on a Lead/Deal/Quotation/Job Card
  * belongs to — reusing another Customer already on file (matched by name, or by phone/email
@@ -88,6 +100,7 @@ async function findOrCreateCustomer(query, { name, phone, email, contact, ownerI
   // spawns lands in the right person's list from the moment it exists.
   await query("INSERT INTO customers (id, name, type, contact, phone, email, created_by) VALUES (?,?,?,?,?,?,?)",
     [customerId, name, "Company", contact || null, phone || null, email || null, ownerId || null]);
+  await seedDefaultKycDocs(query, customerId);
   return { customerId, duplicateOf: null };
 }
 
@@ -131,4 +144,4 @@ function professionalFeeTotal(items, orderDiscount, quotationFeeType, orderDisco
   return Math.max(0, profSubtotal - discountAmount * profShare);
 }
 
-module.exports = { nextId, nextSequentialId, today, daysFromNow, normPhone, normEmail, normCompany, money, quoteTotal, professionalFeeTotal, findDuplicateCustomer, findOrCreateCustomer };
+module.exports = { nextId, nextSequentialId, today, daysFromNow, normPhone, normEmail, normCompany, money, quoteTotal, professionalFeeTotal, findDuplicateCustomer, findOrCreateCustomer, COMPULSORY_KYC_DOC_TYPES, seedDefaultKycDocs };

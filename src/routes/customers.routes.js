@@ -3,7 +3,7 @@ const crypto = require("crypto");
 const { query, withTransaction } = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
 const { requireRole, isAdminLike, requireRoleOrModuleEdit, hasModuleEdit } = require("../middleware/roles");
-const { nextId, nextSequentialId, quoteTotal, findDuplicateCustomer } = require("../utils/helpers");
+const { nextId, nextSequentialId, quoteTotal, findDuplicateCustomer, COMPULSORY_KYC_DOC_TYPES, seedDefaultKycDocs } = require("../utils/helpers");
 const { generateOnboardingFormPdf } = require("../utils/onboardingFormPdf");
 const { generateAccountStatementPdf } = require("../utils/accountStatementPdf");
 
@@ -71,6 +71,7 @@ router.post("/", async (req, res) => {
   const id = await withTransaction((conn) => nextSequentialId(conn, "AGBSCU", "customer"));
   await query("INSERT INTO customers (id, name, type, contact, phone, landline, contact_mobile, email, address, company_size, created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
     [id, b.name, b.type || "Company", b.contact || null, b.phone || null, b.landline || null, b.contactMobile || null, b.email || null, b.address || null, b.companySize || null, req.user.id]);
+  await seedDefaultKycDocs(query, id);
   res.status(201).json({ id });
 });
 
@@ -83,9 +84,35 @@ router.patch("/:id", requireRoleOrModuleEdit(["admin_like", "ops_manager", "ops_
   if (dup) {
     return res.status(400).json({ error: `This would duplicate the existing customer "${dup.match.name}" (matched by ${dup.field}) — please merge into that profile instead.` });
   }
+  // Can only move to Active once CR, CL, and EC each have an expiry date filled in — every other
+  // status transition (including moving away from Active) is unrestricted.
+  if (b.status === "Active") {
+    const docs = await query("SELECT type, expiry FROM customer_docs WHERE customer_id = ? AND type IN (?,?,?)", [req.params.id, ...COMPULSORY_KYC_DOC_TYPES]);
+    const missing = COMPULSORY_KYC_DOC_TYPES.filter((t) => !docs.some((d) => d.type === t && d.expiry));
+    if (missing.length) {
+      return res.status(400).json({ error: `Can't set this customer Active yet — ${missing.join(", ")} still need${missing.length === 1 ? "s" : ""} an expiry date.` });
+    }
+  }
   const [before] = await query("SELECT name FROM customers WHERE id = ?", [req.params.id]);
-  await query("UPDATE customers SET name=COALESCE(?,name), type=COALESCE(?,type), contact=?, phone=?, landline=?, contact_mobile=?, email=?, address=?, company_size=? WHERE id=?",
-    [b.name, b.type, b.contact || null, b.phone || null, b.landline || null, b.contactMobile || null, b.email || null, b.address || null, b.companySize || null, req.params.id]);
+  // Only touches fields actually present in the payload — the Company Status picker sends just
+  // {status}, and blindly overwriting every other column with "sent as undefined -> null" (the
+  // old behavior here) would have wiped contact/phone/email/etc. on every status change.
+  const fields = [];
+  const params = [];
+  if (b.name !== undefined) { fields.push("name = ?"); params.push(b.name); }
+  if (b.type !== undefined) { fields.push("type = ?"); params.push(b.type); }
+  if (b.contact !== undefined) { fields.push("contact = ?"); params.push(b.contact || null); }
+  if (b.phone !== undefined) { fields.push("phone = ?"); params.push(b.phone || null); }
+  if (b.landline !== undefined) { fields.push("landline = ?"); params.push(b.landline || null); }
+  if (b.contactMobile !== undefined) { fields.push("contact_mobile = ?"); params.push(b.contactMobile || null); }
+  if (b.email !== undefined) { fields.push("email = ?"); params.push(b.email || null); }
+  if (b.address !== undefined) { fields.push("address = ?"); params.push(b.address || null); }
+  if (b.companySize !== undefined) { fields.push("company_size = ?"); params.push(b.companySize || null); }
+  if (b.status !== undefined) { fields.push("status = ?"); params.push(b.status); }
+  if (fields.length) {
+    params.push(req.params.id);
+    await query(`UPDATE customers SET ${fields.join(", ")} WHERE id=?`, params);
+  }
   // A corrected/renamed customer name is kept in sync everywhere that references this customer_id
   // — leads/deals/quotations/sales orders/invoices/job cards/subscriptions each store the name as
   // their own text snapshot (for display/PDFs/CSV), so without this cascade a rename here would
@@ -171,6 +198,9 @@ router.post("/:id/merge", requireRole(["admin_like"]), async (req, res) => {
 // --- KYC documents -------------------------------------------------------------------------
 router.post("/:id/docs", async (req, res) => {
   const b = req.body;
+  if (COMPULSORY_KYC_DOC_TYPES.includes(b.type) && !b.expiry) {
+    return res.status(400).json({ error: `${b.type} needs an expiry date.` });
+  }
   const docId = nextId("DOC");
   await query("INSERT INTO customer_docs (id, customer_id, type, number, expiry, cloud_link) VALUES (?,?,?,?,?,?)",
     [docId, req.params.id, b.type, b.number || null, b.expiry || null, b.cloudLink || null]);
@@ -178,6 +208,11 @@ router.post("/:id/docs", async (req, res) => {
 });
 router.patch("/:id/docs/:docId", async (req, res) => {
   const b = req.body;
+  const [existing] = await query("SELECT type FROM customer_docs WHERE id = ? AND customer_id = ?", [req.params.docId, req.params.id]);
+  const effectiveType = b.type || existing?.type;
+  if (COMPULSORY_KYC_DOC_TYPES.includes(effectiveType) && !b.expiry) {
+    return res.status(400).json({ error: `${effectiveType} needs an expiry date.` });
+  }
   // cloud_link is COALESCE'd, not overwritten — the form no longer sends it (superseded by the
   // customer-level link), so an edit here must not silently wipe a document's historical value.
   await query("UPDATE customer_docs SET type=COALESCE(?,type), number=?, expiry=?, cloud_link=COALESCE(?,cloud_link) WHERE id=? AND customer_id=?",
