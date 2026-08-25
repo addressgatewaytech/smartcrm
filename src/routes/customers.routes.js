@@ -63,7 +63,11 @@ router.get("/", async (req, res) => {
   // the client base) without changing their actual role and everything role-driven that comes
   // with it (approval authority, KPI shape, other module access, ...).
   const canSeeAll = isAdminLike(req.user.roles) || req.user.roles.includes("viewer") || req.user.roles.includes("sales_manager") || req.user.roles.includes("ops_manager") || req.user.roles.includes("ops_member") || req.user.roles.includes("pro_head") || (await hasModuleEdit(req.user.id, "customers"));
-  const visible = canSeeAll ? customers : customers.filter((c) => ownerFor(c) === req.user.id);
+  // A manual sales_person_override must also win here, not just in the displayed salesPerson
+  // below — otherwise reassigning a customer to someone else leaves it invisible to them (still
+  // scoped by the old computed owner) while showing their name on the card, which is exactly
+  // backwards.
+  const visible = canSeeAll ? customers : customers.filter((c) => (c.sales_person_override || ownerFor(c)) === req.user.id);
 
   res.json(visible.map((c) => ({
     ...c,
