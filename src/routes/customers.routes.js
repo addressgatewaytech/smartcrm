@@ -105,9 +105,18 @@ router.patch("/:id", requireRoleOrModuleEdit(["admin_like", "ops_manager", "ops_
 // One shared cloud storage link for the customer's whole KYC set — replaces the old per-document
 // links on customer_docs (see schema.sql), which meant a different file link for every document
 // instead of one folder link for the customer.
-router.patch("/:id/cloud-link", requireRole(["admin_like", "ops_manager", "pro_head", "pro"]), async (req, res) => {
+// Same gate as PATCH /:id above (kept in sync — this was missed when ops_member/Module Access
+// can_edit were added there, silently 403ing a save even though the Edit button showed for them).
+router.patch("/:id/cloud-link", requireRoleOrModuleEdit(["admin_like", "ops_manager", "ops_member", "pro_head", "pro"], "customers"), async (req, res) => {
   const { url } = req.body;
-  await query("UPDATE customers SET cloud_link = ? WHERE id = ?", [url || null, req.params.id]);
+  const trimmed = (url || "").trim();
+  // A non-URL value (typo, pasted the wrong thing) would silently "save" and then do nothing
+  // useful when clicked — the app's own catch-all route just reopens the CRM itself for a bare
+  // relative href, which looks exactly like "the link is broken" with no indication why.
+  if (trimmed && !/^https?:\/\//i.test(trimmed)) {
+    return res.status(400).json({ error: "That doesn't look like a valid link — it should start with http:// or https://" });
+  }
+  await query("UPDATE customers SET cloud_link = ? WHERE id = ?", [trimmed || null, req.params.id]);
   res.json({ ok: true });
 });
 

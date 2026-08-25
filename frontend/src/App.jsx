@@ -714,13 +714,33 @@ function AddServiceOptionModal({ dispatch, onClose, onCreated }) {
 function CloudLinkButton({ url, onSave, big=false }) {
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState(url || "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  // onSave (a dispatch call) was previously fired without awaiting or catching it — a save that
+  // failed (e.g. the server rejecting a non-URL value) closed the edit box with zero indication
+  // anything went wrong, silently reverting to whatever was there before.
+  const save = async () => {
+    setSaving(true);
+    setError("");
+    try {
+      await onSave(val.trim());
+      setEditing(false);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't save — please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
   if (editing) {
     return (
-      <span style={{ display:"inline-flex", gap:4, alignItems:"center" }} onClick={e=>e.stopPropagation()}>
-        <input style={{ width: big?260:170, border:"1px solid var(--hair)", borderRadius:6, padding: big?"7px 10px":"3px 6px", fontSize: big?13:11.5 }}
-          placeholder="Paste cloud folder link" value={val} onChange={e=>setVal(e.target.value)} autoFocus />
-        <button className={big?"btn":"btn btn-sm btn-ghost"} onClick={()=>{ onSave(val); setEditing(false); }}><Check size={big?14:12}/></button>
-        <button className={big?"btn":"btn btn-sm btn-ghost"} onClick={()=>setEditing(false)}><X size={big?14:12}/></button>
+      <span style={{ display:"inline-flex", flexDirection:"column", gap:4, alignItems:"flex-start" }} onClick={e=>e.stopPropagation()}>
+        <span style={{ display:"inline-flex", gap:4, alignItems:"center" }}>
+          <input style={{ width: big?260:170, border:"1px solid var(--hair)", borderRadius:6, padding: big?"7px 10px":"3px 6px", fontSize: big?13:11.5 }}
+            placeholder="Paste cloud folder link" value={val} onChange={e=>setVal(e.target.value)} autoFocus />
+          <button className={big?"btn":"btn btn-sm btn-ghost"} disabled={saving} onClick={save}><Check size={big?14:12}/></button>
+          <button className={big?"btn":"btn btn-sm btn-ghost"} disabled={saving} onClick={()=>{ setEditing(false); setError(""); }}><X size={big?14:12}/></button>
+        </span>
+        {error && <span style={{ fontSize:11.5, color:"var(--danger)" }}>{error}</span>}
       </span>
     );
   }
