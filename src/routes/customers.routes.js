@@ -26,10 +26,32 @@ router.get("/", async (req, res) => {
     ...(await query("SELECT DISTINCT customer_id FROM job_cards WHERE customer_id IS NOT NULL")).map((r) => r.customer_id),
   ]);
 
-  // Only Admin-tier sees every customer; everyone else sees only their own — a customer they
-  // created directly, or one linked to a lead/deal they own. Unlike before, a customer with no
-  // traceable owner at all is now admin-only (not shown to everyone) — KYC records are sensitive
-  // enough that "can't prove who it belongs to" should mean restricted, not wide open.
+  // Customers have no direct owner column — ownership (= "the sales person" for display purposes
+  // too, see salesPerson below) is derived from the customer's most recent lead (a lead
+  // auto-creates its customer, so this covers most records), falling back to the most recent
+  // deal, and finally to created_by for one added directly via "New customer". Always computed
+  // (not just when scoping non-admin visibility) since it now also drives the KYC list's Sales
+  // Person column/export.
+  const leads = await query("SELECT company, owner, customer_id, created_at FROM leads ORDER BY created_at DESC");
+  const deals = await query("SELECT customer, owner, customer_id, created_at FROM deals ORDER BY created_at DESC");
+  const users = await query("SELECT id, name FROM users");
+  // Case-insensitive, matching how findOrCreateCustomer itself matches names —
+  // real data has inconsistent casing between a lead's company and its linked customer's name.
+  const sameName = (a, b) => (a || "").trim().toLowerCase() === (b || "").trim().toLowerCase();
+  const ownerFor = (customer) => {
+    // Prefer the reliable customer_id link; fall back to name-matching only for legacy
+    // leads/deals with no customer_id (predates this linking).
+    const lead = leads.find((l) => l.customer_id === customer.id) || leads.find((l) => !l.customer_id && sameName(l.company, customer.name));
+    if (lead) return lead.owner;
+    const deal = deals.find((d) => d.customer_id === customer.id) || deals.find((d) => !d.customer_id && sameName(d.customer, customer.name));
+    if (deal) return deal.owner;
+    return customer.created_by || null;
+  };
+
+  // Only Admin-tier sees every customer; everyone else sees only their own. Unlike before, a
+  // customer with no traceable owner at all is now admin-only (not shown to everyone) — KYC
+  // records are sensitive enough that "can't prove who it belongs to" should mean restricted, not
+  // wide open.
   // Sales Manager, Ops Manager, Ops Team Member, and PRO Head are the deliberate exceptions,
   // seeing every customer like Admin-tier — they service KYC/onboarding or manage the pipeline
   // across all clients operationally, not just ones they personally sourced as a lead (same
@@ -41,33 +63,14 @@ router.get("/", async (req, res) => {
   // the client base) without changing their actual role and everything role-driven that comes
   // with it (approval authority, KPI shape, other module access, ...).
   const canSeeAll = isAdminLike(req.user.roles) || req.user.roles.includes("viewer") || req.user.roles.includes("sales_manager") || req.user.roles.includes("ops_manager") || req.user.roles.includes("ops_member") || req.user.roles.includes("pro_head") || (await hasModuleEdit(req.user.id, "customers"));
-  let visible = customers;
-  if (!canSeeAll) {
-    // Customers have no direct owner column — ownership is derived from the customer's most
-    // recent lead (a lead auto-creates its customer, so this covers most records), falling back to
-    // the most recent deal, and finally to created_by for one added directly via "New customer".
-    // Done here (not client-side) because /leads itself is scoped to the requesting user, so the
-    // client never has enough data to derive anyone else's ownership.
-    const leads = await query("SELECT company, owner, customer_id, created_at FROM leads ORDER BY created_at DESC");
-    const deals = await query("SELECT customer, owner, customer_id, created_at FROM deals ORDER BY created_at DESC");
-    // Case-insensitive, matching how findOrCreateCustomer itself matches names —
-    // real data has inconsistent casing between a lead's company and its linked customer's name.
-    const sameName = (a, b) => (a || "").trim().toLowerCase() === (b || "").trim().toLowerCase();
-    const ownerFor = (customer) => {
-      // Prefer the reliable customer_id link; fall back to name-matching only for legacy
-      // leads/deals with no customer_id (predates this linking).
-      const lead = leads.find((l) => l.customer_id === customer.id) || leads.find((l) => !l.customer_id && sameName(l.company, customer.name));
-      if (lead) return lead.owner;
-      const deal = deals.find((d) => d.customer_id === customer.id) || deals.find((d) => !d.customer_id && sameName(d.customer, customer.name));
-      if (deal) return deal.owner;
-      return customer.created_by || null;
-    };
-    visible = customers.filter((c) => ownerFor(c) === req.user.id);
-  }
+  const visible = canSeeAll ? customers : customers.filter((c) => ownerFor(c) === req.user.id);
 
   res.json(visible.map((c) => ({
     ...c,
-    category: confirmedIds.has(c.id) ? "Address Gateway Customers" : "Others",
+    // A manual category_override always wins over the computed value — see the column comment
+    // in schema.sql.
+    category: c.category_override || (confirmedIds.has(c.id) ? "Address Gateway Customers" : "Others"),
+    salesPerson: users.find((u) => u.id === ownerFor(c))?.name || null,
     docs: docs.filter((d) => d.customer_id === c.id),
     employees: staff.filter((s) => s.customer_id === c.id).map((s) => ({ ...s, docs: staffDocs.filter((d) => d.customer_staff_id === s.id) })),
   })));
@@ -95,7 +98,7 @@ router.patch("/:id", requireRoleOrModuleEdit(["admin_like", "ops_manager", "ops_
   if (dup) {
     return res.status(400).json({ error: `This would duplicate the existing customer "${dup.match.name}" (matched by ${dup.field}) — please merge into that profile instead.` });
   }
-  // Can only move to Active once CR, CL, and EC each have an expiry date filled in — every other
+  // Can only move to Active once CR, CP, and EC each have an expiry date filled in — every other
   // status transition (including moving away from Active) is unrestricted.
   if (b.status === "Active") {
     const docs = await query("SELECT type, expiry FROM customer_docs WHERE customer_id = ? AND type IN (?,?,?)", [req.params.id, ...COMPULSORY_KYC_DOC_TYPES]);
@@ -120,6 +123,8 @@ router.patch("/:id", requireRoleOrModuleEdit(["admin_like", "ops_manager", "ops_
   if (b.address !== undefined) { fields.push("address = ?"); params.push(b.address || null); }
   if (b.companySize !== undefined) { fields.push("company_size = ?"); params.push(b.companySize || null); }
   if (b.status !== undefined) { fields.push("status = ?"); params.push(b.status); }
+  // Empty string/null clears the override, reverting to the auto-computed category in GET /.
+  if (b.categoryOverride !== undefined) { fields.push("category_override = ?"); params.push(b.categoryOverride || null); }
   if (fields.length) {
     params.push(req.params.id);
     await query(`UPDATE customers SET ${fields.join(", ")} WHERE id=?`, params);

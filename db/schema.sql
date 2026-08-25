@@ -290,12 +290,17 @@ CREATE TABLE IF NOT EXISTS customers (
   email        VARCHAR(190),
   address      VARCHAR(500),
   company_size ENUM('Up to 10 Employees','Up to 30 Employees','Up to 100 Employees','Up to 200 Employees'),
-  -- Can only become 'Active' once this customer's CR, CL, and EC documents (customer_docs.type)
+  -- Can only become 'Active' once this customer's CR, CP, and EC documents (customer_docs.type)
   -- each have an expiry date filled in — enforced in PATCH /:id, not here, since a DB constraint
   -- can't see across tables. Every existing customer starts Pending regardless of how complete
   -- their KYC already looked under the old free-text document types (see the one-off backfill
-  -- that normalized historical type spellings to the canonical CR/CL/EC before this shipped).
+  -- that normalized historical type spellings to the canonical CR/CP/EC before this shipped).
   status       ENUM('Active','Administrative Block','Scarified/Closed','Pending') NOT NULL DEFAULT 'Pending',
+  -- NULL = auto-computed in GET /customers (does this customer have a Sales Order/Invoice/Job
+  -- Card yet?). Set to either value to manually pin the category regardless of that computation —
+  -- e.g. a customer who should count as a real Address Gateway Customer before the paperwork
+  -- catches up, or the reverse. Cleared back to NULL (resuming auto) via PATCH /:id.
+  category_override ENUM('Address Gateway Customers','Others') NULL DEFAULT NULL,
   -- Who directly added this customer (via the "New customer" button, not via a lead/deal) — the
   -- fallback ownership signal in GET /customers for a customer with no traceable lead/deal, so its
   -- creator doesn't lose visibility of their own record. NULL for customers predating this column,

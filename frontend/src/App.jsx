@@ -4216,13 +4216,13 @@ function CustomersPage({ state, dispatch, role, userId }) {
         </div>
         <div style={{ display:"flex", gap:8 }}>
           <button className="btn btn-sm" onClick={()=>exportCSV("customers-kyc.csv",
-            ["Customer ID","Customer","Category","Type","Contact","Phone","Contact Mobile","Landline","Email","Address","Company Size","Status",
-             "CR Number","CR Expiry","CL Number","CL Expiry","EC Number","EC Expiry","Cloud Folder Link","Created","KYC Status"],
+            ["Customer ID","Customer","Sales Person","Category","Type","Contact","Phone","Contact Mobile","Landline","Email","Address","Company Size","Status",
+             "CR Number","CR Expiry","CP Number","CP Expiry","EC Number","EC Expiry","Cloud Folder Link","Created","KYC Status"],
             filtered.map(c=>{
               const flagged = [...c.docs, ...c.employees.flatMap(e=>e.docs)].filter(d => docState(d.expiry).label !== "Valid").length;
               const doc = (type) => kycDocOf(c, type) || {};
-              return [c.id, c.name, c.category, c.type||"", c.contact||"", c.phone||"", c.contactMobile||"", c.landline||"", c.email||"", c.address||"", c.companySize||"", c.status,
-                doc("CR").number||"", doc("CR").expiry||"", doc("CL").number||"", doc("CL").expiry||"", doc("EC").number||"", doc("EC").expiry||"",
+              return [c.id, c.name, c.salesPerson||"", c.category, c.type||"", c.contact||"", c.phone||"", c.contactMobile||"", c.landline||"", c.email||"", c.address||"", c.companySize||"", c.status,
+                doc("CR").number||"", doc("CR").expiry||"", doc("CP").number||"", doc("CP").expiry||"", doc("EC").number||"", doc("EC").expiry||"",
                 c.cloudLink||"", c.createdAt, flagged>0?`${flagged} flagged`:"Clear"];
             }))}>
             <Download size={13}/> Export
@@ -4253,8 +4253,8 @@ function CustomersPage({ state, dispatch, role, userId }) {
               : <Empty icon={Search} text="No customers match these filters." />
           ) : (
           <div style={{ overflowX:"auto" }}>
-          <table className="agw-table" style={{ minWidth: 1220 }}>
-            <thead><tr><th>Customer</th><th>Category</th><th>Created</th><th>Contact</th><th>Phone</th><th>Email</th><th>Company size</th><th>Status</th><th>CR</th><th>CL</th><th>EC</th><th>KYC</th><th></th></tr></thead>
+          <table className="agw-table" style={{ minWidth: 1360 }}>
+            <thead><tr><th>Customer</th><th>Sales Person</th><th>Category</th><th>Created</th><th>Contact</th><th>Phone</th><th>Email</th><th>Company size</th><th>Status</th><th>CR</th><th>CP</th><th>EC</th><th>KYC</th><th></th></tr></thead>
             <tbody>
               {pg.pageRows.map(c => {
                 const flagged = [...c.docs, ...c.employees.flatMap(e=>e.docs)].filter(d => docState(d.expiry).label !== "Valid").length;
@@ -4263,6 +4263,7 @@ function CustomersPage({ state, dispatch, role, userId }) {
                     <td>{c.name}
                       <div className="mono" style={{fontSize:11,color:"var(--ink-soft)"}}>{c.id}</div>
                     </td>
+                    <td style={{fontSize:12.5}}>{c.salesPerson || "—"}</td>
                     <td><Stamp tone={c.category==="Address Gateway Customers"?"success":"neutral"}>{c.category}</Stamp></td>
                     <td className="mono" style={{fontSize:12}}>{fmtDate(c.createdAt)}</td>
                     <td>{c.contact || "—"}</td>
@@ -4301,6 +4302,7 @@ function CustomersPage({ state, dispatch, role, userId }) {
                   <strong style={{ fontSize: 14.5 }}>{c.name}</strong>
                   <div className="mono" style={{ fontSize:11, color:"var(--ink-soft)" }}>{c.id}</div>
                   <div style={{ fontSize:12, color:"var(--ink-soft)", marginTop:2 }}>{c.contact || "—"} · {c.phone || "no phone on file"}</div>
+                  {c.salesPerson && <div style={{ fontSize:11.5, color:"var(--ink-soft)", marginTop:2 }}>Sales person: {c.salesPerson}</div>}
                   <div style={{ marginTop:6, display:"flex", gap:6, flexWrap:"wrap" }}>
                     {c.companySize && <span className="pill">{c.companySize}</span>}
                     <span className="pill" style={c.category==="Address Gateway Customers"?{background:"var(--success-tint)",color:"var(--success)"}:undefined}>{c.category}</span>
@@ -4501,20 +4503,36 @@ function CustomerDetailModal({ customer: c, state, dispatch, role, userId, onClo
 
       {tab === "profile" && (
       <>
-      {/* Active is only selectable once CR, CL, and EC each have an expiry — mirrors the
+      {/* Active is only selectable once CR, CP, and EC each have an expiry — mirrors the
           server-side check in PATCH /customers/:id (see COMPULSORY_KYC_TYPES). */}
       {(() => {
         const canBeActive = COMPULSORY_KYC_TYPES.every(t => c.docs.some(d => d.type === t && d.expiry));
+        const canEditThese = isAdmin || role==="ops_manager" || role==="ops_member" || role==="pro_head" || role==="pro";
         return (
-          <div className="agw-card" style={{ marginBottom: 16, display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:10 }}>
-            <div>
-              <strong style={{ fontSize:13.5 }}>Company status</strong>
-              {!canBeActive && <div style={{ fontSize:11.5, color:"var(--ink-soft)", marginTop:2 }}>CR, CL, and EC all need an expiry date before this can be set Active.</div>}
+          <div className="agw-card" style={{ marginBottom: 16, display:"flex", flexWrap:"wrap", gap:16 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:10, flex:1, minWidth:260 }}>
+              <div>
+                <strong style={{ fontSize:13.5 }}>Company status</strong>
+                {!canBeActive && <div style={{ fontSize:11.5, color:"var(--ink-soft)", marginTop:2 }}>CR, CP, and EC all need an expiry date before this can be set Active.</div>}
+              </div>
+              <select value={c.status} disabled={!canEditThese}
+                onChange={e=>dispatch({type:"UPDATE_CUSTOMER", id:c.id, payload:{status:e.target.value}})} style={{ maxWidth:220 }}>
+                {CUSTOMER_STATUSES.map(s=><option key={s} value={s} disabled={s==="Active" && !canBeActive && c.status!=="Active"}>{s}</option>)}
+              </select>
             </div>
-            <select value={c.status} disabled={!isAdmin && role!=="ops_manager" && role!=="ops_member" && role!=="pro_head" && role!=="pro"}
-              onChange={e=>dispatch({type:"UPDATE_CUSTOMER", id:c.id, payload:{status:e.target.value}})} style={{ maxWidth:220 }}>
-              {CUSTOMER_STATUSES.map(s=><option key={s} value={s} disabled={s==="Active" && !canBeActive && c.status!=="Active"}>{s}</option>)}
-            </select>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:10, flex:1, minWidth:260, borderLeft:"1px solid var(--hair)", paddingLeft:16 }}>
+              <div>
+                <strong style={{ fontSize:13.5 }}>Category</strong>
+                <div style={{ fontSize:11.5, color:"var(--ink-soft)", marginTop:2 }}>
+                  {c.categoryOverride ? `Manually set to "${c.categoryOverride}".` : "Auto — based on whether a Sales Order, Invoice, or Job Card exists yet."}
+                </div>
+              </div>
+              <select value={c.categoryOverride || ""} disabled={!canEditThese}
+                onChange={e=>dispatch({type:"UPDATE_CUSTOMER", id:c.id, payload:{categoryOverride:e.target.value}})} style={{ maxWidth:260 }}>
+                <option value="">{`Auto (currently: ${c.category})`}</option>
+                {CUSTOMER_CATEGORIES.map(cat=><option key={cat} value={cat}>{cat}</option>)}
+              </select>
+            </div>
           </div>
         );
       })()}
