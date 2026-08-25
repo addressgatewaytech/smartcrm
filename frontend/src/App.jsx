@@ -4163,6 +4163,7 @@ function CustomersPage({ state, dispatch, role, userId }) {
   // Defaults to "Address Gateway Customers" — the KYC list's day-to-day working set — rather than
   // showing every lead/deal/data-entry-only record by default; "All customers" is one click away.
   const [categoryFilter, setCategoryFilter] = useState("Address Gateway Customers");
+  const [salesPersonFilter, setSalesPersonFilter] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [editCustomer, setEditCustomer] = useState(null);
   const [removeCustomer, setRemoveCustomer] = useState(null);
@@ -4181,11 +4182,15 @@ function CustomersPage({ state, dispatch, role, userId }) {
   // exception that sees every customer (also enforced server-side), same as their Job Cards access.
   const visibleCustomers = state.customers;
 
+  // Admin-only — everyone else only ever sees their own customers (scoped server-side in
+  // GET /customers), so a Sales Person filter would just be a list of one.
+  const salesPersonOptions = isAdmin ? [...new Set(visibleCustomers.map(c => c.salesPerson).filter(Boolean))].sort() : [];
+
   const filtered = visibleCustomers.filter(c => {
     const haystack = [c.name, c.contact, c.phone, c.email].filter(Boolean).join(" ").toLowerCase();
     return haystack.includes(query.trim().toLowerCase()) && (!sizeFilter || c.companySize === sizeFilter) && matchesExpiryFilter(c, expiryFilter)
       && (!statusFilter || c.status === statusFilter) && (!letterFilter || c.name.trim().toUpperCase().startsWith(letterFilter))
-      && (!categoryFilter || c.category === categoryFilter);
+      && (!categoryFilter || c.category === categoryFilter) && (!salesPersonFilter || c.salesPerson === salesPersonFilter);
   });
   const pg = usePagination(filtered);
   const kycDocOf = (c, type) => c.docs.find(d => d.type === type);
@@ -4215,6 +4220,12 @@ function CustomersPage({ state, dispatch, role, userId }) {
             <option value="">All customers</option>
             {CUSTOMER_CATEGORIES.map(c=><option key={c} value={c}>{c}</option>)}
           </select>
+          {isAdmin && (
+            <select value={salesPersonFilter} onChange={e=>setSalesPersonFilter(e.target.value)} style={{ maxWidth:200 }}>
+              <option value="">All sales persons</option>
+              {salesPersonOptions.map(sp=><option key={sp} value={sp}>{sp}</option>)}
+            </select>
+          )}
         </div>
         <div style={{ display:"flex", gap:8 }}>
           <button className="btn btn-sm" onClick={()=>exportCSV("customers-kyc.csv",
