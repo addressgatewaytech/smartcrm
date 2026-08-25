@@ -1297,6 +1297,13 @@ export default function App() {
               {isImpersonating() && (
                 <button className="btn btn-sm" style={{ width: "100%", marginTop: 8, justifyContent: "center" }} onClick={returnToMyAccount}>Return to my account</button>
               )}
+              {/* This user's own Google Drive folder (set on their HR Profile) — one click away
+                  from wherever they are in the app, instead of hunting through HR to find it. */}
+              {viewingUser.cloudLink && (
+                <a href={viewingUser.cloudLink} target="_blank" rel="noreferrer" className="btn btn-sm" style={{ width: "100%", marginTop: 10, justifyContent: "center", textDecoration:"none" }}>
+                  <Link2 size={13} style={{marginRight:6}}/> My Google Drive
+                </a>
+              )}
               <button className="btn btn-sm" style={{ width: "100%", marginTop: 10, justifyContent: "center" }} onClick={handleLogout}>Log out</button>
             </div>
           )}
@@ -1424,6 +1431,11 @@ export default function App() {
               )}
               {isImpersonating() && (
                 <button className="btn btn-sm" style={{ width: "100%", marginTop: 8, justifyContent: "center" }} onClick={returnToMyAccount}>Return to my account</button>
+              )}
+              {viewingUser.cloudLink && (
+                <a href={viewingUser.cloudLink} target="_blank" rel="noreferrer" className="btn btn-sm" style={{ width: "100%", marginTop: 10, justifyContent: "center", textDecoration:"none" }}>
+                  <Link2 size={13} style={{marginRight:6}}/> My Google Drive
+                </a>
               )}
               <button className="btn btn-sm" style={{ width: "100%", marginTop: 10, justifyContent: "center" }} onClick={() => { handleLogout(); setShowMore(false); }}>Log out</button>
             </div>
