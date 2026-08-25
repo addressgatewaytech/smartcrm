@@ -301,6 +301,11 @@ CREATE TABLE IF NOT EXISTS customers (
   -- e.g. a customer who should count as a real Address Gateway Customer before the paperwork
   -- catches up, or the reverse. Cleared back to NULL (resuming auto) via PATCH /:id.
   category_override ENUM('Address Gateway Customers','Others') NULL DEFAULT NULL,
+  -- NULL = auto-computed in GET /customers (most recent lead's owner, falling back to most recent
+  -- deal, falling back to created_by — see ownerFor there). Set to a users.id to manually reassign
+  -- the Sales Person shown/exported regardless of that computation. Cleared back to NULL (resuming
+  -- auto) via PATCH /:id.
+  sales_person_override VARCHAR(20) NULL,
   -- Who directly added this customer (via the "New customer" button, not via a lead/deal) — the
   -- fallback ownership signal in GET /customers for a customer with no traceable lead/deal, so its
   -- creator doesn't lose visibility of their own record. NULL for customers predating this column,
@@ -311,7 +316,8 @@ CREATE TABLE IF NOT EXISTS customers (
   -- re-pasting a different file link for every single document instead of one folder link.
   cloud_link   VARCHAR(500) NULL,
   created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (sales_person_override) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS customer_docs (

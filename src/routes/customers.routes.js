@@ -70,7 +70,9 @@ router.get("/", async (req, res) => {
     // A manual category_override always wins over the computed value — see the column comment
     // in schema.sql.
     category: c.category_override || (confirmedIds.has(c.id) ? "Address Gateway Customers" : "Others"),
-    salesPerson: users.find((u) => u.id === ownerFor(c))?.name || null,
+    // A manual sales_person_override always wins over the computed owner — same pattern as
+    // category_override above.
+    salesPerson: users.find((u) => u.id === (c.sales_person_override || ownerFor(c)))?.name || null,
     docs: docs.filter((d) => d.customer_id === c.id),
     employees: staff.filter((s) => s.customer_id === c.id).map((s) => ({ ...s, docs: staffDocs.filter((d) => d.customer_staff_id === s.id) })),
   })));
@@ -125,6 +127,8 @@ router.patch("/:id", requireRoleOrModuleEdit(["admin_like", "ops_manager", "ops_
   if (b.status !== undefined) { fields.push("status = ?"); params.push(b.status); }
   // Empty string/null clears the override, reverting to the auto-computed category in GET /.
   if (b.categoryOverride !== undefined) { fields.push("category_override = ?"); params.push(b.categoryOverride || null); }
+  // Empty string/null clears the override, reverting to the auto-computed owner in GET /.
+  if (b.salesPersonOverride !== undefined) { fields.push("sales_person_override = ?"); params.push(b.salesPersonOverride || null); }
   if (fields.length) {
     params.push(req.params.id);
     await query(`UPDATE customers SET ${fields.join(", ")} WHERE id=?`, params);

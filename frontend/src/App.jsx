@@ -4533,6 +4533,19 @@ function CustomerDetailModal({ customer: c, state, dispatch, role, userId, onClo
                 {CUSTOMER_CATEGORIES.map(cat=><option key={cat} value={cat}>{cat}</option>)}
               </select>
             </div>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:10, flex:1, minWidth:260, borderLeft:"1px solid var(--hair)", paddingLeft:16 }}>
+              <div>
+                <strong style={{ fontSize:13.5 }}>Sales person</strong>
+                <div style={{ fontSize:11.5, color:"var(--ink-soft)", marginTop:2 }}>
+                  {c.salesPersonOverride ? "Manually assigned." : "Auto — from this customer's most recent lead/deal owner."}
+                </div>
+              </div>
+              <select value={c.salesPersonOverride || ""} disabled={!canEditThese}
+                onChange={e=>dispatch({type:"UPDATE_CUSTOMER", id:c.id, payload:{salesPersonOverride:e.target.value}})} style={{ maxWidth:220 }}>
+                <option value="">{`Auto (currently: ${c.salesPerson || "—"})`}</option>
+                {state.employees.filter(e=>e.active !== false).map(e=><option key={e.id} value={e.id}>{e.name}</option>)}
+              </select>
+            </div>
           </div>
         );
       })()}
