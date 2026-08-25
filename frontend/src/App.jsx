@@ -4349,8 +4349,10 @@ function NewCustomerModal({ dispatch, onClose, onCreated, customer=null }) {
 }
 
 function CustomerDetailModal({ customer: c, state, dispatch, role, userId, onClose }) {
+  const isAdmin = ADMIN_LIKE.includes(role);
   const [tab, setTab] = useState("profile");
   const [creatingDeal, setCreatingDeal] = useState(false);
+  const [merging, setMerging] = useState(false);
   const blankDoc = { type: "Passport", number: "", expiry: daysFromNow(365) };
   const [doc, setDoc] = useState(blankDoc);
   const [docEditingId, setDocEditingId] = useState(null);
@@ -4409,9 +4411,12 @@ function CustomerDetailModal({ customer: c, state, dispatch, role, userId, onClo
         <div style={{ display:"flex", gap:8 }}>
           <button className="btn btn-sm" onClick={()=>setCreatingDeal(true)}><Handshake size={13}/> Create deal</button>
           <button className="btn btn-sm" onClick={()=>setEmailingCustomer(true)}><Mail size={13}/> Email customer</button>
+          {isAdmin && <button className="btn btn-sm" onClick={()=>setMerging(true)}><Users size={13}/> Merge</button>}
         </div>
       </div>
       <div style={{ borderBottom:"1px solid var(--hair)", marginBottom:18 }} />
+
+      {merging && <MergeCustomersModal customer={c} state={state} dispatch={dispatch} onClose={()=>setMerging(false)} onMerged={onClose} />}
 
       {creatingDeal && <NewDealModal state={state} dispatch={dispatch} userId={userId} initialCustomer={c.name} onClose={()=>setCreatingDeal(false)} />}
 
@@ -4547,6 +4552,73 @@ function CustomerDetailModal({ customer: c, state, dispatch, role, userId, onClo
       {removeEmpDoc && <ConfirmModal title={`Remove ${removeEmpDoc.doc.type}?`} body="This document will be removed from the employee's record." onConfirm={()=>dispatch({type:"DELETE_CUSTOMER_EMPLOYEE_DOC", customerId:c.id, employeeId:removeEmpDoc.empId, docId:removeEmpDoc.doc.id})} onClose={()=>setRemoveEmpDoc(null)} />}
       </>
       )}
+    </Modal>
+  );
+}
+
+// Opened from CustomerDetailModal — merges another (duplicate) customer's leads/deals/
+// quotations/sales orders/invoices/job cards/subscriptions/KYC docs/staff/onboarding forms onto
+// `customer`, filling any of `customer`'s own blank profile fields from the other one, then
+// deletes it. `customer` (the one this was opened from) defaults to the side that's kept —
+// swappable, since which record is "the good one" isn't always the one you happened to open.
+function MergeCustomersModal({ customer, state, dispatch, onClose, onMerged }) {
+  const others = state.customers.filter(o => o.id !== customer.id);
+  const [otherId, setOtherId] = useState("");
+  const [keepId, setKeepId] = useState(customer.id);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const other = others.find(o => o.id === otherId);
+  const kept = keepId === customer.id ? customer : other;
+  const merged = keepId === customer.id ? other : customer;
+
+  const handleMerge = async () => {
+    setSaving(true);
+    setError("");
+    try {
+      await dispatch({ type: "MERGE_CUSTOMERS", targetId: kept.id, sourceId: merged.id });
+      onClose();
+      onMerged?.();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't merge — please try again.");
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal title="Merge duplicate customer" sub={`Combine another customer's records into ${customer.name}, or the other way around.`} onClose={onClose} width={520}>
+      <div className="field">
+        <label>Duplicate customer</label>
+        <input list="merge-customer-options" value={other ? other.name : ""} placeholder="Type or pick the duplicate customer"
+          onChange={e => { const match = others.find(o => o.name === e.target.value); setOtherId(match ? match.id : ""); }} />
+        <datalist id="merge-customer-options">{others.map(o => <option key={o.id} value={o.name} />)}</datalist>
+      </div>
+
+      {other && (
+        <>
+          <div className="field">
+            <label>Keep</label>
+            <select value={keepId} onChange={e => setKeepId(e.target.value)}>
+              <option value={customer.id}>{customer.name}</option>
+              <option value={other.id}>{other.name}</option>
+            </select>
+          </div>
+          <div className="side-note" style={{ marginTop: 0 }}>
+            <strong>{kept.name}</strong> is kept. All of <strong>{merged.name}</strong>'s leads, deals, quotations, sales orders,
+            invoices, job cards, subscriptions, KYC documents, and staff records move onto {kept.name}, then {merged.name} is deleted —
+            this can't be undone. Any of {kept.name}'s own profile fields that are already filled in stay as they are; only blank ones
+            get filled from {merged.name}.
+          </div>
+          {error && <div className="side-note" style={{ marginTop: 10, color: "var(--danger)" }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{error}</div>}
+        </>
+      )}
+
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+        <button className="btn" onClick={onClose}>Cancel</button>
+        <button className="btn btn-primary" style={{background:"var(--danger)", borderColor:"var(--danger)"}} disabled={!other || saving} onClick={handleMerge}>
+          {saving ? "Merging…" : `Merge & delete ${merged?.name || ""}`}
+        </button>
+      </div>
     </Modal>
   );
 }

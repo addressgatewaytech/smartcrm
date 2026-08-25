@@ -184,6 +184,9 @@ export function useApiStore(enabled) {
       case "ADD_CUSTOMER": await api.customers.create(action.payload); return refresh(["customers"]);
       case "UPDATE_CUSTOMER": await api.customers.update(action.id, action.payload); return refresh(["customers"]);
       case "DELETE_CUSTOMER": await api.customers.remove(action.id); return refresh(["customers"]);
+      // A merge can move records across every one of these — refresh them all rather than
+      // trying to guess which ones the merged-away customer actually had anything in.
+      case "MERGE_CUSTOMERS": await api.customers.merge(action.targetId, action.sourceId); return refresh(["customers", "leads", "deals", "quotations", "salesOrders", "invoices", "jobCards", "subscriptions"]);
 
       // --- Subscriptions -------------------------------------------------------------------
       case "ADD_SUBSCRIPTION": await api.subscriptions.create(action.payload); return refresh(["subscriptions", "invoices"]);

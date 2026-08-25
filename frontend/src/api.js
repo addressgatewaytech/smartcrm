@@ -185,6 +185,7 @@ export const api = {
     update: (id, payload) => patch(`/customers/${id}`, payload),
     remove: (id) => del(`/customers/${id}`),
     setCloudLink: (id, url) => patch(`/customers/${id}/cloud-link`, { url }),
+    merge: (targetId, sourceId) => post(`/customers/${targetId}/merge`, { sourceId }),
     addDoc: (id, doc) => post(`/customers/${id}/docs`, doc),
     updateDoc: (id, docId, payload) => patch(`/customers/${id}/docs/${docId}`, payload),
     removeDoc: (id, docId) => del(`/customers/${id}/docs/${docId}`),

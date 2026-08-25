@@ -125,6 +125,49 @@ router.delete("/:id", requireRole(["admin_like"]), async (req, res) => {
   res.json({ ok: true });
 });
 
+// Merges `sourceId` into this customer (:id, "target") — moves every lead/deal/quotation/sales
+// order/invoice/job card/subscription/KYC doc/staff record/onboarding form off the source and
+// onto the target (syncing each table's own denormalized customer name-snapshot column exactly
+// like the rename cascade above does), fills any of the target's blank profile fields from the
+// source (never overwrites one already set — this completes the record, it doesn't replace data
+// someone already entered), then deletes the now-empty source. Admin-tier only — same boundary as
+// plain deletion just above, since this ends in one too.
+// Known gap: cheques.party_name is free text with no customer_id FK, so a merge won't rename or
+// move any cheques tied to the source customer's name.
+router.post("/:id/merge", requireRole(["admin_like"]), async (req, res) => {
+  const targetId = req.params.id;
+  const { sourceId } = req.body;
+  if (!sourceId || sourceId === targetId) return res.status(400).json({ error: "A different customer to merge from is required" });
+
+  await withTransaction(async (conn) => {
+    const [[target]] = await conn.execute("SELECT * FROM customers WHERE id = ?", [targetId]);
+    const [[source]] = await conn.execute("SELECT * FROM customers WHERE id = ?", [sourceId]);
+    if (!target) throw Object.assign(new Error("Target customer not found"), { status: 404 });
+    if (!source) throw Object.assign(new Error("Source customer not found"), { status: 404 });
+
+    const fillable = ["type", "contact", "phone", "landline", "contact_mobile", "email", "address", "company_size", "cloud_link"];
+    const filled = fillable.map((col) => target[col] || source[col] || null);
+    await conn.execute(
+      `UPDATE customers SET type=?, contact=?, phone=?, landline=?, contact_mobile=?, email=?, address=?, company_size=?, cloud_link=? WHERE id=?`,
+      [...filled, targetId]
+    );
+
+    await conn.execute("UPDATE leads SET customer_id=?, company=? WHERE customer_id=?", [targetId, target.name, sourceId]);
+    await conn.execute("UPDATE deals SET customer_id=?, customer=? WHERE customer_id=?", [targetId, target.name, sourceId]);
+    await conn.execute("UPDATE quotations SET customer_id=?, customer=? WHERE customer_id=?", [targetId, target.name, sourceId]);
+    await conn.execute("UPDATE sales_orders SET customer_id=?, customer=? WHERE customer_id=?", [targetId, target.name, sourceId]);
+    await conn.execute("UPDATE invoices SET customer_id=?, customer=? WHERE customer_id=?", [targetId, target.name, sourceId]);
+    await conn.execute("UPDATE job_cards SET customer_id=?, customer=? WHERE customer_id=?", [targetId, target.name, sourceId]);
+    await conn.execute("UPDATE customer_subscriptions SET customer_id=?, customer=? WHERE customer_id=?", [targetId, target.name, sourceId]);
+    await conn.execute("UPDATE customer_docs SET customer_id=? WHERE customer_id=?", [targetId, sourceId]);
+    await conn.execute("UPDATE customer_staff SET customer_id=? WHERE customer_id=?", [targetId, sourceId]);
+    await conn.execute("UPDATE onboarding_forms SET customer_id=? WHERE customer_id=?", [targetId, sourceId]);
+
+    await conn.execute("DELETE FROM customers WHERE id=?", [sourceId]);
+  });
+  res.json({ ok: true, targetId });
+});
+
 // --- KYC documents -------------------------------------------------------------------------
 router.post("/:id/docs", async (req, res) => {
   const b = req.body;
