@@ -4207,8 +4207,15 @@ function CustomersPage({ state, dispatch, role, userId }) {
         </div>
         <div style={{ display:"flex", gap:8 }}>
           <button className="btn btn-sm" onClick={()=>exportCSV("customers-kyc.csv",
-            ["Customer","Created","Contact","Phone","Email","Company Size","Status","KYC Status"],
-            filtered.map(c=>{ const flagged = [...c.docs, ...c.employees.flatMap(e=>e.docs)].filter(d => docState(d.expiry).label !== "Valid").length; return [c.name, c.createdAt, c.contact||"", c.phone||"", c.email||"", c.companySize||"", c.status, flagged>0?`${flagged} flagged`:"Clear"]; }))}>
+            ["Customer ID","Customer","Type","Contact","Phone","Contact Mobile","Landline","Email","Address","Company Size","Status",
+             "CR Number","CR Expiry","CL Number","CL Expiry","EC Number","EC Expiry","Cloud Folder Link","Created","KYC Status"],
+            filtered.map(c=>{
+              const flagged = [...c.docs, ...c.employees.flatMap(e=>e.docs)].filter(d => docState(d.expiry).label !== "Valid").length;
+              const doc = (type) => kycDocOf(c, type) || {};
+              return [c.id, c.name, c.type||"", c.contact||"", c.phone||"", c.contactMobile||"", c.landline||"", c.email||"", c.address||"", c.companySize||"", c.status,
+                doc("CR").number||"", doc("CR").expiry||"", doc("CL").number||"", doc("CL").expiry||"", doc("EC").number||"", doc("EC").expiry||"",
+                c.cloudLink||"", c.createdAt, flagged>0?`${flagged} flagged`:"Clear"];
+            }))}>
             <Download size={13}/> Export
           </button>
           {role !== "viewer" && <button className="btn btn-primary" onClick={()=>setShowAdd(true)}><Plus size={15}/> New customer</button>}
@@ -4256,8 +4263,9 @@ function CustomersPage({ state, dispatch, role, userId }) {
                     {COMPULSORY_KYC_TYPES.map(type => {
                       const d = kycDocOf(c, type);
                       const st = d?.expiry ? docState(d.expiry) : { label:"Missing", cls:"stamp-warning" };
-                      return <td key={type} className="mono" style={{fontSize:11.5}} title={d?.expiry ? fmtDate(d.expiry) : "No expiry on file"}>
-                        <Stamp tone={st.cls.replace("stamp-","")}>{d?.expiry ? fmtDate(d.expiry) : st.label}</Stamp>
+                      return <td key={type} style={{fontSize:11.5}}>
+                        <div className="mono">{d?.number || "—"}</div>
+                        <div style={{marginTop:3}}><Stamp tone={st.cls.replace("stamp-","")}>{d?.expiry ? fmtDate(d.expiry) : st.label}</Stamp></div>
                       </td>;
                     })}
                     <td>{flagged > 0 ? <Stamp tone="warning">{flagged} flagged</Stamp> : <Stamp tone="success">Clear</Stamp>}</td>
