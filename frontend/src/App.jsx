@@ -4637,12 +4637,15 @@ function CustomerDetailModal({ customer: c, state, dispatch, role, userId, onClo
 // swappable, since which record is "the good one" isn't always the one you happened to open.
 function MergeCustomersModal({ customer, state, dispatch, onClose, onMerged }) {
   const others = state.customers.filter(o => o.id !== customer.id);
-  const [otherId, setOtherId] = useState("");
+  // Own text state for what's being typed — deriving the input's value from the resolved match
+  // (via otherId) meant every keystroke before a full exact name match snapped it back to empty,
+  // making it impossible to type anything at all.
+  const [otherQuery, setOtherQuery] = useState("");
   const [keepId, setKeepId] = useState(customer.id);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  const other = others.find(o => o.id === otherId);
+  const other = others.find(o => o.name === otherQuery);
   const kept = keepId === customer.id ? customer : other;
   const merged = keepId === customer.id ? other : customer;
 
@@ -4663,8 +4666,8 @@ function MergeCustomersModal({ customer, state, dispatch, onClose, onMerged }) {
     <Modal title="Merge duplicate customer" sub={`Combine another customer's records into ${customer.name}, or the other way around.`} onClose={onClose} width={520}>
       <div className="field">
         <label>Duplicate customer</label>
-        <input list="merge-customer-options" value={other ? other.name : ""} placeholder="Type or pick the duplicate customer"
-          onChange={e => { const match = others.find(o => o.name === e.target.value); setOtherId(match ? match.id : ""); }} />
+        <input list="merge-customer-options" value={otherQuery} placeholder="Type or pick the duplicate customer"
+          onChange={e => setOtherQuery(e.target.value)} />
         <datalist id="merge-customer-options">{others.map(o => <option key={o.id} value={o.name} />)}</datalist>
       </div>
 
