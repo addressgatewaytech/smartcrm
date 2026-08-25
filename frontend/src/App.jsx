@@ -4122,7 +4122,7 @@ function ItemCatalogManager({ catalog, services, dispatch }) {
 // The three compulsory KYC documents (see seedDefaultKycDocs, src/utils/helpers.js) every
 // customer gets seeded with automatically — a customer can only reach Active status once all
 // three have an expiry date filled in (enforced server-side in PATCH /customers/:id).
-const COMPULSORY_KYC_TYPES = ["CR", "CL", "EC"];
+const COMPULSORY_KYC_TYPES = ["CR", "CP", "EC"];
 const CUSTOMER_STATUSES = ["Active", "Administrative Block", "Scarified/Closed", "Pending"];
 // Computed server-side (GET /customers) from whether real business exists yet — a Sales Order,
 // Invoice, or Job Card — not stored, so it can never drift as those get created or removed.
@@ -4313,7 +4313,13 @@ function CustomersPage({ state, dispatch, role, userId }) {
                 </div>
               </div>
               <div style={{ display:"flex", gap:6, marginTop: 12, flexWrap:"wrap" }}>
-                {c.docs.map(d => {
+                {[...c.docs].sort((a,b) => {
+                  const ia = COMPULSORY_KYC_TYPES.indexOf(a.type), ib = COMPULSORY_KYC_TYPES.indexOf(b.type);
+                  if (ia===-1 && ib===-1) return 0;
+                  if (ia===-1) return 1;
+                  if (ib===-1) return -1;
+                  return ia-ib;
+                }).map(d => {
                   const st = d.expiry ? docState(d.expiry) : { label:"Missing" };
                   return <span key={d.id} className="pill" style={{ background: "var(--page)" }}>{d.type}: <span style={{color: st.label==="Valid"?"var(--success)":st.label==="Expired"?"var(--danger)":"var(--warning)"}}>{st.label}</span></span>;
                 })}
@@ -4534,7 +4540,16 @@ function CustomerDetailModal({ customer: c, state, dispatch, role, userId, onClo
       <table className="agw-table">
         <thead><tr><th>Document</th><th>Number</th><th>Expiry</th><th>Status</th><th></th></tr></thead>
         <tbody>
-          {c.docs.map(d => {
+          {/* CR, CP, EC always listed first in that fixed order, then anything else (e.g. "Other"
+              documents) in whatever order they were added — the raw docs array's order isn't
+              guaranteed to match, since it just reflects however the rows happened to be stored. */}
+          {[...c.docs].sort((a,b) => {
+            const ia = COMPULSORY_KYC_TYPES.indexOf(a.type), ib = COMPULSORY_KYC_TYPES.indexOf(b.type);
+            if (ia===-1 && ib===-1) return 0;
+            if (ia===-1) return 1;
+            if (ib===-1) return -1;
+            return ia-ib;
+          }).map(d => {
             // A compulsory type with no expiry yet is a still-empty placeholder, not literally
             // "Expired" — docState(null) would otherwise read that way (day-math against epoch).
             const st = d.expiry ? docState(d.expiry) : { label: "Missing", cls: "stamp-warning" };

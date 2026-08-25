@@ -71,7 +71,7 @@ async function findDuplicateCustomer(query, { name, phone, email }, excludeId = 
 // Card). Every customer gets an empty placeholder row for each the moment it's created, whichever
 // path created it, so there's always something on file to fill in rather than a document that has
 // to be remembered and added by hand later.
-const COMPULSORY_KYC_DOC_TYPES = ["CR", "CL", "EC"];
+const COMPULSORY_KYC_DOC_TYPES = ["CR", "CP", "EC"];
 async function seedDefaultKycDocs(query, customerId) {
   for (const type of COMPULSORY_KYC_DOC_TYPES) {
     await query("INSERT INTO customer_docs (id, customer_id, type, number, expiry, cloud_link) VALUES (?,?,?,NULL,NULL,NULL)", [nextId("DOC"), customerId, type]);
