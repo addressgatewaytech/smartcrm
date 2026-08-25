@@ -4160,7 +4160,9 @@ function CustomersPage({ state, dispatch, role, userId }) {
   const [expiryFilter, setExpiryFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [letterFilter, setLetterFilter] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("");
+  // Defaults to "Address Gateway Customers" — the KYC list's day-to-day working set — rather than
+  // showing every lead/deal/data-entry-only record by default; "All customers" is one click away.
+  const [categoryFilter, setCategoryFilter] = useState("Address Gateway Customers");
   const [showAdd, setShowAdd] = useState(false);
   const [editCustomer, setEditCustomer] = useState(null);
   const [removeCustomer, setRemoveCustomer] = useState(null);
