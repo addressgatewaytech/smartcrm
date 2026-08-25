@@ -4182,9 +4182,10 @@ function CustomersPage({ state, dispatch, role, userId }) {
   // exception that sees every customer (also enforced server-side), same as their Job Cards access.
   const visibleCustomers = state.customers;
 
-  // Admin-only — everyone else only ever sees their own customers (scoped server-side in
-  // GET /customers), so a Sales Person filter would just be a list of one.
-  const salesPersonOptions = isAdmin ? [...new Set(visibleCustomers.map(c => c.salesPerson).filter(Boolean))].sort() : [];
+  // Mirrors GET /customers's own canSeeAll — everyone else only ever sees their own customers
+  // (scoped server-side), so a Sales Person filter would just be a list of one for them.
+  const canSeeAllCustomers = isAdmin || role === "viewer" || role === "sales_manager" || role === "ops_manager" || role === "ops_member" || role === "pro_head" || !!state.myModulePermissions?.customers?.canEdit;
+  const salesPersonOptions = canSeeAllCustomers ? [...new Set(visibleCustomers.map(c => c.salesPerson).filter(Boolean))].sort() : [];
 
   const filtered = visibleCustomers.filter(c => {
     const haystack = [c.name, c.contact, c.phone, c.email].filter(Boolean).join(" ").toLowerCase();
@@ -4220,7 +4221,7 @@ function CustomersPage({ state, dispatch, role, userId }) {
             <option value="">All customers</option>
             {CUSTOMER_CATEGORIES.map(c=><option key={c} value={c}>{c}</option>)}
           </select>
-          {isAdmin && (
+          {canSeeAllCustomers && (
             <select value={salesPersonFilter} onChange={e=>setSalesPersonFilter(e.target.value)} style={{ maxWidth:200 }}>
               <option value="">All sales persons</option>
               {salesPersonOptions.map(sp=><option key={sp} value={sp}>{sp}</option>)}
