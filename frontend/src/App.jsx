@@ -4429,7 +4429,10 @@ function CustomersPage({ state, dispatch, role, userId }) {
       {open && <CustomerDetailModal customer={open} state={state} dispatch={dispatch} role={role} userId={userId} onClose={()=>setOpenId(null)} />}
       {editCustomer && <NewCustomerModal customer={editCustomer} dispatch={dispatch} onClose={()=>setEditCustomer(null)} />}
       {removeCustomer && <ConfirmModal title={`Remove ${removeCustomer.name}?`} body="This deletes the customer profile, their KYC documents, and any employee records on file. This can't be undone." onConfirm={()=>dispatch({type:"DELETE_CUSTOMER", id:removeCustomer.id})} onClose={()=>setRemoveCustomer(null)} />}
-      {showAdd && <NewCustomerModal dispatch={dispatch} onClose={()=>setShowAdd(false)} />}
+      {/* A brand-new customer has no Sales Order/Invoice/Job Card yet, so it computes as "Others" —
+          clearing the category filter on create means it doesn't immediately vanish behind the
+          "Address Gateway Customers" default the moment it's saved. */}
+      {showAdd && <NewCustomerModal dispatch={dispatch} onClose={()=>setShowAdd(false)} onCreated={()=>setCategoryFilter("")} />}
       {showDuplicates && <DuplicateCustomersModal state={state} dispatch={dispatch} onClose={()=>setShowDuplicates(false)} />}
     </div>
   );
