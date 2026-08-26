@@ -4128,6 +4128,82 @@ const CUSTOMER_STATUSES = ["Active", "Administrative Block", "Scarified/Closed",
 // Invoice, or Job Card — not stored, so it can never drift as those get created or removed.
 const CUSTOMER_CATEGORIES = ["Address Gateway Customers", "Others"];
 
+// Approximate-duplicate detection for the "Check duplicates" list below — deliberately looser than
+// the backend's findDuplicateCustomer (which only blocks an exact name/phone/email match at
+// creation time). Two already-existing customers entered by different people rarely match
+// exactly — "Paw Pantry Pet Food" vs "PAW PANTRY PET FOOD TRADING" — so this strips common
+// business-suffix words and scores what's left by edit distance, plus a same-phone/same-email
+// signal for cases where the name was typed completely differently.
+function normalizeForDuplicateMatch(name) {
+  return (name || "")
+    .toLowerCase()
+    .replace(/[.,&()\-_/\\]/g, " ")
+    .replace(/\b(llc|wll|w\s?l\s?l|co|company|trading|services|service|est|establishment|group|international|intl|technologies|technology|tech|solutions|holding|holdings|enterprises|enterprise|for|and|the)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+function levenshteinDistance(a, b) {
+  const m = a.length, n = b.length;
+  if (!m) return n;
+  if (!n) return m;
+  let prev = Array.from({ length: n + 1 }, (_, i) => i);
+  for (let i = 1; i <= m; i++) {
+    const cur = [i];
+    for (let j = 1; j <= n; j++) cur[j] = a[i-1] === b[j-1] ? prev[j-1] : 1 + Math.min(prev[j-1], prev[j], cur[j-1]);
+    prev = cur;
+  }
+  return prev[n];
+}
+function customerNameSimilarity(a, b) {
+  const na = normalizeForDuplicateMatch(a), nb = normalizeForDuplicateMatch(b);
+  if (na.length < 3 || nb.length < 3) return 0;
+  if (na === nb) return 1;
+  return 1 - levenshteinDistance(na, nb) / Math.max(na.length, nb.length);
+}
+const NAME_MATCH_THRESHOLD = 0.82;
+const phoneTail8 = (p) => (p || "").replace(/[^\d]/g, "").slice(-8);
+
+// Groups customers into duplicate clusters (union-find) via name similarity, matching phone
+// (last 8 digits — ignores +974/974/no-prefix inconsistency), or matching email. Only clusters
+// with more than one member are returned, largest first.
+function findDuplicateCustomerGroups(customers) {
+  const n = customers.length;
+  const parent = customers.map((_, i) => i);
+  const find = (i) => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
+  const union = (i, j) => { const ri = find(i), rj = find(j); if (ri !== rj) parent[ri] = rj; };
+  const pairReasons = new Map();
+
+  for (let i = 0; i < n; i++) {
+    const ci = customers[i];
+    const phoneI = phoneTail8(ci.phone);
+    const emailI = (ci.email || "").trim().toLowerCase();
+    for (let j = i + 1; j < n; j++) {
+      const cj = customers[j];
+      let reason = null;
+      const sim = customerNameSimilarity(ci.name, cj.name);
+      if (sim >= NAME_MATCH_THRESHOLD) reason = `Similar name (${Math.round(sim * 100)}% match)`;
+      else if (phoneI.length === 8 && phoneI === phoneTail8(cj.phone)) reason = "Same phone number";
+      else if (emailI && emailI === (cj.email || "").trim().toLowerCase()) reason = "Same email address";
+      if (reason) { union(i, j); pairReasons.set(`${i}-${j}`, reason); }
+    }
+  }
+
+  const groups = new Map();
+  for (let i = 0; i < n; i++) (groups.get(find(i)) || groups.set(find(i), []).get(find(i))).push(i);
+
+  return [...groups.values()]
+    .filter((idxs) => idxs.length > 1)
+    .map((idxs) => {
+      const reasons = new Set();
+      for (let a = 0; a < idxs.length; a++) for (let b = a + 1; b < idxs.length; b++) {
+        const key = pairReasons.get(`${idxs[a]}-${idxs[b]}`);
+        if (key) reasons.add(key);
+      }
+      return { members: idxs.map((i) => customers[i]), reasons: [...reasons] };
+    })
+    .sort((a, b) => b.members.length - a.members.length);
+}
+
 const EXPIRY_FILTERS = [
   { key:"", label:"Any expiry" },
   { key:"expired", label:"Expired" },
@@ -4167,6 +4243,7 @@ function CustomersPage({ state, dispatch, role, userId }) {
   const [showAdd, setShowAdd] = useState(false);
   const [editCustomer, setEditCustomer] = useState(null);
   const [removeCustomer, setRemoveCustomer] = useState(null);
+  const [showDuplicates, setShowDuplicates] = useState(false);
   const isAdmin = ADMIN_LIKE.includes(role);
   // Ops Manager can update a customer's profile alongside Admin-tier (services KYC/onboarding
   // across every client operationally, not just ones they personally sourced) — Delete stays
@@ -4241,6 +4318,7 @@ function CustomersPage({ state, dispatch, role, userId }) {
             }))}>
             <Download size={13}/> Export
           </button>
+          {isAdmin && <button className="btn btn-sm" onClick={()=>setShowDuplicates(true)}><Copy size={13}/> Check duplicates</button>}
           {role !== "viewer" && <button className="btn btn-primary" onClick={()=>setShowAdd(true)}><Plus size={15}/> New customer</button>}
         </div>
       </div>
@@ -4352,6 +4430,7 @@ function CustomersPage({ state, dispatch, role, userId }) {
       {editCustomer && <NewCustomerModal customer={editCustomer} dispatch={dispatch} onClose={()=>setEditCustomer(null)} />}
       {removeCustomer && <ConfirmModal title={`Remove ${removeCustomer.name}?`} body="This deletes the customer profile, their KYC documents, and any employee records on file. This can't be undone." onConfirm={()=>dispatch({type:"DELETE_CUSTOMER", id:removeCustomer.id})} onClose={()=>setRemoveCustomer(null)} />}
       {showAdd && <NewCustomerModal dispatch={dispatch} onClose={()=>setShowAdd(false)} />}
+      {showDuplicates && <DuplicateCustomersModal state={state} dispatch={dispatch} onClose={()=>setShowDuplicates(false)} />}
     </div>
   );
 }
@@ -4716,12 +4795,14 @@ function CustomerDetailModal({ customer: c, state, dispatch, role, userId, onClo
 // `customer`, filling any of `customer`'s own blank profile fields from the other one, then
 // deletes it. `customer` (the one this was opened from) defaults to the side that's kept —
 // swappable, since which record is "the good one" isn't always the one you happened to open.
-function MergeCustomersModal({ customer, state, dispatch, onClose, onMerged }) {
+function MergeCustomersModal({ customer, state, dispatch, onClose, onMerged, initialOtherId }) {
   const others = state.customers.filter(o => o.id !== customer.id);
   // Own text state for what's being typed — deriving the input's value from the resolved match
   // (via otherId) meant every keystroke before a full exact name match snapped it back to empty,
   // making it impossible to type anything at all.
-  const [otherQuery, setOtherQuery] = useState("");
+  // initialOtherId (from the "Check duplicates" list) prefills this with the flagged customer's
+  // name instead of making the admin retype it.
+  const [otherQuery, setOtherQuery] = useState(() => others.find(o => o.id === initialOtherId)?.name || "");
   const [keepId, setKeepId] = useState(customer.id);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -4777,6 +4858,51 @@ function MergeCustomersModal({ customer, state, dispatch, onClose, onMerged }) {
           {saving ? "Merging…" : `Merge & delete ${merged?.name || ""}`}
         </button>
       </div>
+    </Modal>
+  );
+}
+
+// Computed once when the modal opens (not on every CustomersPage render — the O(n²) name-similarity
+// scan is cheap for a few hundred customers but pointless to redo on every keystroke elsewhere).
+function DuplicateCustomersModal({ state, dispatch, onClose }) {
+  const groups = useMemo(() => findDuplicateCustomerGroups(state.customers), [state.customers]);
+  const [mergePair, setMergePair] = useState(null); // { customer, otherId }
+
+  return (
+    <Modal title="Possible duplicate customers" width={720}
+      sub={`${groups.length} group${groups.length!==1?"s":""} found by similar name, phone, or email — review and merge as needed.`}
+      onClose={onClose}>
+      {groups.length === 0 ? (
+        <Empty icon={Copy} text="No likely duplicates found." />
+      ) : (
+        <div style={{ display:"flex", flexDirection:"column", gap:12, maxHeight:"62vh", overflowY:"auto" }}>
+          {groups.map((g, gi) => (
+            <div key={gi} className="agw-card" style={{ padding:12 }}>
+              <div style={{ fontSize:11.5, color:"var(--ink-soft)", marginBottom:8 }}>{g.reasons.join(" · ")}</div>
+              {g.members.map(m => (
+                <div key={m.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:10, padding:"7px 0", borderTop:"1px solid var(--hair)" }}>
+                  <div style={{ minWidth:0 }}>
+                    <div style={{ fontWeight:500, fontSize:13.5 }}>{m.name}</div>
+                    <div style={{ fontSize:11.5, color:"var(--ink-soft)" }}>{[m.phone, m.email, m.category].filter(Boolean).join(" · ") || "—"}</div>
+                  </div>
+                  <button className="btn btn-sm" style={{ flexShrink:0 }}
+                    onClick={()=>setMergePair({ customer: m, otherId: g.members.find(x=>x.id!==m.id)?.id })}>
+                    Review & merge
+                  </button>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {mergePair && (
+        <MergeCustomersModal
+          customer={mergePair.customer} initialOtherId={mergePair.otherId}
+          state={state} dispatch={dispatch}
+          onClose={()=>setMergePair(null)} onMerged={()=>setMergePair(null)}
+        />
+      )}
     </Modal>
   );
 }
