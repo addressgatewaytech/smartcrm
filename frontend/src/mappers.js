@@ -79,6 +79,7 @@ export const mapPayment = (p) => ({ id: p.id, amount: Number(p.amount), mode: p.
 
 export const mapInvoice = (inv) => ({
   id: inv.id, salesOrderId: inv.sales_order_id, subscriptionId: inv.subscription_id, customer: inv.customer,
+  service: inv.service || "",
   feeType: inv.fee_type, amount: Number(inv.amount), professionalFeeAmount: Number(inv.professional_fee_amount ?? inv.amount),
   status: inv.status, dueDate: inv.due_date, createdAt: inv.created_at,
   emailedToClient: !!inv.emailed_to_client, emailedAt: inv.emailed_at, emailCc: inv.email_cc || [],

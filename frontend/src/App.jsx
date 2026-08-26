@@ -5712,7 +5712,7 @@ function InvoicesPage({ state, dispatch, role, highlightId, onHighlightHandled, 
   const isAdmin = ADMIN_LIKE.includes(role);
   const canRecordPayment = isAccountsOrAdmin(role);
   const [query, setQuery] = useState("");
-  const rows = state.invoices.filter(inv => [inv.customer, inv.id].filter(Boolean).join(" ").toLowerCase().includes(query.trim().toLowerCase()));
+  const rows = state.invoices.filter(inv => [inv.customer, inv.id, inv.service].filter(Boolean).join(" ").toLowerCase().includes(query.trim().toLowerCase()));
   const pg = usePagination(rows);
   useEffect(() => {
     if (!highlightId) return;
@@ -5729,15 +5729,15 @@ function InvoicesPage({ state, dispatch, role, highlightId, onHighlightHandled, 
             style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:8, padding:"7px 12px 7px 34px", fontSize:13, background:"var(--surface)" }} />
         </div>
         <button className="btn btn-sm" onClick={()=>exportCSV("invoices.csv",
-          ["Invoice ID","Created","Customer","Fee Type","Amount","Paid","Balance","Due","Status"],
-          rows.map(inv=>{ const paid = inv.payments.reduce((a,p)=>a+p.amount,0); return [inv.id, inv.createdAt, inv.customer, inv.feeType||"Professional Fee", inv.amount, paid, Math.max(0, inv.professionalFeeAmount-paid), inv.dueDate, inv.status]; }))}>
+          ["Invoice ID","Created","Customer","Service","Fee Type","Amount","Paid","Balance","Due","Status"],
+          rows.map(inv=>{ const paid = inv.payments.reduce((a,p)=>a+p.amount,0); return [inv.id, inv.createdAt, inv.customer, inv.service||"", inv.feeType||"Professional Fee", inv.amount, paid, Math.max(0, inv.professionalFeeAmount-paid), inv.dueDate, inv.status]; }))}>
           <Download size={13}/> Export
         </button>
       </div>
       <div className="agw-card" style={{ padding: 0 }}>
         {rows.length === 0 ? <Empty icon={Receipt} text="No invoices yet." /> : (
         <table className="agw-table">
-          <thead><tr><th>Invoice</th><th>Created</th><th>Customer</th><th>Fee type</th><th>Amount</th><th>Paid</th><th>Balance</th><th>Due</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>Invoice</th><th>Created</th><th>Customer</th><th>Service</th><th>Fee type</th><th>Amount</th><th>Paid</th><th>Balance</th><th>Due</th><th>Status</th><th></th></tr></thead>
           <tbody>
             {pg.pageRows.map(inv => {
               const paid = inv.payments.reduce((a,p)=>a+p.amount,0);
@@ -5750,6 +5750,7 @@ function InvoicesPage({ state, dispatch, role, highlightId, onHighlightHandled, 
                   <td className="mono">{inv.id}</td>
                   <td className="mono" style={{fontSize:12}}>{fmtDate(inv.createdAt)}</td>
                   <td>{inv.customer}</td>
+                  <td style={{fontSize:12.5}}>{inv.service || "—"}</td>
                   <td><Stamp tone={inv.feeType==="Government Fee" ? "neutral" : "success"}>{inv.feeType || "Professional Fee"}</Stamp></td>
                   <td className="mono">{money(inv.amount)}</td>
                   <td className="mono">{money(paid)}</td>

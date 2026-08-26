@@ -421,6 +421,10 @@ CREATE TABLE IF NOT EXISTS invoices (
   sales_order_id    VARCHAR(20) NULL,          -- nullable: subscription-generated invoices have no sales order
   subscription_id   VARCHAR(20) NULL,
   customer          VARCHAR(200) NOT NULL,
+  -- Denormalized snapshot, same pattern as `customer` above — copied from sales_orders.service at
+  -- onboard time, or from the subscription's plan_name for a subscription-billed invoice (neither
+  -- has a live row to join back through once created; a sales order/subscription is never renamed).
+  service           VARCHAR(150) NULL,
   fee_type          ENUM('Professional Fee','Government Fee') DEFAULT 'Professional Fee',
   amount            DECIMAL(12,2) NOT NULL,
   professional_fee_amount DECIMAL(12,2) DEFAULT 0,  -- see sales_orders.professional_fee_amount

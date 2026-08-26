@@ -57,8 +57,8 @@ router.post("/:id/onboard", requireRole(["accounts", "admin_like"]), async (req,
 
     const invoiceId = await nextSequentialId(conn, "AGBSIN", "invoice");
     await conn.execute(
-      `INSERT INTO invoices (id, sales_order_id, customer, fee_type, amount, professional_fee_amount, status, due_date, customer_id) VALUES (?,?,?,?,?,?, 'Sent', ?, ?)`,
-      [invoiceId, so.id, so.customer, so.fee_type, so.amount, so.professional_fee_amount, daysFromNow(14), so.customer_id]
+      `INSERT INTO invoices (id, sales_order_id, customer, service, fee_type, amount, professional_fee_amount, status, due_date, customer_id) VALUES (?,?,?,?,?,?,?, 'Sent', ?, ?)`,
+      [invoiceId, so.id, so.customer, so.service, so.fee_type, so.amount, so.professional_fee_amount, daysFromNow(14), so.customer_id]
     );
 
     const jobId = await nextSequentialId(conn, "AGBSJC", "job_card");
