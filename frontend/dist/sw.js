@@ -37,7 +37,16 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // caches.match() resolves to undefined when nothing was ever cached for this URL — true for
+  // almost every request here, since only /assets/* above ever gets cache.put(). Passing that
+  // undefined straight to respondWith() throws "Failed to convert value to 'Response'" inside the
+  // worker, which turns an ordinary failed/aborted fetch (e.g. a request cancelled by navigating
+  // away, or a real network hiccup) into a hard, opaque network-error response instead of letting
+  // the page's own fetch() promise reject normally — Response.error() is the one value
+  // respondWith() always accepts, so the failure surfaces the normal way instead.
   event.respondWith(
-    fetch(event.request).catch(() => caches.match(event.request))
+    fetch(event.request).catch(() =>
+      caches.match(event.request).then((cached) => cached || Response.error())
+    )
   );
 });
