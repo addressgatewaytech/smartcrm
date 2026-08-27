@@ -1561,6 +1561,16 @@ function Dashboard({ state, dispatch, role, userId, setPage }) {
     .filter(x => x.employee)
     .sort((a,b) => b.jobs.length - a.jobs.length);
 
+  // Same model again, for Tasks (the general Tasks module, not Sales Daily Tasks).
+  const [showAllCompletedTasks, setShowAllCompletedTasks] = useState(false);
+  const todayCompletedTasks = state.tasks.filter(t => t.status === "Completed" && completedTodayLog(t));
+  const completedByTaskCompleter = {};
+  todayCompletedTasks.forEach(t => { const by = completedTodayLog(t)?.by; if (by) (completedByTaskCompleter[by] ||= []).push(t); });
+  const completedTaskCompleters = Object.entries(completedByTaskCompleter)
+    .map(([uid, tasks]) => ({ employee: state.employees.find(e=>e.id===uid), tasks }))
+    .filter(x => x.employee)
+    .sort((a,b) => b.tasks.length - a.tasks.length);
+
   // Top customers by Professional Fee business volume within the selected period.
   const byCustomer = {};
   periodQuotes.forEach(q => { byCustomer[q.customer] = (byCustomer[q.customer]||0) + quoteBusinessVolume(q, state.serviceCosts); });
@@ -1900,6 +1910,41 @@ function Dashboard({ state, dispatch, role, userId, setPage }) {
                 <div style={{ fontSize:11.5, color:"var(--ink-soft)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{jobs.map(j=>j.customer).join(", ")}</div>
               </div>
               <Stamp tone="success">{jobs.length}</Stamp>
+            </div>
+          ))}
+        </Modal>
+      )}
+
+      {completedTaskCompleters.length > 0 && (
+        <div className="agw-card" style={{ marginBottom: 20, borderColor: "#BFD9CB" }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 12, flexWrap:"wrap", gap:8 }}>
+            <strong style={{ fontSize: 14 }}>✅ Today's completed tasks</strong>
+            {completedTaskCompleters.length > 3 && <button className="btn btn-sm btn-ghost" onClick={()=>setShowAllCompletedTasks(true)}>View all {todayCompletedTasks.length}</button>}
+          </div>
+          <div style={{ display:"flex", gap:12, flexWrap:"wrap" }}>
+            {completedTaskCompleters.slice(0,3).map(({ employee: e, tasks }) => (
+              <div key={e.id} style={{ display:"flex", alignItems:"center", gap:10, background:"var(--success-tint)", borderRadius:10, padding:"8px 14px 8px 8px", maxWidth:280 }}>
+                {e.photoUrl ? <img src={e.photoUrl} alt={e.name} style={{ width:36, height:36, borderRadius:"50%", objectFit:"cover", flexShrink:0 }} /> : <span className="avatar" style={{ width:36, height:36, flexShrink:0 }}>{e.initials}</span>}
+                <div style={{ minWidth:0 }}>
+                  <div style={{ fontSize:13, fontWeight:600 }}>{e.name} ✅</div>
+                  <div style={{ fontSize:11.5, color:"var(--ink-soft)" }}>{tasks.length} task{tasks.length!==1?"s":""} completed today</div>
+                  <div style={{ fontSize:11.5, color:"var(--ink-soft)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{tasks.map(t=>t.title).join(", ")}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {showAllCompletedTasks && (
+        <Modal title="✅ Today's completed tasks" sub={`${todayCompletedTasks.length} task${todayCompletedTasks.length!==1?"s":""} completed across the team today`} onClose={()=>setShowAllCompletedTasks(false)}>
+          {completedTaskCompleters.map(({ employee: e, tasks }) => (
+            <div key={e.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 0", borderBottom:"1px solid var(--hair)" }}>
+              {e.photoUrl ? <img src={e.photoUrl} alt={e.name} style={{ width:36, height:36, borderRadius:"50%", objectFit:"cover", flexShrink:0 }} /> : <span className="avatar" style={{ width:36, height:36, flexShrink:0 }}>{e.initials}</span>}
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontSize:13, fontWeight:600 }}>{e.name} ✅</div>
+                <div style={{ fontSize:11.5, color:"var(--ink-soft)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{tasks.map(t=>t.title).join(", ")}</div>
+              </div>
+              <Stamp tone="success">{tasks.length}</Stamp>
             </div>
           ))}
         </Modal>
