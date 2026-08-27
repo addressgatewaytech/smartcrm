@@ -9,7 +9,7 @@ import {
   UserPlus, ShieldCheck, Ban, Clock, ArrowRight, Search, Mail, Phone,
   BadgeCheck, CalendarClock, Briefcase, Copy, Files, Link2, Pencil, Trash2, Repeat, BarChart3, Download, MoreHorizontal, ChevronsLeft, ChevronsRight, Camera, Star,
   Database, Upload, MessageCircle, ArchiveX, ShieldAlert, Settings as SettingsIcon,
-  Sun, Moon, BookOpen, Award, Landmark
+  Sun, Moon, BookOpen, Award, Landmark, Presentation, ExternalLink, KeyRound
 } from "lucide-react";
 import { money, fmtDate, fmtDateDMY, Stamp, statusTone, Rail, DonutChart, LineChart, BarChart, SalesPersonBars, ProgressRing, progressColor, Modal, Empty, ConfirmModal, RowActions, exportCSV, usePagination, PaginationBar, TableScrollHint, useConfirm, ADMIN_LIKE, ROLE_LABEL, isSalesRole, isAssignable } from "./ui.jsx";
 import { todayStr as salesTaskToday, firstOfWeekStr, firstOfMonthStr, userTaskSnapshot, dailyCompletionColor } from "./salesTasksHelpers";
@@ -811,6 +811,9 @@ const NAV = [
   { group: "Operations", items: [
     { key: "jobs", label: "Job Cards", icon: ClipboardList, roles: [...ADMIN_LIKE,"ops_manager","ops_member","accounts","sales_manager","sales_exec","pro_head","pro"] },
     { key: "tasks", label: "Tasks", icon: ListChecks, roles: "all" },
+    // Smart Slide is a separate, external tool (slides.gatewaysmart.com) — this is just a launcher
+    // card, not an embedded page, since the CRM has no way to authenticate into it directly.
+    { key: "smartSlide", label: "Smart Slide", icon: Presentation, roles: "all" },
   ]},
   { group: "Subscriptions", items: [
     { key: "subscriptions", label: "Subscriptions", icon: Repeat, roles: [...ADMIN_LIKE,"sales_manager","sales_exec","accounts"] },
@@ -1379,6 +1382,7 @@ export default function App() {
             {page === "companyFinance" && <CompanyFinancePage {...ctx} />}
             {page === "jobs" && <JobsPage {...ctx} highlightId={highlightJobCardId} onHighlightHandled={()=>setHighlightJobCardId(null)} />}
             {page === "tasks" && <TasksPage {...ctx} />}
+            {page === "smartSlide" && <SmartSlidePage />}
             {page === "incentives" && <IncentivesPage {...ctx} />}
             {page === "hr" && <HrPage {...ctx} />}
             {page === "attendance" && <AttendancePage {...ctx} />}
@@ -7459,6 +7463,43 @@ const KB_SECTIONS = [
   { id: "kb-quotation-tutorial", label: "Tutorial: How to make a quotation" },
   { id: "kb-onboarding-sop", label: "SOP: Client Onboarding Process" },
 ];
+
+// Smart Slide is a separate hosted tool (slides.gatewaysmart.com), not part of this app — this is
+// just a launcher card with both links and the login instructions, same pattern as any other
+// external-tool shortcut would need since the CRM has no way to embed or authenticate into it.
+function SmartSlidePage() {
+  return (
+    <div>
+      <div className="agw-card" style={{ marginBottom: 18 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
+          <Presentation size={18} />
+          <strong style={{ fontSize:15.5 }}>Smart Slide</strong>
+        </div>
+        <div style={{ fontSize:13, color:"var(--ink-soft)", lineHeight:1.6, marginBottom:16 }}>
+          Slide viewer and slide management, hosted separately at slides.gatewaysmart.com — opens in a new tab.
+        </div>
+        <div style={{ display:"flex", gap:10, flexWrap:"wrap", marginBottom:16 }}>
+          <a href="https://slides.gatewaysmart.com/" target="_blank" rel="noopener noreferrer"
+            className="btn btn-primary" style={{ textDecoration:"none" }}>
+            <Presentation size={15}/> Open Smart Slide<ExternalLink size={13} style={{marginLeft:2}}/>
+          </a>
+          <a href="https://slides.gatewaysmart.com/admin.php" target="_blank" rel="noopener noreferrer"
+            className="btn" style={{ textDecoration:"none" }}>
+            <SettingsIcon size={15}/> Slide Management (Admin)<ExternalLink size={13} style={{marginLeft:2}}/>
+          </a>
+        </div>
+        <div className="side-note" style={{ marginTop:0, display:"flex", gap:8, alignItems:"flex-start" }}>
+          <KeyRound size={14} style={{ flexShrink:0, marginTop:1 }} />
+          <div>
+            <strong style={{ color:"var(--ink)" }}>Logging in to Slide Management:</strong> the one-time
+            passcode (OTP) is sent to the admin, not to you directly — request access from the admin and
+            they'll pass you the code to complete sign-in.
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function KnowledgeBasePage() {
   const goTo = (id) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
