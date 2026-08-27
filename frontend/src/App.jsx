@@ -1878,11 +1878,12 @@ function Dashboard({ state, dispatch, role, userId, setPage }) {
           </div>
           <div style={{ display:"flex", gap:12, flexWrap:"wrap" }}>
             {completedJobCompleters.slice(0,3).map(({ employee: e, jobs }) => (
-              <div key={e.id} style={{ display:"flex", alignItems:"center", gap:10, background:"var(--success-tint)", borderRadius:10, padding:"8px 14px 8px 8px" }}>
-                {e.photoUrl ? <img src={e.photoUrl} alt={e.name} style={{ width:36, height:36, borderRadius:"50%", objectFit:"cover" }} /> : <span className="avatar" style={{ width:36, height:36 }}>{e.initials}</span>}
-                <div>
+              <div key={e.id} style={{ display:"flex", alignItems:"center", gap:10, background:"var(--success-tint)", borderRadius:10, padding:"8px 14px 8px 8px", maxWidth:280 }}>
+                {e.photoUrl ? <img src={e.photoUrl} alt={e.name} style={{ width:36, height:36, borderRadius:"50%", objectFit:"cover", flexShrink:0 }} /> : <span className="avatar" style={{ width:36, height:36, flexShrink:0 }}>{e.initials}</span>}
+                <div style={{ minWidth:0 }}>
                   <div style={{ fontSize:13, fontWeight:600 }}>{e.name} ✅</div>
                   <div style={{ fontSize:11.5, color:"var(--ink-soft)" }}>{jobs.length} job card{jobs.length!==1?"s":""} completed today</div>
+                  <div style={{ fontSize:11.5, color:"var(--ink-soft)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{jobs.map(j=>j.customer).join(", ")}</div>
                 </div>
               </div>
             ))}
