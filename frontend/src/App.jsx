@@ -1130,6 +1130,10 @@ export default function App() {
   const [page, setPage] = useState("dashboard");
   const [showMore, setShowMore] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // Smart Slide is an external tool, not an app page — clicking it opens a small modal with the
+  // links instead of navigating (so it never becomes the "current page" or has its own route).
+  const [showSmartSlideModal, setShowSmartSlideModal] = useState(false);
+  const openNavItem = (key) => key === "smartSlide" ? setShowSmartSlideModal(true) : setPage(key);
 
   // Manual + idle-triggered refresh share this one path so every list page (all fed from the
   // same client-side `state`) gets fresh data without a full page reload.
@@ -1281,7 +1285,7 @@ export default function App() {
               <div key={g.group || g.items[0].key}>
                 {g.group && <div className="agw-nav-group">{g.group}</div>}
                 {g.items.map(item => (
-                  <button key={item.key} className={`agw-nav-item ${page === item.key ? "active" : ""}`} onClick={() => setPage(item.key)} title={sidebarCollapsed ? item.label : undefined}>
+                  <button key={item.key} className={`agw-nav-item ${page === item.key ? "active" : ""}`} onClick={() => openNavItem(item.key)} title={sidebarCollapsed ? item.label : undefined}>
                     <item.icon size={16} />
                     <span className="agw-nav-label">{item.label}</span>
                     {navBadge(item.key) > 0 && <span className="agw-nav-badge">{navBadge(item.key)}</span>}
@@ -1375,7 +1379,6 @@ export default function App() {
             {page === "companyFinance" && <CompanyFinancePage {...ctx} />}
             {page === "jobs" && <JobsPage {...ctx} highlightId={highlightJobCardId} onHighlightHandled={()=>setHighlightJobCardId(null)} />}
             {page === "tasks" && <TasksPage {...ctx} />}
-            {page === "smartSlide" && <SmartSlidePage />}
             {page === "incentives" && <IncentivesPage {...ctx} />}
             {page === "hr" && <HrPage {...ctx} />}
             {page === "attendance" && <AttendancePage {...ctx} />}
@@ -1396,7 +1399,7 @@ export default function App() {
           <LayoutDashboard size={20}/><span>Home</span>
         </button>
         {bottomExtra.map(item => (
-          <button key={item.key} className={`agw-bottom-item ${page===item.key?"active":""}`} onClick={()=>setPage(item.key)}>
+          <button key={item.key} className={`agw-bottom-item ${page===item.key?"active":""}`} onClick={()=>openNavItem(item.key)}>
             <item.icon size={20}/><span>{item.label}</span>
           </button>
         ))}
@@ -1419,7 +1422,7 @@ export default function App() {
                 <div key={g.group || g.items[0].key}>
                   {g.group && <div className="agw-nav-group">{g.group}</div>}
                   {g.items.map(item => (
-                    <button key={item.key} className={`agw-nav-item ${page === item.key ? "active" : ""}`} onClick={() => { setPage(item.key); setShowMore(false); }}>
+                    <button key={item.key} className={`agw-nav-item ${page === item.key ? "active" : ""}`} onClick={() => { openNavItem(item.key); setShowMore(false); }}>
                       <item.icon size={16} />
                       {item.label}
                       {navBadge(item.key) > 0 && <span className="agw-nav-badge">{navBadge(item.key)}</span>}
@@ -1454,6 +1457,7 @@ export default function App() {
           </div>
         </div>
       )}
+      {showSmartSlideModal && <SmartSlideModal onClose={()=>setShowSmartSlideModal(false)} />}
     </div>
   );
 }
@@ -7460,40 +7464,31 @@ const KB_SECTIONS = [
   { id: "kb-onboarding-sop", label: "SOP: Client Onboarding Process" },
 ];
 
-// Smart Slide is a separate hosted tool (slides.gatewaysmart.com), not part of this app — this is
-// just a launcher card with both links and the login instructions, same pattern as any other
-// external-tool shortcut would need since the CRM has no way to embed or authenticate into it.
-function SmartSlidePage() {
+// Smart Slide is a separate hosted tool (slides.gatewaysmart.com), not part of this app — a small
+// modal with both links and the login instructions, rather than a full app page/route, since
+// there's nothing to embed or authenticate into here.
+function SmartSlideModal({ onClose }) {
   return (
-    <div>
-      <div className="agw-card" style={{ marginBottom: 18 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
-          <Presentation size={18} />
-          <strong style={{ fontSize:15.5 }}>Smart Slide</strong>
-        </div>
-        <div style={{ fontSize:13, color:"var(--ink-soft)", lineHeight:1.6, marginBottom:16 }}>
-          Slide viewer and slide management, hosted separately at slides.gatewaysmart.com — opens in a new tab.
-        </div>
-        <div style={{ display:"flex", gap:10, flexWrap:"wrap", marginBottom:16 }}>
-          <a href="https://slides.gatewaysmart.com/" target="_blank" rel="noopener noreferrer"
-            className="btn btn-primary" style={{ textDecoration:"none" }}>
-            <Presentation size={15}/> Open Smart Slide<ExternalLink size={13} style={{marginLeft:2}}/>
-          </a>
-          <a href="https://slides.gatewaysmart.com/admin.php" target="_blank" rel="noopener noreferrer"
-            className="btn" style={{ textDecoration:"none" }}>
-            <SettingsIcon size={15}/> Slide Management (Admin)<ExternalLink size={13} style={{marginLeft:2}}/>
-          </a>
-        </div>
-        <div className="side-note" style={{ marginTop:0, display:"flex", gap:8, alignItems:"flex-start" }}>
-          <KeyRound size={14} style={{ flexShrink:0, marginTop:1 }} />
-          <div>
-            <strong style={{ color:"var(--ink)" }}>Logging in to Slide Management:</strong> the one-time
-            passcode (OTP) is sent to the admin, not to you directly — request access from the admin and
-            they'll pass you the code to complete sign-in.
-          </div>
+    <Modal title="Smart Slide" sub="Slide viewer and slide management, hosted separately at slides.gatewaysmart.com — both open in a new tab." onClose={onClose} width={460}>
+      <div style={{ display:"flex", gap:10, flexWrap:"wrap", marginBottom:16 }}>
+        <a href="https://slides.gatewaysmart.com/" target="_blank" rel="noopener noreferrer"
+          className="btn btn-primary" style={{ textDecoration:"none" }}>
+          <Presentation size={15}/> Open Smart Slide<ExternalLink size={13} style={{marginLeft:2}}/>
+        </a>
+        <a href="https://slides.gatewaysmart.com/admin.php" target="_blank" rel="noopener noreferrer"
+          className="btn" style={{ textDecoration:"none" }}>
+          <SettingsIcon size={15}/> Slide Management (Admin)<ExternalLink size={13} style={{marginLeft:2}}/>
+        </a>
+      </div>
+      <div className="side-note" style={{ marginTop:0, display:"flex", gap:8, alignItems:"flex-start" }}>
+        <KeyRound size={14} style={{ flexShrink:0, marginTop:1 }} />
+        <div>
+          <strong style={{ color:"var(--ink)" }}>Logging in to Slide Management:</strong> the one-time
+          passcode (OTP) is sent to the admin, not to you directly — request access from the admin and
+          they'll pass you the code to complete sign-in.
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 
