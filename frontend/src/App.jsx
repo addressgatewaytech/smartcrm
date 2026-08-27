@@ -1548,6 +1548,19 @@ function Dashboard({ state, dispatch, role, userId, setPage }) {
     .filter(x => x.employee)
     .sort((a,b) => b.deals.length - a.deals.length);
 
+  // Same model as today's closed deals above, but for Job Cards — a job card has no single
+  // completedAt column (unlike a deal's wonAt), so "today" and "who" are read off its own
+  // statusLog: the most recent 'Completed' entry stamped today, and whoever performed it.
+  const [showAllCompletedJobs, setShowAllCompletedJobs] = useState(false);
+  const completedTodayLog = (j) => [...(j.statusLog || [])].reverse().find(s => s.status === "Completed" && (s.at || "").slice(0,10) === today);
+  const todayCompletedJobs = state.jobCards.filter(j => j.status === "Completed" && completedTodayLog(j));
+  const completedByCompleter = {};
+  todayCompletedJobs.forEach(j => { const by = completedTodayLog(j)?.by; if (by) (completedByCompleter[by] ||= []).push(j); });
+  const completedJobCompleters = Object.entries(completedByCompleter)
+    .map(([uid, jobs]) => ({ employee: state.employees.find(e=>e.id===uid), jobs }))
+    .filter(x => x.employee)
+    .sort((a,b) => b.jobs.length - a.jobs.length);
+
   // Top customers by Professional Fee business volume within the selected period.
   const byCustomer = {};
   periodQuotes.forEach(q => { byCustomer[q.customer] = (byCustomer[q.customer]||0) + quoteBusinessVolume(q, state.serviceCosts); });
@@ -1852,6 +1865,40 @@ function Dashboard({ state, dispatch, role, userId, setPage }) {
                 <div style={{ fontSize:11.5, color:"var(--ink-soft)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{deals.map(d=>d.customer).join(", ")}</div>
               </div>
               <Stamp tone="success">{deals.length}</Stamp>
+            </div>
+          ))}
+        </Modal>
+      )}
+
+      {completedJobCompleters.length > 0 && (
+        <div className="agw-card" style={{ marginBottom: 20, borderColor: "#BFD9CB" }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 12, flexWrap:"wrap", gap:8 }}>
+            <strong style={{ fontSize: 14 }}>✅ Today's completed job cards</strong>
+            {completedJobCompleters.length > 3 && <button className="btn btn-sm btn-ghost" onClick={()=>setShowAllCompletedJobs(true)}>View all {todayCompletedJobs.length}</button>}
+          </div>
+          <div style={{ display:"flex", gap:12, flexWrap:"wrap" }}>
+            {completedJobCompleters.slice(0,3).map(({ employee: e, jobs }) => (
+              <div key={e.id} style={{ display:"flex", alignItems:"center", gap:10, background:"var(--success-tint)", borderRadius:10, padding:"8px 14px 8px 8px" }}>
+                {e.photoUrl ? <img src={e.photoUrl} alt={e.name} style={{ width:36, height:36, borderRadius:"50%", objectFit:"cover" }} /> : <span className="avatar" style={{ width:36, height:36 }}>{e.initials}</span>}
+                <div>
+                  <div style={{ fontSize:13, fontWeight:600 }}>{e.name} ✅</div>
+                  <div style={{ fontSize:11.5, color:"var(--ink-soft)" }}>{jobs.length} job card{jobs.length!==1?"s":""} completed today</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {showAllCompletedJobs && (
+        <Modal title="✅ Today's completed job cards" sub={`${todayCompletedJobs.length} job card${todayCompletedJobs.length!==1?"s":""} completed across the team today`} onClose={()=>setShowAllCompletedJobs(false)}>
+          {completedJobCompleters.map(({ employee: e, jobs }) => (
+            <div key={e.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 0", borderBottom:"1px solid var(--hair)" }}>
+              {e.photoUrl ? <img src={e.photoUrl} alt={e.name} style={{ width:36, height:36, borderRadius:"50%", objectFit:"cover", flexShrink:0 }} /> : <span className="avatar" style={{ width:36, height:36, flexShrink:0 }}>{e.initials}</span>}
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontSize:13, fontWeight:600 }}>{e.name} ✅</div>
+                <div style={{ fontSize:11.5, color:"var(--ink-soft)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{jobs.map(j=>j.customer).join(", ")}</div>
+              </div>
+              <Stamp tone="success">{jobs.length}</Stamp>
             </div>
           ))}
         </Modal>
