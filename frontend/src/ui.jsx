@@ -34,11 +34,24 @@ export const ADMIN_LIKE = ["super_admin", "admin", "admin_exec"];
 // re-derived independently in three places (App.jsx Dashboard, tasks.jsx, salesDailyTasks.jsx).
 export const isSalesRole = (role) => ADMIN_LIKE.includes(role) || role === "sales_manager" || role === "sales_exec";
 
-// Whether an employee can be handed a lead/task/job card/data record — active, not tagged
-// "Management" (oversees/approves work rather than being handed it directly), and not a "viewer"
-// (holds no operational role at all). Previously duplicated inline in ~5 assignment-pool filters
-// across App.jsx, tasks.jsx, and leadAssignment.jsx.
-export const isAssignable = (employee) => employee.active !== false && employee.category !== "Management" && !(employee.roles || []).includes("viewer");
+// Roles that mean someone still personally carries a working caseload — used below to exempt a
+// Sales/Ops Manager or PRO Head from the "Management" HR-category exclusion even though that
+// category is meant for people who oversee/approve work rather than being handed it directly.
+// Several people (e.g. an Ops Manager, or a Sales Exec also tagged Admin) are "Management" tier
+// for pay/reporting purposes but still need to show up in assignment pools.
+const OPERATIONAL_ROLES = ["sales_manager", "sales_exec", "ops_manager", "ops_member", "pro_head", "pro"];
+
+// Whether an employee can be handed a lead/task/job card/data record — active, not a "viewer"
+// (holds no operational role at all), and not tagged "Management" unless they also hold one of
+// the operational roles above. Previously duplicated inline in ~5 assignment-pool filters across
+// App.jsx, tasks.jsx, and leadAssignment.jsx.
+export const isAssignable = (employee) => {
+  if (employee.active === false) return false;
+  const roles = employee.roles || [];
+  if (roles.includes("viewer")) return false;
+  if (employee.category === "Management" && !roles.some((r) => OPERATIONAL_ROLES.includes(r))) return false;
+  return true;
+};
 
 // Client-side pagination for a list page's already-filtered `rows` array. Callers slice their
 // own render with `pageRows` and drop <PaginationBar {...pagination} /> below the table — every
