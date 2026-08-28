@@ -5783,7 +5783,19 @@ function OrdersPage({ state, dispatch, role, highlightId, onHighlightHandled, se
   const [pdfSo, setPdfSo] = useState(null);
   const [query, setQuery] = useState("");
   const [onboardingId, setOnboardingId] = useState(null);
-  const rows = state.salesOrders.filter(so => [so.customer, so.id, so.service].filter(Boolean).join(" ").toLowerCase().includes(query.trim().toLowerCase()));
+  // Same filter set as Quotations/Customers & KYC — period, Sales Person, plus this page's own
+  // Fee Type/Status columns.
+  const { period, setPeriod, customFrom, setCustomFrom, customTo, setCustomTo, range } = usePeriod("all");
+  const [salesPersonFilter, setSalesPersonFilter] = useState("");
+  const [feeTypeFilter, setFeeTypeFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const periodFiltered = state.salesOrders.filter(so => inRange(so.createdAt, range));
+  const salesPersonOptions = [...new Set(periodFiltered.map(so => so.salesPerson).filter(Boolean))].sort();
+  const rows = periodFiltered
+    .filter(so => !salesPersonFilter || so.salesPerson === salesPersonFilter)
+    .filter(so => !feeTypeFilter || (so.feeType || "Professional Fee") === feeTypeFilter)
+    .filter(so => !statusFilter || (isOnboarded(so.id) ? "Onboarded" : "Pending onboarding") === statusFilter)
+    .filter(so => [so.customer, so.id, so.service].filter(Boolean).join(" ").toLowerCase().includes(query.trim().toLowerCase()));
   const pg = usePagination(rows);
   useEffect(() => {
     if (!highlightId) return;
@@ -5792,17 +5804,36 @@ function OrdersPage({ state, dispatch, role, highlightId, onHighlightHandled, se
   }, [highlightId, rows.length]);
   return (
     <div>
-      <div style={{ display:"flex", justifyContent:"flex-end", marginBottom: 14, gap:8 }}>
-        <div style={{ position:"relative", maxWidth: 260, flex:1 }}>
-          <Search size={15} style={{ position:"absolute", left:12, top:9, color:"var(--ink-soft)" }} />
-          <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search sales orders"
-            style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:8, padding:"7px 12px 7px 34px", fontSize:13, background:"var(--surface)" }} />
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 14, flexWrap:"wrap", gap:8 }}>
+        <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
+          <PeriodFilter period={period} setPeriod={setPeriod} customFrom={customFrom} setCustomFrom={setCustomFrom} customTo={customTo} setCustomTo={setCustomTo} />
+          <select value={salesPersonFilter} onChange={e=>setSalesPersonFilter(e.target.value)} style={{ maxWidth:190 }}>
+            <option value="">All sales persons</option>
+            {salesPersonOptions.map(sp=><option key={sp} value={sp}>{sp}</option>)}
+          </select>
+          <select value={feeTypeFilter} onChange={e=>setFeeTypeFilter(e.target.value)} style={{ maxWidth:170 }}>
+            <option value="">All fee types</option>
+            <option value="Professional Fee">Professional Fee</option>
+            <option value="Government Fee">Government Fee</option>
+          </select>
+          <select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)} style={{ maxWidth:190 }}>
+            <option value="">All statuses</option>
+            <option value="Onboarded">Onboarded</option>
+            <option value="Pending onboarding">Pending onboarding</option>
+          </select>
         </div>
-        <button className="btn btn-sm" onClick={()=>exportCSV("sales-orders.csv",
-          ["Order ID","Created","Customer","Sales Person","Service","Fee Type","Amount (QAR)","Status"],
-          rows.map(so=>[so.id, so.createdAt, so.customer, so.salesPerson||"", so.service, so.feeType||"Professional Fee", so.amount, isOnboarded(so.id)?"Onboarded":"Pending onboarding"]))}>
-          <Download size={13}/> Export
-        </button>
+        <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+          <div style={{ position:"relative", maxWidth: 260, flex:1 }}>
+            <Search size={15} style={{ position:"absolute", left:12, top:9, color:"var(--ink-soft)" }} />
+            <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search sales orders"
+              style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:8, padding:"7px 12px 7px 34px", fontSize:13, background:"var(--surface)" }} />
+          </div>
+          <button className="btn btn-sm" onClick={()=>exportCSV("sales-orders.csv",
+            ["Order ID","Created","Customer","Sales Person","Service","Fee Type","Amount (QAR)","Status"],
+            rows.map(so=>[so.id, so.createdAt, so.customer, so.salesPerson||"", so.service, so.feeType||"Professional Fee", so.amount, isOnboarded(so.id)?"Onboarded":"Pending onboarding"]))}>
+            <Download size={13}/> Export
+          </button>
+        </div>
       </div>
       <div className="agw-card" style={{ padding: 0 }}>
       {rows.length === 0 ? <Empty icon={ShoppingCart} text="No sales orders yet — approve a quotation to create one." /> : (
@@ -5980,7 +6011,19 @@ function InvoicesPage({ state, dispatch, role, highlightId, onHighlightHandled, 
   const isAdmin = ADMIN_LIKE.includes(role);
   const canRecordPayment = isAccountsOrAdmin(role);
   const [query, setQuery] = useState("");
-  const rows = state.invoices.filter(inv => [inv.customer, inv.id, inv.service].filter(Boolean).join(" ").toLowerCase().includes(query.trim().toLowerCase()));
+  // Same filter set as Quotations/Customers & KYC — period, Sales Person, plus this page's own
+  // Fee Type/Status columns.
+  const { period, setPeriod, customFrom, setCustomFrom, customTo, setCustomTo, range } = usePeriod("all");
+  const [salesPersonFilter, setSalesPersonFilter] = useState("");
+  const [feeTypeFilter, setFeeTypeFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const periodFiltered = state.invoices.filter(inv => inRange(inv.createdAt, range));
+  const salesPersonOptions = [...new Set(periodFiltered.map(inv => inv.salesPerson).filter(Boolean))].sort();
+  const rows = periodFiltered
+    .filter(inv => !salesPersonFilter || inv.salesPerson === salesPersonFilter)
+    .filter(inv => !feeTypeFilter || (inv.feeType || "Professional Fee") === feeTypeFilter)
+    .filter(inv => !statusFilter || inv.status === statusFilter)
+    .filter(inv => [inv.customer, inv.id, inv.service].filter(Boolean).join(" ").toLowerCase().includes(query.trim().toLowerCase()));
   const pg = usePagination(rows);
   useEffect(() => {
     if (!highlightId) return;
@@ -5990,17 +6033,35 @@ function InvoicesPage({ state, dispatch, role, highlightId, onHighlightHandled, 
 
   return (
     <div>
-      <div style={{ display:"flex", justifyContent:"flex-end", marginBottom: 14, gap:8 }}>
-        <div style={{ position:"relative", maxWidth: 260, flex:1 }}>
-          <Search size={15} style={{ position:"absolute", left:12, top:9, color:"var(--ink-soft)" }} />
-          <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search invoices"
-            style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:8, padding:"7px 12px 7px 34px", fontSize:13, background:"var(--surface)" }} />
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 14, flexWrap:"wrap", gap:8 }}>
+        <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
+          <PeriodFilter period={period} setPeriod={setPeriod} customFrom={customFrom} setCustomFrom={setCustomFrom} customTo={customTo} setCustomTo={setCustomTo} />
+          <select value={salesPersonFilter} onChange={e=>setSalesPersonFilter(e.target.value)} style={{ maxWidth:190 }}>
+            <option value="">All sales persons</option>
+            {salesPersonOptions.map(sp=><option key={sp} value={sp}>{sp}</option>)}
+          </select>
+          <select value={feeTypeFilter} onChange={e=>setFeeTypeFilter(e.target.value)} style={{ maxWidth:170 }}>
+            <option value="">All fee types</option>
+            <option value="Professional Fee">Professional Fee</option>
+            <option value="Government Fee">Government Fee</option>
+          </select>
+          <select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)} style={{ maxWidth:170 }}>
+            <option value="">All statuses</option>
+            {["Sent","Partially Paid","Paid","Overdue"].map(s=><option key={s} value={s}>{s}</option>)}
+          </select>
         </div>
-        <button className="btn btn-sm" onClick={()=>exportCSV("invoices.csv",
-          ["Invoice ID","Created","Customer","Sales Person","Service","Fee Type","Amount","Paid","Balance","Due","Status"],
-          rows.map(inv=>{ const paid = inv.payments.reduce((a,p)=>a+p.amount,0); return [inv.id, inv.createdAt, inv.customer, inv.salesPerson||"", inv.service||"", inv.feeType||"Professional Fee", inv.amount, paid, Math.max(0, inv.professionalFeeAmount-paid), inv.dueDate, inv.status]; }))}>
-          <Download size={13}/> Export
-        </button>
+        <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+          <div style={{ position:"relative", maxWidth: 260, flex:1 }}>
+            <Search size={15} style={{ position:"absolute", left:12, top:9, color:"var(--ink-soft)" }} />
+            <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search invoices"
+              style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:8, padding:"7px 12px 7px 34px", fontSize:13, background:"var(--surface)" }} />
+          </div>
+          <button className="btn btn-sm" onClick={()=>exportCSV("invoices.csv",
+            ["Invoice ID","Created","Customer","Sales Person","Service","Fee Type","Amount","Paid","Balance","Due","Status"],
+            rows.map(inv=>{ const paid = inv.payments.reduce((a,p)=>a+p.amount,0); return [inv.id, inv.createdAt, inv.customer, inv.salesPerson||"", inv.service||"", inv.feeType||"Professional Fee", inv.amount, paid, Math.max(0, inv.professionalFeeAmount-paid), inv.dueDate, inv.status]; }))}>
+            <Download size={13}/> Export
+          </button>
+        </div>
       </div>
       <div className="agw-card" style={{ padding: 0 }}>
         {rows.length === 0 ? <Empty icon={Receipt} text="No invoices yet." /> : (
