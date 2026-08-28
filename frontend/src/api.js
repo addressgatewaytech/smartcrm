@@ -154,6 +154,7 @@ export const api = {
   salesOrders: {
     list: () => get("/sales-orders"),
     onboard: (id) => post(`/sales-orders/${id}/onboard`),
+    update: (id, payload) => patch(`/sales-orders/${id}`, payload),
     remove: (id) => del(`/sales-orders/${id}`),
     // Same reasoning as quotations.downloadPdf: needs the Bearer auth header a plain <a href>
     // can't send, so fetch as a blob and let the caller turn it into a download.
@@ -170,6 +171,7 @@ export const api = {
     recordPayment: (id, amount, mode, paidAt) => post(`/invoices/${id}/payments`, { amount, mode, paidAt }),
     removePayment: (id, paymentId) => del(`/invoices/${id}/payments/${paymentId}`),
     markEmailed: (id, cc) => post(`/invoices/${id}/emailed`, { cc }),
+    update: (id, payload) => patch(`/invoices/${id}`, payload),
     remove: (id) => del(`/invoices/${id}`),
     downloadPdf: async (id) => {
       const headers = {};

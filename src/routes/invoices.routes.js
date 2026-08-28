@@ -107,6 +107,16 @@ router.post("/:id/emailed", async (req, res) => {
   res.json({ ok: true });
 });
 
+// Backdating — Accounts/Admin correcting the recorded date to match when the invoice actually
+// happened (e.g. entering an older paper record, or fixing a data-entry mistake), same reasoning
+// as this invoice's own payments' paidAt override.
+router.patch("/:id", requireRole(["accounts", "admin_like"]), async (req, res) => {
+  const { createdAt } = req.body;
+  if (!createdAt) return res.status(400).json({ error: "createdAt is required" });
+  await query("UPDATE invoices SET created_at = ? WHERE id = ?", [createdAt, req.params.id]);
+  res.json({ ok: true });
+});
+
 // Admin-only cleanup path for mistaken/test invoices — payments cascade automatically (see schema.sql).
 router.delete("/:id", requireRole(["admin_like"]), async (req, res) => {
   await query("DELETE FROM invoices WHERE id = ?", [req.params.id]);

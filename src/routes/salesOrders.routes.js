@@ -82,6 +82,16 @@ router.post("/:id/onboard", requireRole(["accounts", "admin_like"]), async (req,
   res.status(201).json(result);
 });
 
+// Backdating — Accounts/Admin correcting the recorded date to match when the order actually
+// happened (e.g. entering an older paper record, or fixing a data-entry mistake), same reasoning
+// as invoice payments' own paidAt override.
+router.patch("/:id", requireRole(["accounts", "admin_like"]), async (req, res) => {
+  const { createdAt } = req.body;
+  if (!createdAt) return res.status(400).json({ error: "createdAt is required" });
+  await query("UPDATE sales_orders SET created_at = ? WHERE id = ?", [createdAt, req.params.id]);
+  res.json({ ok: true });
+});
+
 // Admin-only cleanup path for mistaken/test sales orders. Invoices and job cards referencing this
 // order have ON DELETE SET NULL foreign keys (see schema.sql), so they're kept, just unlinked —
 // this only removes the sales order itself, not everything downstream of it.

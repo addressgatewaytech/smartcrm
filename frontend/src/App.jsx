@@ -773,6 +773,44 @@ function CopyButton({ value }) {
   );
 }
 
+// Inline-editable "Created" date for a Sales Order/Invoice list row — Accounts/Admin correcting
+// the recorded date to match when it actually happened (an older paper record entered late, or a
+// data-entry mistake), same reasoning as invoice payments' own paidAt override. Click-to-edit
+// rather than always showing an input, so everyone else's read-only view stays a plain date.
+function EditableCreatedDate({ value, canEdit, onSave }) {
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState((value || "").slice(0, 10));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  if (!editing) {
+    return (
+      <span className="mono" style={{ fontSize: 12, display: "inline-flex", alignItems: "center", gap: 4 }}>
+        {fmtDate(value)}
+        {canEdit && (
+          <button type="button" className="btn btn-sm btn-ghost" title="Edit created date" style={{ padding: 2 }}
+            onClick={(e) => { e.stopPropagation(); setVal((value || "").slice(0, 10)); setError(""); setEditing(true); }}>
+            <Pencil size={11} />
+          </button>
+        )}
+      </span>
+    );
+  }
+  return (
+    <span onClick={(e) => e.stopPropagation()} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+      <input type="date" value={val} onChange={(e) => setVal(e.target.value)} style={{ fontSize: 12, padding: "3px 5px", width: 128 }} />
+      <button type="button" className="btn btn-sm" disabled={!val || saving} title="Save" onClick={async () => {
+        setSaving(true); setError("");
+        try { await onSave(val); setEditing(false); }
+        catch (err) { setError(err instanceof ApiError ? err.message : "Couldn't save — please try again."); }
+        finally { setSaving(false); }
+      }}><Check size={12} /></button>
+      <button type="button" className="btn btn-sm btn-ghost" title="Cancel" onClick={() => setEditing(false)}><X size={12} /></button>
+      {error && <span style={{ color: "var(--danger)", fontSize: 11 }}>{error}</span>}
+    </span>
+  );
+}
+
 // A quotation's customer name, clickable through to that customer's profile card — matched by
 // name since quotations only store the customer as a text snapshot (same lookup used elsewhere,
 // e.g. QuoteDetailModal's customerEmail). Falls back to plain text if no matching customer record
@@ -5779,7 +5817,10 @@ function OrdersPage({ state, dispatch, role, highlightId, onHighlightHandled, se
               style={isHighlighted ? { background:"var(--gold-tint)", boxShadow:"inset 3px 0 0 var(--gold)" } : undefined}
               onClick={isHighlighted ? () => onHighlightHandled?.() : undefined}>
               <td className="mono">{so.id}</td>
-              <td className="mono" style={{fontSize:12}}>{fmtDate(so.createdAt)}</td>
+              <td>
+                <EditableCreatedDate value={so.createdAt} canEdit={canOnboard}
+                  onSave={(createdAt) => dispatch({ type: "UPDATE_SALES_ORDER", id: so.id, payload: { createdAt } })} />
+              </td>
               <td>{so.customer}</td>
               <td style={{fontSize:12.5}}>{so.salesPerson || "—"}</td>
               <td style={{maxWidth:200}}>{so.service}{so.packageTier && <span className="pill" style={{ marginLeft:6, background:"var(--gold-tint)", color:"var(--gold-dark)", fontSize:10 }}>{so.packageTier}</span>}</td>
@@ -5975,7 +6016,10 @@ function InvoicesPage({ state, dispatch, role, highlightId, onHighlightHandled, 
                   style={isHighlighted ? { background:"var(--gold-tint)", boxShadow:"inset 3px 0 0 var(--gold)" } : undefined}
                   onClick={isHighlighted ? () => onHighlightHandled?.() : undefined}>
                   <td className="mono">{inv.id}</td>
-                  <td className="mono" style={{fontSize:12}}>{fmtDate(inv.createdAt)}</td>
+                  <td>
+                    <EditableCreatedDate value={inv.createdAt} canEdit={canRecordPayment}
+                      onSave={(createdAt) => dispatch({ type: "UPDATE_INVOICE", id: inv.id, payload: { createdAt } })} />
+                  </td>
                   <td>{inv.customer}</td>
                   <td style={{fontSize:12.5}}>{inv.salesPerson || "—"}</td>
                   <td style={{fontSize:12.5}}>{inv.service || "—"}</td>
