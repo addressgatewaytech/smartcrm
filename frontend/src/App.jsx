@@ -5761,15 +5761,15 @@ function OrdersPage({ state, dispatch, role, highlightId, onHighlightHandled, se
             style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:8, padding:"7px 12px 7px 34px", fontSize:13, background:"var(--surface)" }} />
         </div>
         <button className="btn btn-sm" onClick={()=>exportCSV("sales-orders.csv",
-          ["Order ID","Created","Customer","Service","Fee Type","Amount (QAR)","Status"],
-          rows.map(so=>[so.id, so.createdAt, so.customer, so.service, so.feeType||"Professional Fee", so.amount, isOnboarded(so.id)?"Onboarded":"Pending onboarding"]))}>
+          ["Order ID","Created","Customer","Sales Person","Service","Fee Type","Amount (QAR)","Status"],
+          rows.map(so=>[so.id, so.createdAt, so.customer, so.salesPerson||"", so.service, so.feeType||"Professional Fee", so.amount, isOnboarded(so.id)?"Onboarded":"Pending onboarding"]))}>
           <Download size={13}/> Export
         </button>
       </div>
       <div className="agw-card" style={{ padding: 0 }}>
       {rows.length === 0 ? <Empty icon={ShoppingCart} text="No sales orders yet — approve a quotation to create one." /> : (
       <table className="agw-table">
-        <thead><tr><th>Order</th><th>Created</th><th>Customer</th><th>Service</th><th>Fee type</th><th>Amount (QAR)</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th>Order</th><th>Created</th><th>Customer</th><th>Sales person</th><th>Service</th><th>Fee type</th><th>Amount (QAR)</th><th>Status</th><th></th></tr></thead>
         <tbody>
           {pg.pageRows.map(so => {
             const onboarded = isOnboarded(so.id);
@@ -5781,6 +5781,7 @@ function OrdersPage({ state, dispatch, role, highlightId, onHighlightHandled, se
               <td className="mono">{so.id}</td>
               <td className="mono" style={{fontSize:12}}>{fmtDate(so.createdAt)}</td>
               <td>{so.customer}</td>
+              <td style={{fontSize:12.5}}>{so.salesPerson || "—"}</td>
               <td style={{maxWidth:200}}>{so.service}{so.packageTier && <span className="pill" style={{ marginLeft:6, background:"var(--gold-tint)", color:"var(--gold-dark)", fontSize:10 }}>{so.packageTier}</span>}</td>
               <td><Stamp tone={so.feeType==="Government Fee" ? "neutral" : "success"}>{so.feeType || "Professional Fee"}</Stamp></td>
               <td className="mono">{money(so.amount)}</td>
@@ -5955,15 +5956,15 @@ function InvoicesPage({ state, dispatch, role, highlightId, onHighlightHandled, 
             style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:8, padding:"7px 12px 7px 34px", fontSize:13, background:"var(--surface)" }} />
         </div>
         <button className="btn btn-sm" onClick={()=>exportCSV("invoices.csv",
-          ["Invoice ID","Created","Customer","Service","Fee Type","Amount","Paid","Balance","Due","Status"],
-          rows.map(inv=>{ const paid = inv.payments.reduce((a,p)=>a+p.amount,0); return [inv.id, inv.createdAt, inv.customer, inv.service||"", inv.feeType||"Professional Fee", inv.amount, paid, Math.max(0, inv.professionalFeeAmount-paid), inv.dueDate, inv.status]; }))}>
+          ["Invoice ID","Created","Customer","Sales Person","Service","Fee Type","Amount","Paid","Balance","Due","Status"],
+          rows.map(inv=>{ const paid = inv.payments.reduce((a,p)=>a+p.amount,0); return [inv.id, inv.createdAt, inv.customer, inv.salesPerson||"", inv.service||"", inv.feeType||"Professional Fee", inv.amount, paid, Math.max(0, inv.professionalFeeAmount-paid), inv.dueDate, inv.status]; }))}>
           <Download size={13}/> Export
         </button>
       </div>
       <div className="agw-card" style={{ padding: 0 }}>
         {rows.length === 0 ? <Empty icon={Receipt} text="No invoices yet." /> : (
         <table className="agw-table">
-          <thead><tr><th>Invoice</th><th>Created</th><th>Customer</th><th>Service</th><th>Fee type</th><th>Amount</th><th>Paid</th><th>Balance</th><th>Due</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>Invoice</th><th>Created</th><th>Customer</th><th>Sales person</th><th>Service</th><th>Fee type</th><th>Amount</th><th>Paid</th><th>Balance</th><th>Due</th><th>Status</th><th></th></tr></thead>
           <tbody>
             {pg.pageRows.map(inv => {
               const paid = inv.payments.reduce((a,p)=>a+p.amount,0);
@@ -5976,6 +5977,7 @@ function InvoicesPage({ state, dispatch, role, highlightId, onHighlightHandled, 
                   <td className="mono">{inv.id}</td>
                   <td className="mono" style={{fontSize:12}}>{fmtDate(inv.createdAt)}</td>
                   <td>{inv.customer}</td>
+                  <td style={{fontSize:12.5}}>{inv.salesPerson || "—"}</td>
                   <td style={{fontSize:12.5}}>{inv.service || "—"}</td>
                   <td><Stamp tone={inv.feeType==="Government Fee" ? "neutral" : "success"}>{inv.feeType || "Professional Fee"}</Stamp></td>
                   <td className="mono">{money(inv.amount)}</td>

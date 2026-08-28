@@ -21,16 +21,25 @@ router.use(requireAuth);
 // whose customer it actually was.
 router.get("/", async (req, res) => {
   const canSeeAll = isAdminLike(req.user.roles) || req.user.roles.includes("viewer") || req.user.roles.includes("sales_manager") || req.user.roles.includes("ops_manager") || req.user.roles.includes("accounts");
+  // Needed for Sales Person resolution below regardless of scoping branch, and reused by the
+  // non-canSeeAll branch's own visibility trace (sales_order_id -> quotation_id -> owner, falling
+  // back to the invoiced customer's most recent deal owner for subscription-billed invoices).
+  const salesOrders = await query("SELECT id, quotation_id FROM sales_orders");
+  const quotations = await query("SELECT id, owner FROM quotations");
+  const deals = await query("SELECT customer, owner FROM deals ORDER BY created_at DESC");
+  const users = await query("SELECT id, name FROM users");
+  const dealOwnerFor = (customerName) => deals.find((d) => d.customer === customerName)?.owner || null;
+  const ownerForInvoice = (inv) => {
+    const so = salesOrders.find((s) => s.id === inv.sales_order_id);
+    if (so) return quotations.find((q) => q.id === so.quotation_id)?.owner || null;
+    return dealOwnerFor(inv.customer);
+  };
+
   let invoices;
   if (canSeeAll) {
     invoices = await query("SELECT * FROM invoices ORDER BY created_at DESC");
   } else {
-    const rows = await query(
-      `SELECT inv.*, q.owner AS quotation_owner FROM invoices inv
-       LEFT JOIN sales_orders so ON so.id = inv.sales_order_id
-       LEFT JOIN quotations q ON q.id = so.quotation_id
-       ORDER BY inv.created_at DESC`
-    );
+    const rows = await query("SELECT * FROM invoices ORDER BY created_at DESC");
     const assignedSalesOrderIds = new Set(
       (await query(
         `SELECT DISTINCT jc.sales_order_id FROM job_cards jc
@@ -39,21 +48,14 @@ router.get("/", async (req, res) => {
         [req.user.id]
       )).map((r) => r.sales_order_id)
     );
-    const deals = await query("SELECT customer, owner FROM deals ORDER BY created_at DESC");
-    const dealOwnerFor = (customerName) => deals.find((d) => d.customer === customerName)?.owner || null;
-    invoices = rows
-      .filter((r) =>
-        r.quotation_owner === req.user.id ||
-        assignedSalesOrderIds.has(r.sales_order_id) ||
-        (!r.sales_order_id && dealOwnerFor(r.customer) === req.user.id)
-      )
-      .map(({ quotation_owner, ...rest }) => rest);
+    invoices = rows.filter((r) => ownerForInvoice(r) === req.user.id || assignedSalesOrderIds.has(r.sales_order_id));
   }
   const payments = await query("SELECT * FROM invoice_payments ORDER BY paid_at DESC");
   res.json(invoices.map((inv) => ({
     ...inv,
     email_cc: inv.email_cc || [],
     payments: payments.filter((p) => p.invoice_id === inv.id),
+    salesPerson: users.find((u) => u.id === ownerForInvoice(inv))?.name || null,
   })));
 });
 

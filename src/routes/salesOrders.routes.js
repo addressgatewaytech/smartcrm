@@ -28,7 +28,13 @@ router.get("/", async (req, res) => {
          ORDER BY so.created_at DESC`,
         [req.user.id, req.user.id]
       );
-  res.json(rows);
+  // Sales Person for the list/export — the owner of the quotation this order was converted from.
+  const quotations = await query("SELECT id, owner FROM quotations");
+  const users = await query("SELECT id, name FROM users");
+  res.json(rows.map((so) => ({
+    ...so,
+    salesPerson: users.find((u) => u.id === quotations.find((q) => q.id === so.quotation_id)?.owner)?.name || null,
+  })));
 });
 
 // Real server-side A4 PDF (PDFKit), same pattern as quotations' /:id/pdf. The sales order itself

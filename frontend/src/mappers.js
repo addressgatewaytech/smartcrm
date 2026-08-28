@@ -73,6 +73,7 @@ export const mapSalesOrder = (so) => ({
   id: so.id, quotationId: so.quotation_id, customer: so.customer, service: so.service,
   feeType: so.fee_type, amount: Number(so.amount), professionalFeeAmount: Number(so.professional_fee_amount ?? so.amount),
   orderDiscount: Number(so.order_discount || 0), packageTier: so.package_tier || "", createdAt: so.created_at, customerId: so.customer_id,
+  salesPerson: so.salesPerson || "",
 });
 
 export const mapPayment = (p) => ({ id: p.id, amount: Number(p.amount), mode: p.mode, date: p.paid_at, by: p.recorded_by });
@@ -84,6 +85,7 @@ export const mapInvoice = (inv) => ({
   status: inv.status, dueDate: inv.due_date, createdAt: inv.created_at,
   emailedToClient: !!inv.emailed_to_client, emailedAt: inv.emailed_at, emailCc: inv.email_cc || [],
   payments: (inv.payments || []).map(mapPayment), customerId: inv.customer_id,
+  salesPerson: inv.salesPerson || "",
 });
 
 export const mapStatusLogEntry = (l) => ({ status: l.status, at: l.at, by: l.by_user, note: l.note });
