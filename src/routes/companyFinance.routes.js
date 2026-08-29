@@ -101,6 +101,7 @@ router.patch("/software-subscriptions/:id", requireRole(["admin_like", "accounts
   if (b.paymentMethod !== undefined) { fields.push("payment_method = ?"); params.push(b.paymentMethod || null); }
   if (b.notes !== undefined) { fields.push("notes = ?"); params.push(b.notes || null); }
   if (b.status !== undefined) { fields.push("status = ?"); params.push(b.status); }
+  if (b.emailNotify !== undefined) { fields.push("email_notify = ?"); params.push(b.emailNotify ? 1 : 0); }
   if (b.renewalDate !== undefined) { fields.push("renewal_date = ?"); params.push(b.renewalDate); fields.push("reminder_notified = 0"); }
   if (!fields.length) return res.status(400).json({ error: "Nothing to update" });
   params.push(req.params.id);

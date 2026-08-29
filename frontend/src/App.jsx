@@ -9,7 +9,7 @@ import {
   UserPlus, ShieldCheck, Ban, Clock, ArrowRight, Search, Mail, Phone,
   BadgeCheck, CalendarClock, Briefcase, Copy, Files, Link2, Pencil, Trash2, Repeat, BarChart3, Download, MoreHorizontal, ChevronsLeft, ChevronsRight, Camera, Star,
   Database, Upload, MessageCircle, ArchiveX, ShieldAlert, Settings as SettingsIcon,
-  Sun, Moon, BookOpen, Award, Landmark, Presentation, ExternalLink, KeyRound
+  Sun, Moon, BookOpen, Award, Landmark, Presentation, ExternalLink, KeyRound, BellOff
 } from "lucide-react";
 import { money, fmtDate, fmtDateDMY, Stamp, statusTone, Rail, DonutChart, LineChart, BarChart, SalesPersonBars, ProgressRing, progressColor, Modal, Empty, ConfirmModal, RowActions, exportCSV, usePagination, PaginationBar, TableScrollHint, useConfirm, ADMIN_LIKE, ROLE_LABEL, isSalesRole, isAssignable } from "./ui.jsx";
 import { todayStr as salesTaskToday, firstOfWeekStr, firstOfMonthStr, userTaskSnapshot, dailyCompletionColor } from "./salesTasksHelpers";
@@ -6470,8 +6470,8 @@ function SoftwareSubscriptionsTab({ state, dispatch }) {
       <div className="agw-card" style={{ padding: 0 }}>
         {state.companySoftwareSubscriptions.length === 0 ? <Empty icon={Landmark} text="No software subscriptions tracked yet." /> : (
           <div style={{ overflowX:"auto" }}>
-          <table className="agw-table" style={{ minWidth: 860 }}>
-            <thead><tr><th>Software</th><th>Vendor</th><th>Cost</th><th>Billing cycle</th><th>Renewal date</th><th>Status</th><th></th></tr></thead>
+          <table className="agw-table" style={{ minWidth: 960 }}>
+            <thead><tr><th>Software</th><th>Vendor</th><th>Cost</th><th>Billing cycle</th><th>Renewal date</th><th>Status</th><th>Email reminder</th><th></th></tr></thead>
             <tbody>
               {pg.pageRows.map(s => {
                 const due = dueState(s.renewalDate);
@@ -6483,6 +6483,13 @@ function SoftwareSubscriptionsTab({ state, dispatch }) {
                     <td>{s.billingCycle}</td>
                     <td className="mono" style={{fontSize:12}}>{fmtDate(s.renewalDate)}</td>
                     <td><Stamp tone={s.status==="Cancelled"?"neutral":due.cls.replace("stamp-","")}>{s.status==="Cancelled"?"Cancelled":due.label}</Stamp></td>
+                    <td>
+                      <button type="button" className="btn btn-sm btn-ghost"
+                        title={s.emailNotify ? "Renewal reminder emails Admin/Accounts — click to turn off" : "Renewal reminder emails are off for this one — click to turn on"}
+                        onClick={()=>dispatch({type:"UPDATE_SOFTWARE_SUBSCRIPTION", id:s.id, payload:{emailNotify: !s.emailNotify}})}>
+                        {s.emailNotify ? <Bell size={14} style={{color:"var(--success)"}}/> : <BellOff size={14} style={{color:"var(--ink-soft)"}}/>}
+                      </button>
+                    </td>
                     <td><RowActions onEdit={()=>setEditSub(s)} onRemove={()=>setRemoveSub(s)} /></td>
                   </tr>
                 );
@@ -6511,6 +6518,7 @@ function SoftwareSubscriptionModal({ subscription: s, dispatch, onClose }) {
   const [renewalDate, setRenewalDate] = useState(s?.renewalDate || daysFromNow(30));
   const [paymentMethod, setPaymentMethod] = useState(s?.paymentMethod || "");
   const [notes, setNotes] = useState(s?.notes || "");
+  const [emailNotify, setEmailNotify] = useState(s?.emailNotify !== false);
 
   return (
     <Modal title={s ? `Edit ${s.softwareName}` : "New software subscription"} sub={s ? "Updating the renewal date also resets its reminder." : "Track a company SaaS/tool expense and get reminded before it renews."} onClose={onClose} width={520}>
@@ -6531,10 +6539,14 @@ function SoftwareSubscriptionModal({ subscription: s, dispatch, onClose }) {
         <div className="field"><label>Payment method</label><input value={paymentMethod} onChange={e=>setPaymentMethod(e.target.value)} placeholder="e.g. Company card" /></div>
       </div>
       <div className="field"><label>Notes</label><input value={notes} onChange={e=>setNotes(e.target.value)} /></div>
+      <label style={{ display:"flex", alignItems:"center", gap:8, fontSize:13, cursor:"pointer", marginBottom:4 }}>
+        <input type="checkbox" checked={emailNotify} onChange={e=>setEmailNotify(e.target.checked)} />
+        Email Admin/Accounts when this renewal is due
+      </label>
       <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop: 16 }}>
         <button className="btn" onClick={onClose}>Cancel</button>
         <button className="btn btn-primary" disabled={!softwareName.trim() || !cost || !renewalDate} onClick={()=>{
-          const payload = { softwareName: softwareName.trim(), vendor: vendor.trim()||null, cost: Number(cost), billingCycle, renewalDate, paymentMethod: paymentMethod.trim()||null, notes: notes.trim()||null };
+          const payload = { softwareName: softwareName.trim(), vendor: vendor.trim()||null, cost: Number(cost), billingCycle, renewalDate, paymentMethod: paymentMethod.trim()||null, notes: notes.trim()||null, emailNotify };
           if (s) dispatch({ type:"UPDATE_SOFTWARE_SUBSCRIPTION", id:s.id, payload });
           else dispatch({ type:"ADD_SOFTWARE_SUBSCRIPTION", payload });
           onClose();

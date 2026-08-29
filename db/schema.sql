@@ -483,6 +483,11 @@ CREATE TABLE IF NOT EXISTS company_software_subscriptions (
   payment_method  VARCHAR(50),
   status          ENUM('Active','Cancelled') DEFAULT 'Active',
   reminder_notified TINYINT(1) DEFAULT 0,
+  -- Per-entry opt-out for the renewal-due reminder email (see checkSoftwareRenewals,
+  -- companyFinanceJobs.js) — the in-app notification bell still fires either way; this only
+  -- controls whether that reminder also emails the Admin/Accounts audience. Defaults on, matching
+  -- every existing subscription's current (always-emailed) behavior.
+  email_notify    TINYINT(1) NOT NULL DEFAULT 1,
   notes           VARCHAR(500),
   created_by      VARCHAR(20),
   created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

@@ -162,7 +162,7 @@ export const mapCheque = (c) => ({
 export const mapCompanySoftwareSubscription = (s) => ({
   id: s.id, softwareName: s.software_name, vendor: s.vendor, cost: Number(s.cost),
   billingCycle: s.billing_cycle, renewalDate: s.renewal_date, paymentMethod: s.payment_method,
-  status: s.status, notes: s.notes, createdBy: s.created_by, createdAt: s.created_at,
+  status: s.status, emailNotify: s.email_notify !== 0, notes: s.notes, createdBy: s.created_by, createdAt: s.created_at,
 });
 
 // Backend returns { [service]: {..., order_discount, footer_note} } — one template per service

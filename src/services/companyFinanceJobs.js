@@ -36,7 +36,7 @@ async function checkChequeDeposits() {
 
 async function checkSoftwareRenewals() {
   const due = await query(`
-    SELECT id, software_name, cost, renewal_date FROM company_software_subscriptions
+    SELECT id, software_name, cost, renewal_date, email_notify FROM company_software_subscriptions
     WHERE status = 'Active' AND reminder_notified = 0 AND renewal_date <= CURDATE() + INTERVAL 7 DAY
   `);
   if (!due.length) return 0;
@@ -47,7 +47,9 @@ async function checkSoftwareRenewals() {
     const body = `${s.software_name} — QAR ${s.cost} — renews ${s.renewal_date}`;
     await query("INSERT INTO notifications (id, type, title, body, audience) VALUES (?, 'software_renewal', ?, ?, ?)",
       [nextId("NT"), title, body, JSON.stringify(AUDIENCE_ROLES)]);
-    if (emails.length) await sendMail({ to: emails.join(","), subject: title, text: body });
+    // The in-app bell above always fires — email_notify only opts a specific entry out of the
+    // email, for subscriptions that don't need Admin/Accounts pinged by inbox every renewal.
+    if (emails.length && s.email_notify) await sendMail({ to: emails.join(","), subject: title, text: body });
   }
   return due.length;
 }
