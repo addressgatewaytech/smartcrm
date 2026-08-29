@@ -61,16 +61,18 @@ router.post("/direct", requireRole(["sales_manager", "sales_exec", "ops_manager"
   const [tpl] = await query("SELECT steps FROM checklist_templates WHERE service = ?", [service]);
   const steps = tpl ? tpl.steps : [];
   const checklist = steps.map((label, i) => ({ id: `CI-${i}`, label, done: false }));
-  const { customerId } = await findOrCreateCustomer(query, { name: customer, ownerId: req.user.id });
+  // If this resolves to an existing customer via phone/email (not the typed name), use its real
+  // name for this job card's own `customer` too, instead of leaving the two mismatched.
+  const { customerId, resolvedName } = await findOrCreateCustomer(query, { name: customer, ownerId: req.user.id });
 
   await query(
     `INSERT INTO job_cards (id, customer, service, description, status, priority, target_date, checklist, created_by, customer_id) VALUES (?,?,?,?, 'Pending Approval', 'Normal', ?, ?, ?, ?)`,
-    [id, customer, service, description || null, daysFromNow(7), JSON.stringify(checklist), req.user.id, customerId]
+    [id, resolvedName, service, description || null, daysFromNow(7), JSON.stringify(checklist), req.user.id, customerId]
   );
   await query("INSERT INTO job_card_status_log (job_card_id, status, by_user) VALUES (?, 'Pending Approval', ?)", [id, req.user.id]);
   const audience = await approverAudience("job_card_signoff", ["super_admin", "admin", "admin_exec", "accounts"]);
   await query("INSERT INTO notifications (id, type, title, body, audience) VALUES (?, 'approval', ?, ?, ?)",
-    [nextId("NT"), "Job card awaiting approval", `${id} for ${customer} (${service}) needs Accounts approval before Operations can assign it.`, JSON.stringify(audience)]);
+    [nextId("NT"), "Job card awaiting approval", `${id} for ${resolvedName} (${service}) needs Accounts approval before Operations can assign it.`, JSON.stringify(audience)]);
 
   res.status(201).json({ id });
 });

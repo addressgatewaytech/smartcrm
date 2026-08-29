@@ -97,23 +97,29 @@ router.post("/", async (req, res) => {
   if (!deal) return res.status(404).json({ error: "Deal not found" });
   if (!owner) owner = deal.owner;
   let customerId = deal.customer_id || null;
+  let customerName = b.customer;
   owner = owner || req.user.id;
   // A deal predating customer_id linking resolves/creates its Customer link the same way a lead does.
   if (!customerId) {
-    ({ customerId } = await findOrCreateCustomer(query, { name: b.customer, ownerId: owner }));
+    ({ customerId, resolvedName: customerName } = await findOrCreateCustomer(query, { name: b.customer, ownerId: owner }));
+  } else {
+    // Inherited straight from the deal — use that Customer's actual current name, not whatever
+    // text happened to be typed on the quotation form, so the two can never end up mismatched.
+    const [cust] = await query("SELECT name FROM customers WHERE id = ?", [customerId]);
+    if (cust) customerName = cust.name;
   }
 
   await query(
     `INSERT INTO quotations (id, deal_id, customer, fee_type, theme, subject, items, order_discount, order_discount_type, package_tier, bank, footer_note, notes, terms, status, valid_till, owner, favorite, customer_id)
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?)`,
-    [id, b.dealId || null, b.customer, b.feeType || "Professional Fee", validTheme(b.theme), b.subject || null, JSON.stringify(b.items || []), b.orderDiscount || 0,
+    [id, b.dealId || null, customerName, b.feeType || "Professional Fee", validTheme(b.theme), b.subject || null, JSON.stringify(b.items || []), b.orderDiscount || 0,
       b.orderDiscountType === "percent" ? "percent" : "amount", b.packageTier || null, b.bank || null, b.footerNote || null, b.notes || null, b.terms || null, status, daysFromNow(14), owner, customerId]
   );
   if (b.dealId) {
     await query("UPDATE deals SET stage = 'Quotation Sent' WHERE id = ?", [b.dealId]);
     await syncDealValue(b.dealId);
   }
-  if (status === "Pending Manager Approval") await notifyQuotationApprovers(id, b.customer);
+  if (status === "Pending Manager Approval") await notifyQuotationApprovers(id, customerName);
   res.status(201).json({ id, status });
 });
 
@@ -128,14 +134,19 @@ router.patch("/:id", async (req, res) => {
   // bank/footerNote/theme — customer, feeType and packageTier aren't part of that form, so fall
   // back to the existing row rather than writing a SQL NULL bind error (or silently wiping the
   // package tier) every single save.
-  const customer = b.customer ?? row.customer;
+  let customer = b.customer ?? row.customer;
   const feeType = b.feeType ?? row.fee_type;
   const theme = b.theme !== undefined ? validTheme(b.theme) : row.theme;
   const packageTier = b.packageTier !== undefined ? b.packageTier : row.package_tier;
   const hasDiscount = (b.items || []).some((it) => it.discountPct > 0) || (b.orderDiscount || 0) > 0;
   const newStatus = hasDiscount ? "Pending Manager Approval" : "Draft";
   // Editing the customer name means it may now belong to a different (or new) Customer profile.
-  const customerId = b.customer !== undefined ? (await findOrCreateCustomer(query, { name: customer, ownerId: req.user.id })).customerId : undefined;
+  // If that resolves to an existing customer via phone/email (not the typed name), use its real
+  // name here too, instead of leaving the two mismatched.
+  let customerId;
+  if (b.customer !== undefined) {
+    ({ customerId, resolvedName: customer } = await findOrCreateCustomer(query, { name: customer, ownerId: req.user.id }));
+  }
   await query(
     `UPDATE quotations SET customer=?, fee_type=?, theme=?, subject=?, items=?, order_discount=?, order_discount_type=?, package_tier=?, bank=?, footer_note=?, notes=?, terms=?, status=?${customerId !== undefined ? ", customer_id=?" : ""}
      WHERE id = ?`,
@@ -271,10 +282,15 @@ router.post("/:id/clone", async (req, res) => {
   const [src] = await query("SELECT * FROM quotations WHERE id = ?", [req.params.id]);
   if (!src) return res.status(404).json({ error: "Not found" });
   const id = await withTransaction((conn) => nextSequentialId(conn, "AGBSQS", "quotation"));
-  const customer = req.body.customer || src.customer;
+  let customer = req.body.customer || src.customer;
   const customerChanged = req.body.customer && req.body.customer !== src.customer;
   const dealId = customerChanged ? null : src.deal_id;
-  const customerId = customerChanged ? (await findOrCreateCustomer(query, { name: customer, ownerId: req.user.id })).customerId : src.customer_id;
+  let customerId = src.customer_id;
+  if (customerChanged) {
+    // If this resolves to an existing customer via phone/email (not the typed name), use its
+    // real name for this cloned quotation's own `customer` too, instead of leaving them mismatched.
+    ({ customerId, resolvedName: customer } = await findOrCreateCustomer(query, { name: customer, ownerId: req.user.id }));
+  }
   await query(
     `INSERT INTO quotations (id, deal_id, customer, fee_type, theme, subject, items, order_discount, order_discount_type, package_tier, bank, footer_note, notes, terms, status, valid_till, owner, favorite, customer_id)
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,'Draft',?,?,0,?)`,

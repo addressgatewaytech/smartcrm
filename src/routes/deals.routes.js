@@ -27,20 +27,26 @@ router.post("/", async (req, res) => {
   // directly-created deal (no leadId — "New Deal" modal's free-text/datalist customer field)
   // resolves/creates its own Customer link the same way a lead does.
   let customerId = null;
+  let customerName = b.customer;
   const owner = b.owner || req.user.id;
   if (b.leadId) {
     const [lead] = await query("SELECT customer_id FROM leads WHERE id = ?", [b.leadId]);
     customerId = lead?.customer_id || null;
   }
   if (!customerId) {
-    ({ customerId } = await findOrCreateCustomer(query, { name: b.customer, ownerId: owner }));
+    ({ customerId, resolvedName: customerName } = await findOrCreateCustomer(query, { name: b.customer, ownerId: owner }));
+  } else {
+    // Inherited straight from the lead — use that Customer's actual current name, not whatever
+    // text happened to be in the deal form, so the two can never end up mismatched.
+    const [cust] = await query("SELECT name FROM customers WHERE id = ?", [customerId]);
+    if (cust) customerName = cust.name;
   }
   // value always starts at 0 — it's no longer a manually-typed estimate. It's kept in sync with
   // the deal's latest quotation's real Professional Fee total by quotations.routes.js instead
   // (0 here since a brand-new deal has no quotation yet).
   await query(
     `INSERT INTO deals (id, lead_id, customer, service, value, owner, stage, expected_close, customer_id) VALUES (?,?,?,?,0,?,?,?,?)`,
-    [id, b.leadId || null, b.customer, b.service || null, owner, b.stage || "Open", b.expectedClose || null, customerId]
+    [id, b.leadId || null, customerName, b.service || null, owner, b.stage || "Open", b.expectedClose || null, customerId]
   );
   res.status(201).json({ id });
 });
@@ -64,16 +70,20 @@ router.patch("/:id", async (req, res) => {
   const fields = [];
   const params = [];
   // "value" is deliberately not editable here — it's always synced from the deal's latest
-  // quotation (see quotations.routes.js), never a manually-typed figure.
-  for (const [col, key] of [["customer", "customer"], ["service", "service"], ["stage", "stage"], ["expected_close", "expectedClose"]]) {
+  // quotation (see quotations.routes.js), never a manually-typed figure. "customer" is handled
+  // separately below (needs the resolved/reconciled name, not the raw typed value).
+  for (const [col, key] of [["service", "service"], ["stage", "stage"], ["expected_close", "expectedClose"]]) {
     if (b[key] !== undefined) { fields.push(`${col} = ?`); params.push(b[key]); }
   }
   // Reassigning ownership is an admin-only correction — a sales_exec editing their own deal must
   // never be able to hand it to someone else through this same endpoint.
   if (b.owner !== undefined && isAdminLike(req.user.roles)) { fields.push("owner = ?"); params.push(b.owner); }
   // Editing the customer name means it may now belong to a different (or new) Customer profile.
+  // If that resolves to an existing customer via phone/email (not the typed name), use its real
+  // name for this deal's own `customer` too, instead of leaving the two mismatched.
   if (b.customer !== undefined) {
-    const { customerId } = await findOrCreateCustomer(query, { name: b.customer, ownerId: req.user.id });
+    const { customerId, resolvedName } = await findOrCreateCustomer(query, { name: b.customer, ownerId: req.user.id });
+    fields.push("customer = ?"); params.push(resolvedName);
     fields.push("customer_id = ?"); params.push(customerId);
   }
   // Stamps the moment a deal actually closes — the Dashboard's "today's closed deals" section

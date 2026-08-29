@@ -49,22 +49,25 @@ router.post("/", async (req, res) => {
   const slaDueAt = assignedAt ? nextSlaDeadline(assignedAt) : null;
 
   // Every lead gets a Customer profile from day one — reusing an existing one (matched by
-  // name, or by phone/email under a different name) instead of creating a duplicate, and
-  // persisting the link so this lead's `company` text stays reconciled with that Customer
-  // forever (see customers.routes.js PATCH's rename cascade).
-  const { customerId, duplicateOf } = await findOrCreateCustomer(query, { name: b.company, phone: b.phone, email: b.email, contact: b.name, ownerId: owner });
+  // name, or by phone/email under a different name) instead of creating a duplicate. When the
+  // match came from phone/email (a different name than typed here), resolvedName is that
+  // existing customer's real name — stored as this lead's own `company` immediately, not the
+  // freehand text typed on the form, so the two never sit mismatched until someone notices and
+  // has to reconcile them by hand (see customers.routes.js PATCH's rename cascade for the same
+  // reconciliation on a later customer rename).
+  const { customerId, duplicateOf, resolvedName } = await findOrCreateCustomer(query, { name: b.company, phone: b.phone, email: b.email, contact: b.name, ownerId: owner });
 
   await query(
     `INSERT INTO leads (id, name, company, phone, email, reference, source, service, owner, status, next_follow_up, created_by, assigned_at, sla_due_at, customer_id)
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-    [id, b.name, b.company, b.phone || null, b.email || null, b.reference || null, b.source || null, b.service || null, owner, "New", b.nextFollowUp || null, req.user.id, assignedAt, slaDueAt, customerId]
+    [id, b.name, resolvedName, b.phone || null, b.email || null, b.reference || null, b.source || null, b.service || null, owner, "New", b.nextFollowUp || null, req.user.id, assignedAt, slaDueAt, customerId]
   );
-  await query("INSERT INTO activity_log (text) VALUES (?)", [`New lead ${id} — ${b.company}`]);
+  await query("INSERT INTO activity_log (text) VALUES (?)", [`New lead ${id} — ${resolvedName}`]);
 
   // Data Manager integration: notify if this lead matches an existing outreach data record.
   await checkExistingData({ id, company: b.company, email: b.email, phone: b.phone });
 
-  res.status(201).json({ id, customerId, duplicateOf });
+  res.status(201).json({ id, customerId, duplicateOf, resolvedName });
 });
 
 // A sales_exec (or Ops team member — they now see/manage their own leads too, e.g. one they added
@@ -86,16 +89,21 @@ router.patch("/:id", async (req, res) => {
   const b = req.body;
   const fields = [];
   const params = [];
-  for (const [col, key] of [["name", "name"], ["company", "company"], ["phone", "phone"], ["email", "email"], ["reference", "reference"], ["source", "source"], ["service", "service"], ["status", "status"], ["next_follow_up", "nextFollowUp"]]) {
+  // "company" is handled separately below (it needs the resolved/reconciled name, not the raw
+  // typed value), so it's deliberately excluded from this generic loop.
+  for (const [col, key] of [["name", "name"], ["phone", "phone"], ["email", "email"], ["reference", "reference"], ["source", "source"], ["service", "service"], ["status", "status"], ["next_follow_up", "nextFollowUp"]]) {
     if (b[key] !== undefined) { fields.push(`${col} = ?`); params.push(b[key]); }
   }
   // A changed follow-up date needs its own fresh reminder, not to stay silently "already sent"
   // from whatever the previous date was.
   if (b.nextFollowUp !== undefined) fields.push("follow_up_reminder_sent = 0");
   // Editing the company name means it may now belong to a different (or new) Customer profile —
-  // re-resolve rather than leaving customer_id pointed at the old one.
+  // re-resolve rather than leaving customer_id pointed at the old one. If that re-resolve lands
+  // on an existing customer via phone/email (not the typed name), use its real name for this
+  // lead's own `company` too, instead of leaving the two mismatched.
   if (b.company !== undefined) {
-    const { customerId } = await findOrCreateCustomer(query, { name: b.company, phone: b.phone, email: b.email, ownerId: req.user.id });
+    const { customerId, resolvedName } = await findOrCreateCustomer(query, { name: b.company, phone: b.phone, email: b.email, ownerId: req.user.id });
+    fields.push("company = ?"); params.push(resolvedName);
     fields.push("customer_id = ?"); params.push(customerId);
   }
   if (!fields.length) return res.status(400).json({ error: "Nothing to update" });

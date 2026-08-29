@@ -82,14 +82,19 @@ async function seedDefaultKycDocs(query, customerId) {
  * Resolves the Customer a freehand "customer name" typed on a Lead/Deal/Quotation/Job Card
  * belongs to — reusing another Customer already on file (matched by name, or by phone/email
  * under a different name, via findDuplicateCustomer) rather than creating a duplicate profile;
- * only creates a new Customer when nothing matches. Returns { customerId, duplicateOf } —
- * duplicateOf is set (existing customer name) only when the match came from phone/email, not
- * name, so the caller can surface "this looks like an existing customer" instead of silently
- * merging into it.
+ * only creates a new Customer when nothing matches. Returns { customerId, duplicateOf,
+ * resolvedName } — duplicateOf is set (existing customer name) only when the match came from
+ * phone/email, not name, so the caller can surface "this looks like an existing customer"
+ * instead of silently merging into it. resolvedName is what the caller should actually store in
+ * its own denormalized name/company column: the matched customer's real name on a phone/email
+ * match (so a lead typed "Arjun" that phone-matches an existing "Enova Facilities Management"
+ * customer is saved as "Enova Facilities Management", not left mismatched against the customer
+ * it's actually linked to until someone notices and renames it later), or just `name` unchanged
+ * otherwise.
  */
 async function findOrCreateCustomer(query, { name, phone, email, contact, ownerId }) {
   const dup = await findDuplicateCustomer(query, { name, phone, email });
-  if (dup) return { customerId: dup.match.id, duplicateOf: dup.field === "name" ? null : dup.match.name };
+  if (dup) return { customerId: dup.match.id, duplicateOf: dup.field === "name" ? null : dup.match.name, resolvedName: dup.match.name };
 
   // Branded sequential ID (AGBSCU10100, ...), same format as every other entity — its own short
   // transaction since callers pass the plain `query` function, not a shared connection.
@@ -101,7 +106,7 @@ async function findOrCreateCustomer(query, { name, phone, email, contact, ownerI
   await query("INSERT INTO customers (id, name, type, contact, phone, email, created_by) VALUES (?,?,?,?,?,?,?)",
     [customerId, name, "Company", contact || null, phone || null, email || null, ownerId || null]);
   await seedDefaultKycDocs(query, customerId);
-  return { customerId, duplicateOf: null };
+  return { customerId, duplicateOf: null, resolvedName: name };
 }
 
 /**
