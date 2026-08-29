@@ -816,6 +816,23 @@ CREATE TABLE IF NOT EXISTS app_settings (
   email_notifications_enabled  TINYINT(1) DEFAULT 1
 ) ENGINE=InnoDB;
 
+-- Editable text for every email the app sends or helps a staff member compose — both the fully
+-- automated reminders (cheque_deposit, software_renewal, lead_followup — sent by the cron jobs in
+-- src/services/*.js with no human in the loop) and the staff-composed ones (quotation_email,
+-- customer_email, invoice_email, subscription_renewal — pre-fill a modal/mailto link a person
+-- reviews before sending). subject/body use {{placeholder}} tokens filled in at send time — see
+-- renderTemplate in src/utils/helpers.js and each template row's own `placeholders` list.
+CREATE TABLE IF NOT EXISTS email_templates (
+  template_key VARCHAR(50) PRIMARY KEY,
+  label        VARCHAR(150) NOT NULL,
+  subject      VARCHAR(255) NOT NULL DEFAULT '',
+  body         TEXT NOT NULL,
+  placeholders VARCHAR(500),
+  updated_by   VARCHAR(20),
+  updated_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
 -- Singleton settings row (id always = 1)
 CREATE TABLE IF NOT EXISTS data_settings (
   id                      INT PRIMARY KEY DEFAULT 1,

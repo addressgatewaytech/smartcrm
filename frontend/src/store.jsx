@@ -5,7 +5,7 @@ import {
   mapNotification, mapDataRecord, mapDataSettings, mapDataActivity, mapExportHistoryEntry, mapSubscriptionPlans,
   mapSubscription, mapQuotationTemplates, mapIncentiveRule, mapLeaveRequest, mapPunchRequest, mapAttendance,
   mapAppSettings, mapTask, mapTodo, mapTaskTemplate, mapSalesTaskDef, mapSalesTaskLog, mapItemCatalogEntry,
-  mapCheque, mapCompanySoftwareSubscription,
+  mapCheque, mapCompanySoftwareSubscription, mapEmailTemplate,
 } from "./mappers";
 
 const emptyState = () => ({
@@ -17,6 +17,7 @@ const emptyState = () => ({
   dataRecords: [], dataExportHistory: [], dataUserActivity: [],
   dataSettings: { dailyEmailTarget: 10, dailyWhatsappTarget: 10, dailyCallTarget: 10, emailIntervalMinutes: 5, whatsappIntervalMinutes: 10, recyclingEnabled: true, recyclingDays: 30, emailTemplate: { subject: "", body: "" }, whatsappTemplate: { body: "" } },
   appSettings: { emailNotificationsEnabled: true },
+  emailTemplates: [],
   approvalTypes: [],
   activity: [],
   // The logged-in user's own Module Access grid — {[moduleKey]: {canView,canAdd,canEdit,canDelete}}
@@ -64,6 +65,7 @@ export function useApiStore(enabled) {
       dataSettings: async () => ({ dataSettings: mapDataSettings(await api.dataManager.settings()) }),
       dataUserActivity: async () => ({ dataUserActivity: (await api.dataManager.activity()).map(mapDataActivity) }),
       appSettings: async () => ({ appSettings: mapAppSettings(await api.settings.get()) }),
+      emailTemplates: async () => ({ emailTemplates: (await api.settings.emailTemplates()).map(mapEmailTemplate) }),
       approvalTypes: async () => ({ approvalTypes: await api.approvalWorkflow.types() }),
       myModulePermissions: async () => ({ myModulePermissions: await api.users.myPermissions() }),
     };
@@ -133,6 +135,7 @@ export function useApiStore(enabled) {
       case "LOG_DATA_EXPORT": return refresh(["dataExportHistory"]); // GET /export already logs server-side
       case "UPDATE_DATA_SETTINGS": await api.dataManager.updateSettings(action.payload); return refresh(["dataSettings"]);
       case "UPDATE_APP_SETTINGS": await api.settings.update(action.payload); return refresh(["appSettings"]);
+      case "UPDATE_EMAIL_TEMPLATE": await api.settings.updateEmailTemplate(action.key, action.payload); return refresh(["emailTemplates"]);
 
       // --- Leads ----------------------------------------------------------------------------
       case "ADD_LEAD": { const r = await api.leads.create(action.payload); await refresh(["leads", "notifications", "customers"]); return r; }

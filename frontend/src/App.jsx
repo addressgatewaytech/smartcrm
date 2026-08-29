@@ -551,6 +551,17 @@ const dealOrigin = (state, deal) => leadOrigin(deal?.leadId ? state.leads.find(l
 const quotationOrigin = (state, q) => dealOrigin(state, q?.dealId ? state.deals.find(d => d.id === q.dealId) : null);
 const originTone = (origin) => (origin === ORIGIN_ASSIGNED ? "info" : "neutral");
 const daysFromNow = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0,10); };
+
+// Fills a saved email_templates row's {{placeholder}} tokens for a staff-composed default (see
+// Settings > Email Templates) — mirrors renderTemplate in src/utils/helpers.js. Falls back to
+// `fallback` (the previous hardcoded default) if the template isn't loaded yet or doesn't exist,
+// so the compose modal is never blank while state.emailTemplates is still fetching.
+function emailTemplateFor(state, key, vars, fallback) {
+  const tpl = state?.emailTemplates?.find(t => t.key === key);
+  if (!tpl) return fallback;
+  const render = (str) => (str || "").replace(/\{\{(\w+)\}\}/g, (_, k) => (vars[k] ?? ""));
+  return { subject: render(tpl.subject), body: render(tpl.body) };
+}
 // Whole days elapsed since a date (0 = today) — used as a simple aging indicator, e.g. how long
 // a job card has been open.
 const daysSince = (s) => Math.max(0, Math.floor((Date.now() - new Date(s).setHours(0,0,0,0)) / 86400000));
@@ -875,6 +886,7 @@ const NAV = [
     { key: "reports", label: "Reports", icon: BarChart3, roles: "all" },
     { key: "quotationTemplates", label: "Quotation Templates", icon: Files, roles: [...ADMIN_LIKE,"sales_manager"] },
     { key: "templates", label: "Checklist Templates", icon: ListChecks, roles: [...ADMIN_LIKE,"ops_manager","pro_head","pro"] },
+    { key: "emailTemplates", label: "Email Templates", icon: Mail, roles: ADMIN_LIKE },
   ]},
   { group: "", items: [
     { key: "notifications", label: "Notifications", icon: Bell, roles: "all" },
@@ -1290,6 +1302,7 @@ export default function App() {
     knowledgeBase: ["Knowledge Base", "How to use SMART CRM — guides and workflow reference"],
     users: ["Users & Roles", "Manage platform access"],
     templates: ["Checklist Templates", "Configure the job checklist for each service"],
+    emailTemplates: ["Email Templates", "Edit the subject/body every automated and staff-composed email uses"],
     reports: ["Reports", "Business volume, collections, customers, incentives and operations — all Professional Fee based"],
     notifications: ["Notifications", "Everything the platform has flagged for you"],
     settings: ["Settings", "Platform-wide configuration"],
@@ -1424,6 +1437,7 @@ export default function App() {
             {page === "knowledgeBase" && <KnowledgeBasePage />}
             {page === "users" && <UsersPage {...ctx} />}
             {page === "templates" && <TemplatesPage {...ctx} />}
+            {page === "emailTemplates" && <EmailTemplatesPage {...ctx} />}
             {page === "reports" && <ReportsPage {...ctx} />}
             {page === "notifications" && <NotificationsPage {...ctx} myNotifs={myNotifs} />}
             {page === "settings" && <SettingsPage {...ctx} setPage={setPage} />}
@@ -3706,15 +3720,23 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
               catch (err) { alert(err instanceof ApiError ? err.message : "Couldn't delete — please try again."); }
             }}
             onClose={()=>setRemoving(false)} />}
-          {emailing && (
-            <EmailCustomerModal
-              customerName={q.customer} customerEmail={customerEmail} employees={state?.employees || []}
-              defaultSubject={`Quotation ${q.id} — ${cq.subject || cq.items[0]?.service || "Address Gateway"}`}
-              defaultBody={`Dear ${q.customer},\n\nPlease find attached your quotation ${q.id} for ${money(total)}.\n\nValid until ${fmtDate(q.validTill)}.\n\nKind regards,\nAddress Gateway Business Services`}
-              dispatch={dispatch} onClose={()=>setEmailing(false)}
-              onSend={({ccNames})=>dispatch({type:"MARK_EMAILED", entity:"quotation", id:q.id, customer:q.customer, cc:ccNames})}
-            />
-          )}
+          {emailing && (() => {
+            const tpl = emailTemplateFor(state, "quotation_email", {
+              quotationId: q.id, subjectLine: cq.subject || cq.items[0]?.service || "Address Gateway",
+              customer: q.customer, amount: money(total), validTill: fmtDate(q.validTill),
+            }, {
+              subject: `Quotation ${q.id} — ${cq.subject || cq.items[0]?.service || "Address Gateway"}`,
+              body: `Dear ${q.customer},\n\nPlease find attached your quotation ${q.id} for ${money(total)}.\n\nValid until ${fmtDate(q.validTill)}.\n\nKind regards,\nAddress Gateway Business Services`,
+            });
+            return (
+              <EmailCustomerModal
+                customerName={q.customer} customerEmail={customerEmail} employees={state?.employees || []}
+                defaultSubject={tpl.subject} defaultBody={tpl.body}
+                dispatch={dispatch} onClose={()=>setEmailing(false)}
+                onSend={({ccNames})=>dispatch({type:"MARK_EMAILED", entity:"quotation", id:q.id, customer:q.customer, cc:ccNames})}
+              />
+            );
+          })()}
 
           {editingNow && (
             <div className="side-note" style={{ marginTop:12, marginBottom:0 }}>Finish editing — save or cancel above — before changing this quotation's status.</div>
@@ -4725,14 +4747,18 @@ function CustomerDetailModal({ customer: c, state, dispatch, role, userId, onClo
 
       {creatingDeal && <NewDealModal state={state} dispatch={dispatch} userId={userId} initialCustomer={c.name} onClose={()=>setCreatingDeal(false)} />}
 
-      {emailingCustomer && (
-        <EmailCustomerModal
-          customerName={c.name} customerEmail={c.email} employees={state.employees}
-          defaultSubject="" defaultBody={`Dear ${c.contact || c.name},\n\n\n\nKind regards,\nAddress Gateway Business Services`}
-          dispatch={dispatch} onClose={()=>setEmailingCustomer(false)}
-          onSend={({ccNames})=>dispatch({type:"MARK_EMAILED", entity:"customer", id:c.id, customer:c.name, cc:ccNames})}
-        />
-      )}
+      {emailingCustomer && (() => {
+        const tpl = emailTemplateFor(state, "customer_email", { contactName: c.contact || c.name },
+          { subject: "", body: `Dear ${c.contact || c.name},\n\n\n\nKind regards,\nAddress Gateway Business Services` });
+        return (
+          <EmailCustomerModal
+            customerName={c.name} customerEmail={c.email} employees={state.employees}
+            defaultSubject={tpl.subject} defaultBody={tpl.body}
+            dispatch={dispatch} onClose={()=>setEmailingCustomer(false)}
+            onSend={({ccNames})=>dispatch({type:"MARK_EMAILED", entity:"customer", id:c.id, customer:c.name, cc:ccNames})}
+          />
+        );
+      })()}
 
       {tab === "dashboard" && <CustomerDashboard customer={c} state={state} dispatch={dispatch} role={role} userId={userId} />}
 
@@ -5644,9 +5670,14 @@ function SubscriptionDetailModal({ subscription: sub, state, dispatch, isAdmin, 
   // customer email/SMS pipeline through the backend, so this is sent by the staff member directly
   // rather than silently claiming to send on their behalf.
   const renewalMessage = `Hi ${customer?.contact || sub.customer}, this is a reminder that your ${sub.plan} (${sub.tier}) subscription with Address Gateway renews on ${fmtDate(sub.expiryDate)}. Let us know if you'd like help with the renewal.`;
+  // Only the email uses the editable template (Settings > Email Templates) — WhatsApp keeps the
+  // plain reminder text above, which isn't part of that scope.
+  const renewalEmailTpl = emailTemplateFor(state, "subscription_renewal", {
+    contactName: customer?.contact || sub.customer, plan: sub.plan, tier: sub.tier, customer: sub.customer, expiryDate: fmtDate(sub.expiryDate),
+  }, { subject: `${sub.plan} renewal — ${sub.customer}`, body: renewalMessage });
   const sendEmail = () => {
     if (!customer?.email) { alert("No email on file for this customer — add one on their profile first."); return; }
-    window.open(`mailto:${customer.email}?subject=${encodeURIComponent(`${sub.plan} renewal — ${sub.customer}`)}&body=${encodeURIComponent(renewalMessage)}`, "_blank");
+    window.open(`mailto:${customer.email}?subject=${encodeURIComponent(renewalEmailTpl.subject)}&body=${encodeURIComponent(renewalEmailTpl.body)}`, "_blank");
   };
   const sendWhatsapp = () => {
     const mobile = customer?.contactMobile || customer?.phone;
@@ -6117,15 +6148,23 @@ function InvoicesPage({ state, dispatch, role, highlightId, onHighlightHandled, 
         onConfirm={()=>{ dispatch({type:"DELETE_INVOICE", id:removeInvoice.id}); setRemoveInvoice(null); }} onClose={()=>setRemoveInvoice(null)} />}
 
       {history && <PaymentHistoryModal invoice={history} dispatch={dispatch} onClose={()=>setHistory(null)} />}
-      {emailFor && (
-        <EmailCustomerModal
-          customerName={emailFor.customer} customerEmail={state.customers.find(c=>c.name===emailFor.customer)?.email} employees={state.employees}
-          defaultSubject={`Invoice ${emailFor.id} — Address Gateway`}
-          defaultBody={`Dear ${emailFor.customer},\n\nPlease find attached invoice ${emailFor.id} for ${money(emailFor.amount)}, due ${fmtDate(emailFor.dueDate)}.\n\nBalance due: ${money(Math.max(0, emailFor.amount - emailFor.payments.reduce((a,p)=>a+p.amount,0)))}.\n\nKind regards,\nAddress Gateway Business Services`}
-          dispatch={dispatch} onClose={()=>setEmailFor(null)}
-          onSend={({ccNames})=>dispatch({type:"MARK_EMAILED", entity:"invoice", id:emailFor.id, customer:emailFor.customer, cc:ccNames})}
-        />
-      )}
+      {emailFor && (() => {
+        const balance = Math.max(0, emailFor.amount - emailFor.payments.reduce((a,p)=>a+p.amount,0));
+        const tpl = emailTemplateFor(state, "invoice_email", {
+          invoiceId: emailFor.id, customer: emailFor.customer, amount: money(emailFor.amount), dueDate: fmtDate(emailFor.dueDate), balance: money(balance),
+        }, {
+          subject: `Invoice ${emailFor.id} — Address Gateway`,
+          body: `Dear ${emailFor.customer},\n\nPlease find attached invoice ${emailFor.id} for ${money(emailFor.amount)}, due ${fmtDate(emailFor.dueDate)}.\n\nBalance due: ${money(balance)}.\n\nKind regards,\nAddress Gateway Business Services`,
+        });
+        return (
+          <EmailCustomerModal
+            customerName={emailFor.customer} customerEmail={state.customers.find(c=>c.name===emailFor.customer)?.email} employees={state.employees}
+            defaultSubject={tpl.subject} defaultBody={tpl.body}
+            dispatch={dispatch} onClose={()=>setEmailFor(null)}
+            onSend={({ccNames})=>dispatch({type:"MARK_EMAILED", entity:"invoice", id:emailFor.id, customer:emailFor.customer, cc:ccNames})}
+          />
+        );
+      })()}
 
       {pay && (
         <Modal title={`Record payment — ${pay.id}`} sub={pay.customer} onClose={()=>setPay(null)}>
@@ -8716,6 +8755,76 @@ function TemplatesPage({ state, dispatch }) {
 }
 
 /* ---------------------------------------------------------------------- */
+/* EMAIL TEMPLATES                                                         */
+/* ---------------------------------------------------------------------- */
+
+// Every email the app sends or helps compose, in one editable place — the fully automated
+// reminders (no human in the loop, sent straight by a cron job) and the staff-composed defaults
+// (pre-fill a modal/mailto link a person reviews before actually sending) alike.
+function EmailTemplatesPage({ state, dispatch }) {
+  const automated = state.emailTemplates.filter(t => AUTOMATED_EMAIL_KEYS.includes(t.key));
+  const staffComposed = state.emailTemplates.filter(t => !AUTOMATED_EMAIL_KEYS.includes(t.key));
+  return (
+    <div>
+      <p className="modal-sub" style={{ marginBottom: 18 }}>
+        {"{{placeholder}}"} tokens get filled in automatically when each email actually sends — leave them exactly as shown if you want that value included.
+      </p>
+      {state.emailTemplates.length === 0 ? (
+        <Empty icon={Mail} text="No email templates found." />
+      ) : (
+        <div style={{ display:"flex", flexDirection:"column", gap:24 }}>
+          <div>
+            <strong style={{ fontSize:13.5, textTransform:"uppercase", letterSpacing:".03em", color:"var(--ink-soft)" }}>Automated reminders</strong>
+            <div className="agw-grid" style={{ gridTemplateColumns:"1fr 1fr", gap:14, marginTop:10 }}>
+              {automated.map(t => <EmailTemplateCard key={t.key} tpl={t} dispatch={dispatch} />)}
+            </div>
+          </div>
+          <div>
+            <strong style={{ fontSize:13.5, textTransform:"uppercase", letterSpacing:".03em", color:"var(--ink-soft)" }}>Staff-composed defaults</strong>
+            <div className="modal-sub" style={{ marginTop:2, marginBottom:10 }}>Pre-fills the email modal — staff still review and can edit before sending.</div>
+            <div className="agw-grid" style={{ gridTemplateColumns:"1fr 1fr", gap:14 }}>
+              {staffComposed.map(t => <EmailTemplateCard key={t.key} tpl={t} dispatch={dispatch} />)}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const AUTOMATED_EMAIL_KEYS = ["cheque_deposit", "software_renewal", "lead_followup"];
+
+function EmailTemplateCard({ tpl, dispatch }) {
+  const [subject, setSubject] = useState(tpl.subject);
+  const [body, setBody] = useState(tpl.body);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const dirty = subject !== tpl.subject || body !== tpl.body;
+
+  const save = async () => {
+    setSaving(true); setError("");
+    try { await dispatch({ type:"UPDATE_EMAIL_TEMPLATE", key: tpl.key, payload: { subject, body } }); }
+    catch (err) { setError(err instanceof ApiError ? err.message : "Couldn't save — please try again."); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div className="agw-card">
+      <strong style={{ fontSize:14 }}>{tpl.label}</strong>
+      {tpl.placeholders.length > 0 && (
+        <div style={{ display:"flex", flexWrap:"wrap", gap:5, marginTop:8 }}>
+          {tpl.placeholders.map(p => <span key={p} className="pill mono" style={{ fontSize:10.5 }}>{`{{${p}}}`}</span>)}
+        </div>
+      )}
+      <div className="field" style={{ marginTop:10 }}><label>Subject</label><input value={subject} onChange={e=>setSubject(e.target.value)} placeholder="(no subject)" /></div>
+      <div className="field"><label>Message</label><textarea rows={6} value={body} onChange={e=>setBody(e.target.value)} /></div>
+      {error && <div className="side-note" style={{ color:"var(--danger)", marginBottom:10 }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{error}</div>}
+      <button className="btn btn-primary btn-sm" disabled={!dirty || saving} onClick={save}>{saving ? "Saving…" : "Save"}</button>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------- */
 /* NOTIFICATIONS                                                           */
 /* ---------------------------------------------------------------------- */
 
@@ -8845,6 +8954,13 @@ function SettingsPage({ state, dispatch, setPage }) {
               <div style={{ fontSize:11.5, color:"var(--ink-soft)", marginTop:2 }}>Default job card checklist steps, per service.</div>
             </div>
             <button className="btn btn-sm" onClick={()=>setPage("templates")}>Manage <ChevronRight size={14}/></button>
+          </div>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 12px", border:"1px solid var(--hair)", borderRadius:8 }}>
+            <div>
+              <div style={{ fontSize:13, fontWeight:500 }}><Mail size={13} style={{verticalAlign:-2,marginRight:6}}/>Email Templates</div>
+              <div style={{ fontSize:11.5, color:"var(--ink-soft)", marginTop:2 }}>Subject/body for every automated reminder and staff-composed email.</div>
+            </div>
+            <button className="btn btn-sm" onClick={()=>setPage("emailTemplates")}>Manage <ChevronRight size={14}/></button>
           </div>
         </div>
       </div>

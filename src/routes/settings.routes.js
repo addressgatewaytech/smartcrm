@@ -74,4 +74,30 @@ router.patch("/", requireRole(["admin_like"]), async (req, res) => {
   res.json({ ok: true });
 });
 
+// --- Email templates ------------------------------------------------------------------------
+// Every automated reminder (cheque_deposit, software_renewal, lead_followup — src/services/*.js)
+// and staff-composed default (quotation_email, customer_email, invoice_email,
+// subscription_renewal — the EmailCustomerModal/mailto flows in the frontend) reads its
+// subject/body from here rather than a hardcoded string, so any of them can be reworded without a
+// code change. Read access is any authenticated user (the staff-composed ones need it to build
+// their default text); editing is admin-only.
+router.get("/email-templates", async (req, res) => {
+  const rows = await query("SELECT * FROM email_templates ORDER BY label");
+  res.json(rows);
+});
+
+router.patch("/email-templates/:key", requireRole(["admin_like"]), async (req, res) => {
+  const { subject, body } = req.body;
+  const fields = [];
+  const params = [];
+  if (subject !== undefined) { fields.push("subject = ?"); params.push(subject); }
+  if (body !== undefined) { fields.push("body = ?"); params.push(body); }
+  if (!fields.length) return res.status(400).json({ error: "Nothing to update" });
+  fields.push("updated_by = ?"); params.push(req.user.id);
+  params.push(req.params.key);
+  const result = await query(`UPDATE email_templates SET ${fields.join(", ")} WHERE template_key = ?`, params);
+  if (!result.affectedRows) return res.status(404).json({ error: "Not found" });
+  res.json({ ok: true });
+});
+
 module.exports = router;

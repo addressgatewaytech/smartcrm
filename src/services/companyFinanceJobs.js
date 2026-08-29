@@ -4,7 +4,7 @@
 // deposit or software renewal has real money attached, so an in-app notification alone isn't
 // enough of a safety net.
 const { query } = require("../config/db");
-const { nextId } = require("../utils/helpers");
+const { nextId, renderTemplate } = require("../utils/helpers");
 const { sendMail } = require("../utils/mailer");
 
 const AUDIENCE_ROLES = ["super_admin", "admin", "admin_exec", "accounts"];
@@ -16,6 +16,12 @@ async function audienceEmails() {
     .map((u) => u.email);
 }
 
+// Editable subject/body — see email_templates in schema.sql and Settings > Email Templates.
+async function template(key) {
+  const [row] = await query("SELECT subject, body FROM email_templates WHERE template_key = ?", [key]);
+  return row || { subject: "", body: "" };
+}
+
 async function checkChequeDeposits() {
   const due = await query(`
     SELECT id, direction, cheque_number, amount, party_name, deposit_date FROM cheques
@@ -23,10 +29,12 @@ async function checkChequeDeposits() {
   `);
   if (!due.length) return 0;
   const emails = await audienceEmails();
+  const tpl = await template("cheque_deposit");
   for (const c of due) {
     await query("UPDATE cheques SET reminder_notified = 1 WHERE id = ?", [c.id]);
-    const title = `${c.direction} cheque due for deposit`;
-    const body = `${c.cheque_number} — ${c.party_name} — QAR ${c.amount} — deposit by ${c.deposit_date}`;
+    const vars = { direction: c.direction, chequeNumber: c.cheque_number, partyName: c.party_name, amount: c.amount, depositDate: c.deposit_date };
+    const title = renderTemplate(tpl.subject, vars);
+    const body = renderTemplate(tpl.body, vars);
     await query("INSERT INTO notifications (id, type, title, body, audience) VALUES (?, 'cheque_deposit', ?, ?, ?)",
       [nextId("NT"), title, body, JSON.stringify(AUDIENCE_ROLES)]);
     if (emails.length) await sendMail({ to: emails.join(","), subject: title, text: body });
@@ -41,10 +49,12 @@ async function checkSoftwareRenewals() {
   `);
   if (!due.length) return 0;
   const emails = await audienceEmails();
+  const tpl = await template("software_renewal");
   for (const s of due) {
     await query("UPDATE company_software_subscriptions SET reminder_notified = 1 WHERE id = ?", [s.id]);
-    const title = "Software subscription renewal due";
-    const body = `${s.software_name} — QAR ${s.cost} — renews ${s.renewal_date}`;
+    const vars = { softwareName: s.software_name, cost: s.cost, renewalDate: s.renewal_date };
+    const title = renderTemplate(tpl.subject, vars);
+    const body = renderTemplate(tpl.body, vars);
     await query("INSERT INTO notifications (id, type, title, body, audience) VALUES (?, 'software_renewal', ?, ?, ?)",
       [nextId("NT"), title, body, JSON.stringify(AUDIENCE_ROLES)]);
     // The in-app bell above always fires — email_notify only opts a specific entry out of the

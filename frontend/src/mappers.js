@@ -122,6 +122,12 @@ export const mapDataSettings = (s) => ({
 
 export const mapExportHistoryEntry = (e) => ({ id: e.id, exportedBy: e.exported_by, exportDate: e.export_date, count: e.record_count, purpose: e.purpose, format: e.format });
 
+export const mapEmailTemplate = (t) => ({
+  key: t.template_key, label: t.label, subject: t.subject, body: t.body,
+  placeholders: (t.placeholders || "").split(",").map(p => p.trim()).filter(Boolean),
+  updatedAt: t.updated_at,
+});
+
 export const mapDataActivity = (a) => ({
   userId: a.user_id, emailsSent: a.emails_sent, whatsappsSent: a.whatsapps_sent, callsCompleted: a.calls_completed,
   lastEmailAt: a.last_email_at, lastWhatsappAt: a.last_whatsapp_at, lastCallAt: a.last_call_at,

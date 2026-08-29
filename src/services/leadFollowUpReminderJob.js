@@ -3,7 +3,7 @@
 // the same email-on-top-of-notification precedent), since a missed follow-up on a live lead is a
 // real business cost, not just an in-app nudge.
 const { query } = require("../config/db");
-const { nextId } = require("../utils/helpers");
+const { nextId, renderTemplate } = require("../utils/helpers");
 const { sendMail } = require("../utils/mailer");
 
 async function checkFollowUpReminders() {
@@ -13,6 +13,9 @@ async function checkFollowUpReminders() {
       AND status NOT IN ('Converted', 'Unqualified')
   `);
   if (!due.length) return 0;
+  // Editable subject/body — see email_templates in schema.sql and Settings > Email Templates.
+  // The in-app notification (title/body below) is separate, short-form text unaffected by this.
+  const [tpl] = await query("SELECT subject, body FROM email_templates WHERE template_key = 'lead_followup'");
   for (const lead of due) {
     await query("UPDATE leads SET follow_up_reminder_sent = 1 WHERE id = ?", [lead.id]);
     if (!lead.owner) continue; // unassigned lead — nobody to remind yet
@@ -20,13 +23,14 @@ async function checkFollowUpReminders() {
     const [lastFollowUp] = await query("SELECT note FROM lead_followups WHERE lead_id = ? ORDER BY at DESC LIMIT 1", [lead.id]);
     const [owner] = await query("SELECT email FROM users WHERE id = ?", [lead.owner]);
 
+    const vars = { company: lead.company, contactName: lead.name, phone: lead.phone || "—", email: lead.email || "—", lastFollowUpNote: lastFollowUp?.note?.trim() || "No follow-up notes yet." };
     const title = "Follow-up due";
     const body = `${lead.company} (${lead.name}) — Mobile: ${lead.phone || "—"} — Email: ${lead.email || "—"}. Last follow-up: ${lastFollowUp?.note?.trim() || "No follow-up notes yet."}`;
     await query("INSERT INTO notifications (id, type, title, body, audience) VALUES (?, 'lead_followup', ?, ?, ?)",
       [nextId("NT"), title, body, JSON.stringify([lead.owner])]);
 
-    if (owner?.email) {
-      await sendMail({ to: owner.email, subject: `Follow-up due — ${lead.company}`, text: body });
+    if (owner?.email && tpl) {
+      await sendMail({ to: owner.email, subject: renderTemplate(tpl.subject, vars), text: renderTemplate(tpl.body, vars) });
     }
   }
   return due.length;

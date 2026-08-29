@@ -400,6 +400,8 @@ export const api = {
   settings: {
     get: () => get("/settings"),
     update: (payload) => patch("/settings", payload),
+    emailTemplates: () => get("/settings/email-templates"),
+    updateEmailTemplate: (key, payload) => patch(`/settings/email-templates/${encodeURIComponent(key)}`, payload),
     // Same reasoning as quotations.downloadPdf: needs the Bearer auth header a plain <a href>
     // can't send, so fetch as a blob and let the caller turn it into a download.
     downloadBackup: async () => {

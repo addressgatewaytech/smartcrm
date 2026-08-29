@@ -149,4 +149,10 @@ function professionalFeeTotal(items, orderDiscount, quotationFeeType, orderDisco
   return Math.max(0, profSubtotal - discountAmount * profShare);
 }
 
-module.exports = { nextId, nextSequentialId, today, daysFromNow, normPhone, normEmail, normCompany, money, quoteTotal, professionalFeeTotal, findDuplicateCustomer, findOrCreateCustomer, COMPULSORY_KYC_DOC_TYPES, seedDefaultKycDocs };
+// Fills a stored email_templates row's {{placeholder}} tokens with real values — a missing key in
+// `vars` renders as an empty string rather than leaving the literal "{{token}}" in a sent email.
+function renderTemplate(str, vars) {
+  return (str || "").replace(/\{\{(\w+)\}\}/g, (_, key) => (vars[key] ?? ""));
+}
+
+module.exports = { nextId, nextSequentialId, today, daysFromNow, normPhone, normEmail, normCompany, money, quoteTotal, professionalFeeTotal, findDuplicateCustomer, findOrCreateCustomer, COMPULSORY_KYC_DOC_TYPES, seedDefaultKycDocs, renderTemplate };
