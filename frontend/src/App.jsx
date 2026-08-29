@@ -1601,11 +1601,15 @@ function Dashboard({ state, dispatch, role, userId, setPage }) {
     .filter(x => x.employee)
     .sort((a,b) => b.jobs.length - a.jobs.length);
 
-  // Same model again, for Tasks (the general Tasks module, not Sales Daily Tasks).
+  // Same model again, for Tasks (the general Tasks module, not Sales Daily Tasks) — credited to
+  // the assignee, not whoever performed the Completed status transition. Unlike a job card, a
+  // task's Completed step is an approval action (the assignee submits via Pending Approval, then
+  // a manager/admin marks it Completed) — crediting the log's `by` would attribute the work to
+  // whoever approved it instead of whoever actually did it.
   const [showAllCompletedTasks, setShowAllCompletedTasks] = useState(false);
   const todayCompletedTasks = state.tasks.filter(t => t.status === "Completed" && completedTodayLog(t));
   const completedByTaskCompleter = {};
-  todayCompletedTasks.forEach(t => { const by = completedTodayLog(t)?.by; if (by) (completedByTaskCompleter[by] ||= []).push(t); });
+  todayCompletedTasks.forEach(t => { if (t.assignedTo) (completedByTaskCompleter[t.assignedTo] ||= []).push(t); });
   const completedTaskCompleters = Object.entries(completedByTaskCompleter)
     .map(([uid, tasks]) => ({ employee: state.employees.find(e=>e.id===uid), tasks }))
     .filter(x => x.employee)
