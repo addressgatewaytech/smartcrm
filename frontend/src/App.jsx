@@ -1559,7 +1559,9 @@ function Dashboard({ state, dispatch, role, userId, setPage }) {
   const jobsInProgress = state.jobCards.filter(j => ["Assigned","In Progress","On Hold"].includes(j.status)).length;
   const jobsCompleted = state.jobCards.filter(j => j.status === "Completed").length;
   const jobsCancelled = state.jobCards.filter(j => j.status === "Cancelled").length;
-  const expiringDocs = state.customers.flatMap(c => [
+  // A Scarified/Closed customer is no longer an active client — flagging its expired KYC
+  // documents on the company-wide Dashboard would just be noise nobody needs to act on.
+  const expiringDocs = state.customers.filter(c => c.status !== "Scarified/Closed").flatMap(c => [
     ...c.docs.filter(d => docState(d.expiry).label !== "Valid").map(d => ({ ...d, label: c.name })),
     ...c.employees.flatMap(emp => emp.docs.filter(d => docState(d.expiry).label !== "Valid").map(d => ({ ...d, label: `${c.name} — ${emp.name}` }))),
   ]);
