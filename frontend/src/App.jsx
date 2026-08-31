@@ -850,7 +850,15 @@ const NAV = [
     { key: "leads", label: "Leads", icon: Users, roles: [...ADMIN_LIKE,"sales_manager","sales_exec","ops_manager","ops_member","pro_head","pro"] },
     { key: "deals", label: "Deals", icon: Handshake, roles: [...ADMIN_LIKE,"sales_manager","sales_exec","ops_manager","ops_member","pro_head","pro"] },
     { key: "quotations", label: "Quotations", icon: FileText, roles: [...ADMIN_LIKE,"sales_manager","sales_exec","ops_manager","ops_member","pro_head","pro"] },
-    { key: "customers", label: "Customers & KYC", icon: UserCheck, roles: [...ADMIN_LIKE,"sales_manager","sales_exec","accounts","ops_manager","pro_head","pro"] },
+  ]},
+  { group: "Customer & KYC", items: [
+    // All three route to the same CustomersPage, each remounting it with a different starting
+    // Category filter (see initialCategoryFilter) — so the sidebar itself shows which of the
+    // three you're looking at, instead of one plain "Customers & KYC" entry that can't reflect
+    // which filter is active. The in-page Category dropdown still works normally from there.
+    { key: "customersAddressGateway", label: "Address Gateway", icon: UserCheck, roles: [...ADMIN_LIKE,"sales_manager","sales_exec","accounts","ops_manager","pro_head","pro"] },
+    { key: "customersOthers", label: "Others", icon: UserCheck, roles: [...ADMIN_LIKE,"sales_manager","sales_exec","accounts","ops_manager","pro_head","pro"] },
+    { key: "customersAll", label: "All Customers", icon: UserCheck, roles: [...ADMIN_LIKE,"sales_manager","sales_exec","accounts","ops_manager","pro_head","pro"] },
   ]},
   { group: "Finance", items: [
     { key: "orders", label: "Sales Orders", icon: ShoppingCart, roles: [...ADMIN_LIKE,"sales_manager","accounts"] },
@@ -1291,7 +1299,9 @@ export default function App() {
     deals: ["Deals", "Open opportunities across the sales pipeline"],
     quotations: ["Quotations", "Draft, price, discount and send client quotations"],
     quotationTemplates: ["Quotation Templates", "A reusable starting point for each service — refine anytime"],
-    customers: ["Customers & KYC", "Client records, employee documents, and expiry status"],
+    customersAddressGateway: ["Customer & KYC — Address Gateway", "Client records, employee documents, and expiry status"],
+    customersOthers: ["Customer & KYC — Others", "Client records, employee documents, and expiry status"],
+    customersAll: ["Customer & KYC — All Customers", "Client records, employee documents, and expiry status"],
     dataManager: ["Data Manager", "Collect, clean, assign and track outreach data — separate from CRM Leads"],
     subscriptions: ["Subscriptions", "Growth Partner Program packages and customer subscription tracking"],
     orders: ["Sales Orders", "Confirmed orders converted from approved quotations"],
@@ -1424,7 +1434,9 @@ export default function App() {
             {page === "quotations" && <QuotationsPage {...ctx} highlightId={highlightQuotationId} autoOpenPdf={autoOpenQuotationPdf} onHighlightHandled={()=>{ setHighlightQuotationId(null); setAutoOpenQuotationPdf(false); }}
               setPage={setPage} onSalesOrderCreated={setHighlightSalesOrderId} />}
             {page === "quotationTemplates" && <QuotationTemplatesPage {...ctx} />}
-            {page === "customers" && <CustomersPage {...ctx} expiryFilterRequest={customersExpiryFilterRequest} onExpiryFilterRequestHandled={()=>setCustomersExpiryFilterRequest(null)} />}
+            {page === "customersAddressGateway" && <CustomersPage {...ctx} initialCategoryFilter="Address Gateway Customers" expiryFilterRequest={customersExpiryFilterRequest} onExpiryFilterRequestHandled={()=>setCustomersExpiryFilterRequest(null)} />}
+            {page === "customersOthers" && <CustomersPage {...ctx} initialCategoryFilter="Others" expiryFilterRequest={customersExpiryFilterRequest} onExpiryFilterRequestHandled={()=>setCustomersExpiryFilterRequest(null)} />}
+            {page === "customersAll" && <CustomersPage {...ctx} initialCategoryFilter="" expiryFilterRequest={customersExpiryFilterRequest} onExpiryFilterRequestHandled={()=>setCustomersExpiryFilterRequest(null)} />}
             {page === "dataManager" && <DataManagerPage {...ctx} />}
             {page === "subscriptions" && <SubscriptionsPage {...ctx} />}
             {page === "orders" && <OrdersPage {...ctx} setPage={setPage} highlightId={highlightSalesOrderId} onHighlightHandled={()=>setHighlightSalesOrderId(null)}
@@ -2050,7 +2062,7 @@ function Dashboard({ state, dispatch, role, userId, setPage, onOpenExpiredCustom
                   );
                 })}
           </div>
-          {expiringDocs.length > 0 && <button className="btn btn-sm btn-ghost" style={{marginTop:10}} onClick={()=>{ onOpenExpiredCustomers?.(); setPage("customers"); }}>View all customers <ChevronRight size={14}/></button>}
+          {expiringDocs.length > 0 && <button className="btn btn-sm btn-ghost" style={{marginTop:10}} onClick={()=>{ onOpenExpiredCustomers?.(); setPage("customersAddressGateway"); }}>View all customers <ChevronRight size={14}/></button>}
         </div>
       </div>
 
@@ -4395,7 +4407,7 @@ function matchesExpiryFilter(customer, filterKey) {
   });
 }
 
-function CustomersPage({ state, dispatch, role, userId, expiryFilterRequest, onExpiryFilterRequestHandled }) {
+function CustomersPage({ state, dispatch, role, userId, expiryFilterRequest, onExpiryFilterRequestHandled, initialCategoryFilter }) {
   const [view, setView] = useState("table");
   const [openId, setOpenId] = useState(null);
   // Derived, not a frozen snapshot — see the identical fix on JobsPage/QuotationsPage: in-modal
@@ -4413,9 +4425,11 @@ function CustomersPage({ state, dispatch, role, userId, expiryFilterRequest, onE
     setExpiryFilter(expiryFilterRequest);
     onExpiryFilterRequestHandled?.();
   }, [expiryFilterRequest]);
-  // Defaults to "Address Gateway Customers" — the KYC list's day-to-day working set — rather than
-  // showing every lead/deal/data-entry-only record by default; "All customers" is one click away.
-  const [categoryFilter, setCategoryFilter] = useState("Address Gateway Customers");
+  // Which of the three "Customer & KYC" sidebar entries got clicked (Address Gateway / Others /
+  // All Customers) sets the starting Category filter — each is its own nav key, so switching
+  // between them remounts this page fresh with a different initialCategoryFilter. Falls back to
+  // "Address Gateway Customers" (the day-to-day working set) for any other caller.
+  const [categoryFilter, setCategoryFilter] = useState(initialCategoryFilter ?? "Address Gateway Customers");
   const [salesPersonFilter, setSalesPersonFilter] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [editCustomer, setEditCustomer] = useState(null);
