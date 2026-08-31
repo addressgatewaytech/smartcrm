@@ -4503,8 +4503,9 @@ function CustomersPage({ state, dispatch, role, userId, expiryFilterRequest, onE
             filtered.map(c=>{
               const flagged = [...c.docs, ...c.employees.flatMap(e=>e.docs)].filter(d => docState(d.expiry).label !== "Valid").length;
               const doc = (type) => kycDocOf(c, type) || {};
+              const numWithPrefix = (type) => doc(type).number ? `${type}-${doc(type).number}` : "";
               return [c.id, c.name, c.salesPerson||"", c.category, c.type||"", c.contact||"", c.phone||"", c.contactMobile||"", c.landline||"", c.email||"", c.address||"", c.companySize||"", c.status,
-                doc("CR").number||"", doc("CR").expiry||"", doc("CP").number||"", doc("CP").expiry||"", doc("EC").number||"", doc("EC").expiry||"",
+                numWithPrefix("CR"), doc("CR").expiry||"", numWithPrefix("CP"), doc("CP").expiry||"", numWithPrefix("EC"), doc("EC").expiry||"",
                 c.cloudLink||"", c.createdAt, flagged>0?`${flagged} flagged`:"Clear"];
             }))}>
             <Download size={13}/> Export
@@ -4558,7 +4559,7 @@ function CustomersPage({ state, dispatch, role, userId, expiryFilterRequest, onE
                       const d = kycDocOf(c, type);
                       const st = d?.expiry ? docState(d.expiry) : { label:"Missing", cls:"stamp-warning" };
                       return <td key={type} style={{fontSize:11.5}}>
-                        <div className="mono">{d?.number || "—"}</div>
+                        <div className="mono">{d?.number ? `${type}-${d.number}` : "—"}</div>
                         <div style={{marginTop:3}}><Stamp tone={st.cls.replace("stamp-","")}>{d?.expiry ? fmtDate(d.expiry) : st.label}</Stamp></div>
                       </td>;
                     })}
@@ -4794,17 +4795,19 @@ function CustomerDetailModal({ customer: c, state, dispatch, role, userId, onClo
 
       {tab === "profile" && (
       <>
-      {/* Active is only selectable once CR, CP, and EC each have an expiry — mirrors the
-          server-side check in PATCH /customers/:id (see COMPULSORY_KYC_TYPES). */}
+      {/* Active is only selectable once CR, CP, and EC each have a non-expired expiry — mirrors
+          the server-side check in PATCH /customers/:id (see COMPULSORY_KYC_TYPES). Also the same
+          check that silently auto-promotes Pending -> Active the moment a doc save completes the
+          set — see missingOrExpiredCompulsoryDocs, customers.routes.js. */}
       {(() => {
-        const canBeActive = COMPULSORY_KYC_TYPES.every(t => c.docs.some(d => d.type === t && d.expiry));
+        const canBeActive = COMPULSORY_KYC_TYPES.every(t => c.docs.some(d => d.type === t && d.expiry && docState(d.expiry).label !== "Expired"));
         const canEditThese = isAdmin || role==="ops_manager" || role==="ops_member" || role==="pro_head" || role==="pro";
         return (
           <div className="agw-card" style={{ marginBottom: 16, display:"flex", flexWrap:"wrap", gap:16 }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:10, flex:1, minWidth:260 }}>
               <div>
                 <strong style={{ fontSize:13.5 }}>Company status</strong>
-                {!canBeActive && <div style={{ fontSize:11.5, color:"var(--ink-soft)", marginTop:2 }}>CR, CP, and EC all need an expiry date before this can be set Active.</div>}
+                {!canBeActive && <div style={{ fontSize:11.5, color:"var(--ink-soft)", marginTop:2 }}>CR, CP, and EC all need a non-expired expiry date before this can be set Active — it'll switch automatically once they do.</div>}
               </div>
               <select value={c.status} disabled={!canEditThese}
                 onChange={e=>dispatch({type:"UPDATE_CUSTOMER", id:c.id, payload:{status:e.target.value}})} style={{ maxWidth:220 }}>

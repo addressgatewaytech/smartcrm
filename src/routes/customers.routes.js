@@ -3,12 +3,35 @@ const crypto = require("crypto");
 const { query, withTransaction } = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
 const { requireRole, isAdminLike, requireRoleOrModuleEdit, hasModuleEdit } = require("../middleware/roles");
-const { nextId, nextSequentialId, quoteTotal, findDuplicateCustomer, COMPULSORY_KYC_DOC_TYPES, seedDefaultKycDocs } = require("../utils/helpers");
+const { nextId, nextSequentialId, quoteTotal, findDuplicateCustomer, COMPULSORY_KYC_DOC_TYPES, seedDefaultKycDocs, today } = require("../utils/helpers");
 const { generateOnboardingFormPdf } = require("../utils/onboardingFormPdf");
 const { generateAccountStatementPdf } = require("../utils/accountStatementPdf");
 
 const router = express.Router();
 router.use(requireAuth);
+
+// Which compulsory KYC doc types (if any) are missing, have no expiry, or have already expired —
+// "valid" means present AND not expired, not merely present, since an expired CR/CP/EC no longer
+// proves anything current. Shared by the manual gate on moving to Active (PATCH /:id) and the
+// auto-promotion below, so both use exactly the same definition of "complete".
+async function missingOrExpiredCompulsoryDocs(customerId) {
+  const docs = await query("SELECT type, expiry FROM customer_docs WHERE customer_id = ? AND type IN (?,?,?)", [customerId, ...COMPULSORY_KYC_DOC_TYPES]);
+  return COMPULSORY_KYC_DOC_TYPES.filter((t) => {
+    const d = docs.find((x) => x.type === t);
+    return !d || !d.expiry || d.expiry < today();
+  });
+}
+
+// Auto-promotes Pending -> Active the moment CR, CP, and EC all have a non-expired expiry, right
+// after a KYC document save completes the set — staff no longer have to remember to flip the
+// status dropdown themselves. Never touches Active/Administrative Block/Scarified-Closed; those
+// are deliberate holds a document save shouldn't silently override.
+async function autoActivateIfReady(customerId) {
+  const [customer] = await query("SELECT status FROM customers WHERE id = ?", [customerId]);
+  if (!customer || customer.status !== "Pending") return;
+  const missing = await missingOrExpiredCompulsoryDocs(customerId);
+  if (!missing.length) await query("UPDATE customers SET status = 'Active' WHERE id = ?", [customerId]);
+}
 
 router.get("/", async (req, res) => {
   const customers = await query("SELECT * FROM customers ORDER BY name");
@@ -104,13 +127,12 @@ router.patch("/:id", requireRoleOrModuleEdit(["admin_like", "ops_manager", "ops_
   if (dup) {
     return res.status(400).json({ error: `This would duplicate the existing customer "${dup.match.name}" (matched by ${dup.field}) — please merge into that profile instead.` });
   }
-  // Can only move to Active once CR, CP, and EC each have an expiry date filled in — every other
+  // Can only move to Active once CR, CP, and EC each have a non-expired expiry date — every other
   // status transition (including moving away from Active) is unrestricted.
   if (b.status === "Active") {
-    const docs = await query("SELECT type, expiry FROM customer_docs WHERE customer_id = ? AND type IN (?,?,?)", [req.params.id, ...COMPULSORY_KYC_DOC_TYPES]);
-    const missing = COMPULSORY_KYC_DOC_TYPES.filter((t) => !docs.some((d) => d.type === t && d.expiry));
+    const missing = await missingOrExpiredCompulsoryDocs(req.params.id);
     if (missing.length) {
-      return res.status(400).json({ error: `Can't set this customer Active yet — ${missing.join(", ")} still need${missing.length === 1 ? "s" : ""} an expiry date.` });
+      return res.status(400).json({ error: `Can't set this customer Active yet — ${missing.join(", ")} still need${missing.length === 1 ? "s" : ""} a non-expired expiry date.` });
     }
   }
   const [before] = await query("SELECT name FROM customers WHERE id = ?", [req.params.id]);
@@ -228,6 +250,7 @@ router.post("/:id/docs", async (req, res) => {
   const docId = nextId("DOC");
   await query("INSERT INTO customer_docs (id, customer_id, type, number, expiry, cloud_link) VALUES (?,?,?,?,?,?)",
     [docId, req.params.id, b.type, b.number || null, b.expiry || null, b.cloudLink || null]);
+  await autoActivateIfReady(req.params.id);
   res.status(201).json({ id: docId });
 });
 router.patch("/:id/docs/:docId", async (req, res) => {
@@ -241,6 +264,7 @@ router.patch("/:id/docs/:docId", async (req, res) => {
   // customer-level link), so an edit here must not silently wipe a document's historical value.
   await query("UPDATE customer_docs SET type=COALESCE(?,type), number=?, expiry=?, cloud_link=COALESCE(?,cloud_link) WHERE id=? AND customer_id=?",
     [b.type, b.number || null, b.expiry || null, b.cloudLink || null, req.params.docId, req.params.id]);
+  await autoActivateIfReady(req.params.id);
   res.json({ ok: true });
 });
 router.delete("/:id/docs/:docId", async (req, res) => {
