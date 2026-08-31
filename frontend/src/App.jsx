@@ -1206,6 +1206,10 @@ export default function App() {
   const [highlightSalesOrderId, setHighlightSalesOrderId] = useState(null);
   const [highlightInvoiceId, setHighlightInvoiceId] = useState(null);
   const [highlightJobCardId, setHighlightJobCardId] = useState(null);
+  // Set right before navigating from the Dashboard's expiry watchlist "View all customers" —
+  // Customers & KYC picks this up once and applies it as its own Expiry filter, so that click
+  // actually lands on the filtered list instead of the full unfiltered one.
+  const [customersExpiryFilterRequest, setCustomersExpiryFilterRequest] = useState(null);
 
   // Desktop/mobile OS notifications for anything new in this user's own notification feed (job
   // card awaiting approval, lead assigned, ...), on top of the in-app bell. Combined with the 45s
@@ -1414,13 +1418,13 @@ export default function App() {
             </div>
           </div>
           <div className="agw-content">
-            {page === "dashboard" && <Dashboard {...ctx} setPage={setPage} />}
+            {page === "dashboard" && <Dashboard {...ctx} setPage={setPage} onOpenExpiredCustomers={()=>setCustomersExpiryFilterRequest("expired")} />}
             {page === "leads" && <LeadsPage {...ctx} setPage={setPage} />}
             {page === "deals" && <DealsPage {...ctx} setPage={setPage} onViewQuotation={(id, openPdf)=>{ setHighlightQuotationId(id); setAutoOpenQuotationPdf(!!openPdf); }} />}
             {page === "quotations" && <QuotationsPage {...ctx} highlightId={highlightQuotationId} autoOpenPdf={autoOpenQuotationPdf} onHighlightHandled={()=>{ setHighlightQuotationId(null); setAutoOpenQuotationPdf(false); }}
               setPage={setPage} onSalesOrderCreated={setHighlightSalesOrderId} />}
             {page === "quotationTemplates" && <QuotationTemplatesPage {...ctx} />}
-            {page === "customers" && <CustomersPage {...ctx} />}
+            {page === "customers" && <CustomersPage {...ctx} expiryFilterRequest={customersExpiryFilterRequest} onExpiryFilterRequestHandled={()=>setCustomersExpiryFilterRequest(null)} />}
             {page === "dataManager" && <DataManagerPage {...ctx} />}
             {page === "subscriptions" && <SubscriptionsPage {...ctx} />}
             {page === "orders" && <OrdersPage {...ctx} setPage={setPage} highlightId={highlightSalesOrderId} onHighlightHandled={()=>setHighlightSalesOrderId(null)}
@@ -1518,7 +1522,7 @@ export default function App() {
 /* DASHBOARD                                                               */
 /* ---------------------------------------------------------------------- */
 
-function Dashboard({ state, dispatch, role, userId, setPage }) {
+function Dashboard({ state, dispatch, role, userId, setPage, onOpenExpiredCustomers }) {
   // This user's own Google Drive folder (set on their HR Profile) — moved here from the sidebar
   // so it sits next to the attendance sign-in button instead of taking up permanent sidebar space.
   const myCloudLink = state.employees.find(e => e.id === userId)?.cloudLink;
@@ -1574,8 +1578,11 @@ function Dashboard({ state, dispatch, role, userId, setPage }) {
   const jobsCompleted = state.jobCards.filter(j => j.status === "Completed").length;
   const jobsCancelled = state.jobCards.filter(j => j.status === "Cancelled").length;
   // A Scarified/Closed customer is no longer an active client — flagging its expired KYC
-  // documents on the company-wide Dashboard would just be noise nobody needs to act on.
-  const expiringDocs = state.customers.filter(c => c.status !== "Scarified/Closed").flatMap(c => [
+  // documents on the company-wide Dashboard would just be noise nobody needs to act on. Also
+  // scoped to "Address Gateway Customers" only (real, confirmed business — has a Sales Order,
+  // Invoice, or Job Card) — a lead/data-entry-only "Others" profile has no live engagement to
+  // chase KYC paperwork for yet.
+  const expiringDocs = state.customers.filter(c => c.status !== "Scarified/Closed" && c.category === "Address Gateway Customers").flatMap(c => [
     ...c.docs.filter(d => docState(d.expiry).label !== "Valid").map(d => ({ ...d, label: c.name })),
     ...c.employees.flatMap(emp => emp.docs.filter(d => docState(d.expiry).label !== "Valid").map(d => ({ ...d, label: `${c.name} — ${emp.name}` }))),
   ]);
@@ -2043,7 +2050,7 @@ function Dashboard({ state, dispatch, role, userId, setPage }) {
                   );
                 })}
           </div>
-          {expiringDocs.length > 0 && <button className="btn btn-sm btn-ghost" style={{marginTop:10}} onClick={()=>setPage("customers")}>View all customers <ChevronRight size={14}/></button>}
+          {expiringDocs.length > 0 && <button className="btn btn-sm btn-ghost" style={{marginTop:10}} onClick={()=>{ onOpenExpiredCustomers?.(); setPage("customers"); }}>View all customers <ChevronRight size={14}/></button>}
         </div>
       </div>
 
@@ -4388,7 +4395,7 @@ function matchesExpiryFilter(customer, filterKey) {
   });
 }
 
-function CustomersPage({ state, dispatch, role, userId }) {
+function CustomersPage({ state, dispatch, role, userId, expiryFilterRequest, onExpiryFilterRequestHandled }) {
   const [view, setView] = useState("table");
   const [openId, setOpenId] = useState(null);
   // Derived, not a frozen snapshot — see the identical fix on JobsPage/QuotationsPage: in-modal
@@ -4399,6 +4406,13 @@ function CustomersPage({ state, dispatch, role, userId }) {
   const [expiryFilter, setExpiryFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [letterFilter, setLetterFilter] = useState("");
+  // One-shot: arriving here from the Dashboard's expiry watchlist "View all customers" applies
+  // its Expired filter, then clears the request so it doesn't reapply on a later, unrelated visit.
+  useEffect(() => {
+    if (!expiryFilterRequest) return;
+    setExpiryFilter(expiryFilterRequest);
+    onExpiryFilterRequestHandled?.();
+  }, [expiryFilterRequest]);
   // Defaults to "Address Gateway Customers" — the KYC list's day-to-day working set — rather than
   // showing every lead/deal/data-entry-only record by default; "All customers" is one click away.
   const [categoryFilter, setCategoryFilter] = useState("Address Gateway Customers");
