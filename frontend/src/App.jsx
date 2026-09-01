@@ -856,9 +856,14 @@ const NAV = [
     // Category filter (see initialCategoryFilter) — so the sidebar itself shows which of the
     // three you're looking at, instead of one plain "Customers & KYC" entry that can't reflect
     // which filter is active. The in-page Category dropdown still works normally from there.
-    { key: "customersAddressGateway", label: "Address Gateway", icon: UserCheck, roles: [...ADMIN_LIKE,"sales_manager","sales_exec","accounts","ops_manager","pro_head","pro"] },
-    { key: "customersOthers", label: "Others", icon: UserCheck, roles: [...ADMIN_LIKE,"sales_manager","sales_exec","accounts","ops_manager","pro_head","pro"] },
-    { key: "customersAll", label: "All Customers", icon: UserCheck, roles: [...ADMIN_LIKE,"sales_manager","sales_exec","accounts","ops_manager","pro_head","pro"] },
+    // moduleKey stays "customers" on all three (matches the backend's own module string in
+    // requireRoleOrModuleEdit/hasModuleEdit, customers.routes.js) — `key` is only for routing and
+    // sidebar highlighting. Splitting `key` into three without this, visibility for every
+    // non-admin user with an existing Module Access grant on "customers" broke outright, since
+    // that grant is stored per user_id+module and had nothing to match against the new keys.
+    { key: "customersAddressGateway", moduleKey: "customers", moduleLabel: "Customer & KYC", label: "Address Gateway", icon: UserCheck, roles: [...ADMIN_LIKE,"sales_manager","sales_exec","accounts","ops_manager","pro_head","pro"] },
+    { key: "customersOthers", moduleKey: "customers", label: "Others", icon: UserCheck, roles: [...ADMIN_LIKE,"sales_manager","sales_exec","accounts","ops_manager","pro_head","pro"] },
+    { key: "customersAll", moduleKey: "customers", label: "All Customers", icon: UserCheck, roles: [...ADMIN_LIKE,"sales_manager","sales_exec","accounts","ops_manager","pro_head","pro"] },
   ]},
   { group: "Finance", items: [
     { key: "orders", label: "Sales Orders", icon: ShoppingCart, roles: [...ADMIN_LIKE,"sales_manager","accounts"] },
@@ -1284,7 +1289,7 @@ export default function App() {
   // happens to be listed on which item, or which one they're currently "Acting as". Admin-tier
   // always sees everything, matching the backend's requireModuleView bypass.
   const visibleNav = NAV.map(g => ({ ...g, items: g.items.filter(i =>
-    i.roles === "all" || ADMIN_LIKE.includes(role) || state.myModulePermissions[i.key]?.canView
+    i.roles === "all" || ADMIN_LIKE.includes(role) || state.myModulePermissions[i.moduleKey || i.key]?.canView
   ) })).filter(g => g.items.length);
 
   // Bottom tab bar (mobile only): Dashboard + up to 2 role-relevant items + Notifications + More.
@@ -8635,7 +8640,19 @@ function ApprovalWorkflowPage({ state, dispatch, role }) {
 // roles keep driving backend ownership-scoping and every other business-logic branch exactly as
 // before; this only answers "which pages does this specific person get," directly, without
 // reasoning through which of their (possibly several) roles happens to grant what.
-const MODULE_ACCESS_ITEMS = NAV.flatMap(g => g.items).filter(i => i.roles !== "all");
+// Deduped by moduleKey (falling back to key when an item doesn't declare one) — the Customer &
+// KYC sidebar section is three separate nav entries (Address Gateway/Others/All Customers) that
+// all share one underlying "customers" permission, so they collapse to a single grid row here
+// instead of three redundant toggles that would fight over the same grant.
+const MODULE_ACCESS_ITEMS = (() => {
+  const seen = new Map();
+  for (const g of NAV) for (const i of g.items) {
+    if (i.roles === "all") continue;
+    const modKey = i.moduleKey || i.key;
+    if (!seen.has(modKey)) seen.set(modKey, { key: modKey, label: i.moduleLabel || i.label, icon: i.icon });
+  }
+  return [...seen.values()];
+})();
 
 function ModuleAccessPage({ state, dispatch }) {
   const [userId, setUserId] = useState("");
