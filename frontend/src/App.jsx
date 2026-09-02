@@ -6903,7 +6903,10 @@ function NewJobCardModal({ state, dispatch, onClose }) {
 }
 
 function AssignModal({ job, dispatch, employees, onClose }) {
-  const opsTeam = employees.filter(t => isAssignable(t) && (t.roles.includes("ops_member") || t.roles.includes("ops_manager") || t.roles.includes("pro_head") || t.roles.includes("pro")));
+  // Admin-tier included alongside the ops team — someone like an Admin Executive in Operations
+  // (e.g. handling Bank Account Opening job cards day to day) does real assignable work here too,
+  // despite holding an admin role rather than one of the ops-specific ones.
+  const opsTeam = employees.filter(t => isAssignable(t) && (t.roles.some(r => ADMIN_LIKE.includes(r)) || t.roles.includes("ops_member") || t.roles.includes("ops_manager") || t.roles.includes("pro_head") || t.roles.includes("pro")));
   const [selected, setSelected] = useState(job.assignees);
   const toggle = (id) => setSelected(sel => sel.includes(id) ? sel.filter(x=>x!==id) : [...sel, id]);
   return (
