@@ -155,4 +155,23 @@ function renderTemplate(str, vars) {
   return (str || "").replace(/\{\{(\w+)\}\}/g, (_, key) => (vars[key] ?? ""));
 }
 
-module.exports = { nextId, nextSequentialId, today, daysFromNow, normPhone, normEmail, normCompany, money, quoteTotal, professionalFeeTotal, findDuplicateCustomer, findOrCreateCustomer, COMPULSORY_KYC_DOC_TYPES, seedDefaultKycDocs, renderTemplate };
+/**
+ * Renames a Customer and keeps every table that stores its name as its own denormalized text
+ * snapshot in sync — leads/deals/quotations/sales orders/invoices/job cards/subscriptions all do
+ * this for display/PDFs/CSV, so without this cascade a rename would only ever show up on the
+ * Customer profile itself. Shared by customers.routes.js's own PATCH /:id and leads.routes.js's
+ * PATCH /:id (renaming the customer a lead is already linked to, rather than treating an edited
+ * company name as switching to a different customer — see the comment at that call site).
+ */
+async function renameCustomerCascade(query, customerId, newName) {
+  await query("UPDATE customers SET name = ? WHERE id = ?", [newName, customerId]);
+  await query("UPDATE leads SET company = ? WHERE customer_id = ?", [newName, customerId]);
+  await query("UPDATE deals SET customer = ? WHERE customer_id = ?", [newName, customerId]);
+  await query("UPDATE quotations SET customer = ? WHERE customer_id = ?", [newName, customerId]);
+  await query("UPDATE sales_orders SET customer = ? WHERE customer_id = ?", [newName, customerId]);
+  await query("UPDATE invoices SET customer = ? WHERE customer_id = ?", [newName, customerId]);
+  await query("UPDATE job_cards SET customer = ? WHERE customer_id = ?", [newName, customerId]);
+  await query("UPDATE customer_subscriptions SET customer = ? WHERE customer_id = ?", [newName, customerId]);
+}
+
+module.exports = { nextId, nextSequentialId, today, daysFromNow, normPhone, normEmail, normCompany, money, quoteTotal, professionalFeeTotal, findDuplicateCustomer, findOrCreateCustomer, COMPULSORY_KYC_DOC_TYPES, seedDefaultKycDocs, renderTemplate, renameCustomerCascade };

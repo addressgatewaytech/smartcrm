@@ -3,7 +3,7 @@ const crypto = require("crypto");
 const { query, withTransaction } = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
 const { requireRole, isAdminLike, requireRoleOrModuleEdit, hasModuleEdit } = require("../middleware/roles");
-const { nextId, nextSequentialId, quoteTotal, findDuplicateCustomer, COMPULSORY_KYC_DOC_TYPES, seedDefaultKycDocs, today } = require("../utils/helpers");
+const { nextId, nextSequentialId, quoteTotal, findDuplicateCustomer, COMPULSORY_KYC_DOC_TYPES, seedDefaultKycDocs, today, renameCustomerCascade } = require("../utils/helpers");
 const { generateOnboardingFormPdf } = require("../utils/onboardingFormPdf");
 const { generateAccountStatementPdf } = require("../utils/accountStatementPdf");
 
@@ -160,17 +160,12 @@ router.patch("/:id", requireRoleOrModuleEdit(["admin_like", "ops_manager", "ops_
     await query(`UPDATE customers SET ${fields.join(", ")} WHERE id=?`, params);
   }
   // A corrected/renamed customer name is kept in sync everywhere that references this customer_id
-  // — leads/deals/quotations/sales orders/invoices/job cards/subscriptions each store the name as
-  // their own text snapshot (for display/PDFs/CSV), so without this cascade a rename here would
-  // never be reflected anywhere else, exactly the bug this was built to fix.
+  // — see renameCustomerCascade (also used by leads.routes.js PATCH /:id when a lead's edited
+  // company name turns out to just be renaming the customer it's already linked to). The redundant
+  // customers.name write here (already set above) is harmless — one shared cascade beats two
+  // near-duplicate ones drifting out of sync with each other over time.
   if (b.name && before && b.name !== before.name) {
-    await query("UPDATE leads SET company = ? WHERE customer_id = ?", [b.name, req.params.id]);
-    await query("UPDATE deals SET customer = ? WHERE customer_id = ?", [b.name, req.params.id]);
-    await query("UPDATE quotations SET customer = ? WHERE customer_id = ?", [b.name, req.params.id]);
-    await query("UPDATE sales_orders SET customer = ? WHERE customer_id = ?", [b.name, req.params.id]);
-    await query("UPDATE invoices SET customer = ? WHERE customer_id = ?", [b.name, req.params.id]);
-    await query("UPDATE job_cards SET customer = ? WHERE customer_id = ?", [b.name, req.params.id]);
-    await query("UPDATE customer_subscriptions SET customer = ? WHERE customer_id = ?", [b.name, req.params.id]);
+    await renameCustomerCascade(query, req.params.id, b.name);
   }
   res.json({ ok: true });
 });

@@ -2,7 +2,7 @@ const express = require("express");
 const { query, withTransaction } = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
 const { requireRole, isAdminLike } = require("../middleware/roles");
-const { nextId, nextSequentialId, today, findOrCreateCustomer } = require("../utils/helpers");
+const { nextId, nextSequentialId, today, findOrCreateCustomer, findDuplicateCustomer, renameCustomerCascade } = require("../utils/helpers");
 const { checkExistingData } = require("./dataManager.routes").internal;
 const { nextSlaDeadline } = require("../utils/officeHours");
 
@@ -97,14 +97,31 @@ router.patch("/:id", async (req, res) => {
   // A changed follow-up date needs its own fresh reminder, not to stay silently "already sent"
   // from whatever the previous date was.
   if (b.nextFollowUp !== undefined) fields.push("follow_up_reminder_sent = 0");
-  // Editing the company name means it may now belong to a different (or new) Customer profile —
-  // re-resolve rather than leaving customer_id pointed at the old one. If that re-resolve lands
-  // on an existing customer via phone/email (not the typed name), use its real name for this
-  // lead's own `company` too, instead of leaving the two mismatched.
   if (b.company !== undefined) {
-    const { customerId, resolvedName } = await findOrCreateCustomer(query, { name: b.company, phone: b.phone, email: b.email, ownerId: req.user.id });
-    fields.push("company = ?"); params.push(resolvedName);
-    fields.push("customer_id = ?"); params.push(customerId);
+    const [existing] = await query("SELECT customer_id FROM leads WHERE id = ?", [req.params.id]);
+    // Excludes the lead's own already-linked customer from the duplicate search — without this,
+    // editing a lead's company name (a typo fix, or the company genuinely renamed) would phone/
+    // email-match that SAME customer every time and silently revert the typed name straight back
+    // to what it already was, since findDuplicateCustomer has no way to know "this is the
+    // customer I'm already pointed at" from a plain name/phone/email match.
+    const dup = await findDuplicateCustomer(query, { name: b.company, phone: b.phone, email: b.email }, existing?.customer_id || null);
+    if (dup) {
+      // Genuinely matches a DIFFERENT existing customer — adopt its link and real name, same
+      // reasoning as creating a brand-new lead that turns out to already exist as a customer.
+      fields.push("company = ?"); params.push(dup.match.name);
+      fields.push("customer_id = ?"); params.push(dup.match.id);
+    } else if (existing?.customer_id) {
+      // No other customer matches — the user is renaming/correcting the customer this lead is
+      // already linked to, not switching to a different one. Cascades the same way
+      // customers.routes.js PATCH /:id's own rename does, so it stays in sync everywhere.
+      fields.push("company = ?"); params.push(b.company);
+      await renameCustomerCascade(query, existing.customer_id, b.company);
+    } else {
+      // No existing link at all yet — resolve/create fresh, same as a brand-new lead.
+      const { customerId, resolvedName } = await findOrCreateCustomer(query, { name: b.company, phone: b.phone, email: b.email, ownerId: req.user.id });
+      fields.push("company = ?"); params.push(resolvedName);
+      fields.push("customer_id = ?"); params.push(customerId);
+    }
   }
   if (!fields.length) return res.status(400).json({ error: "Nothing to update" });
   params.push(req.params.id);
