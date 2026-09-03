@@ -3024,6 +3024,11 @@ function AddItemControl({ catalog, feeType, service, onAdd, label }) {
   );
 }
 
+// Same "Activity Fees" description match used when a Company Formation template is loaded (see
+// activityIdxs below) — identifies the one line item that's genuinely billed per business
+// activity, so the +Activity control only shows there, not on every quotation line item.
+const isActivityFeeItem = (it) => (it?.description || "").trim().toLowerCase().startsWith("activity fees");
+
 // Appends a numbered activity ("N - name") to a per-activity-billed line item's note and bumps
 // its Quantity by 1 in the same step — e.g. "Activity Fees (QAR 300 per activity)" is charged per
 // activity, so adding one more activity naturally means one more billable unit; Amount then just
@@ -3098,7 +3103,7 @@ function ItemSection({ title, bg, feeType, items, setItems, service, catalog, re
           </div>
           <div className="field"><label>Note (optional)</label>
             <textarea rows={2} value={it.note || ""} onChange={e=>update(i,"note",e.target.value)} placeholder={"e.g. 50 QAR per partner, or a numbered list —\n1 - first point\n2 - second point"} />
-            <AddActivityControl onAdd={(name)=>addActivity(i,name)} />
+            {isActivityFeeItem(it) && <AddActivityControl onAdd={(name)=>addActivity(i,name)} />}
           </div>
           <div className="row2">
             <div className="field"><label>Qty</label><input type="number" min={1} value={it.qty} onChange={e=>update(i,"qty",(e.target.value === "" ? "" : Number(e.target.value)))} /></div>
@@ -3999,7 +4004,7 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
                         <>
                           <input style={inputStyle} value={r.it.description || ""} onChange={e=>updateItemField(r.idx,"description",e.target.value)} placeholder="Item description" />
                           <textarea rows={2} style={{ ...inputStyle, fontSize:11, color:"var(--ink-soft)", marginTop:3, resize:"vertical" }} value={r.it.note || ""} onChange={e=>updateItemField(r.idx,"note",e.target.value)} placeholder={"Note (optional) — a numbered list gets its own line per number, e.g. 1 - ... 2 - ..."} />
-                          <AddActivityControl onAdd={(name)=>addActivityToItem(r.idx,name)} />
+                          {isActivityFeeItem(r.it) && <AddActivityControl onAdd={(name)=>addActivityToItem(r.idx,name)} />}
                         </>
                       ) : (<>
                         {r.it.description || r.it.service}
