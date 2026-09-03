@@ -3860,25 +3860,43 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
         let lastCategory = null;
         let runningNumber = 0;
         let lastIsGov = null;
+        let pendingGroupStart = true;
         const rows = [];
+        const hasGovItems = src.items.some(it => isGovFeeLine(it, q.feeType));
+        const hasProfItems = src.items.some(it => !isGovFeeLine(it, q.feeType));
+        // Groups rows into a rounded card per fee type — a visible gap wherever the document
+        // switches from Government Fee rows to Professional Fee rows (or back), with that section's
+        // own "Add ... item" button right there instead of both buttons sitting together below the
+        // whole table. Items of one fee type are normally kept contiguous (see addItem below), so
+        // this only fires once per document, right at the section boundary. `groupStart`/`groupEnd`
+        // mark the first/last row of each colored block so only its outer corners get rounded.
         src.items.forEach((it, i) => {
           const isGov = isGovFeeLine(it, q.feeType);
           const bg = isGov ? GOV_FEE_BG : PROF_FEE_BG;
-          // A visible gap wherever the document switches from Government Fee rows to Professional
-          // Fee rows (or back) — items of one fee type are normally kept contiguous (see addItem
-          // below), so this only fires once per document, right at that section boundary.
           if (lastIsGov !== null && isGov !== lastIsGov) {
+            if (rows.length) rows[rows.length - 1].groupEnd = true;
+            if (editingNow) rows.push({ kind: "add-button", feeType: lastIsGov ? "Government Fee" : "Professional Fee", key: "add-"+i });
             rows.push({ kind: "gap", key: "gap-"+i });
             lastCategory = null;
+            pendingGroupStart = true;
           }
+          const isGroupStart = pendingGroupStart;
           if ((it.category || "") !== lastCategory && it.category) {
-            rows.push({ kind: "category", label: it.category, key: "cat-"+i, bg, idx: i });
+            rows.push({ kind: "category", label: it.category, key: "cat-"+i, bg, idx: i, groupStart: isGroupStart });
             lastCategory = it.category;
+            pendingGroupStart = false;
           }
           runningNumber++;
-          rows.push({ kind: "item", it, number: runningNumber, idx: i, key: "item-"+i, bg });
+          rows.push({ kind: "item", it, number: runningNumber, idx: i, key: "item-"+i, bg, groupStart: pendingGroupStart });
+          pendingGroupStart = false;
           lastIsGov = isGov;
         });
+        if (rows.length) rows[rows.length - 1].groupEnd = true;
+        if (editingNow) {
+          if (lastIsGov !== null) rows.push({ kind: "add-button", feeType: lastIsGov ? "Government Fee" : "Professional Fee", key: "add-end" });
+          if (!hasGovItems) rows.unshift({ kind: "add-button", feeType: "Government Fee", key: "add-gov-empty" });
+          if (!hasProfItems) rows.push({ kind: "add-button", feeType: "Professional Fee", key: "add-prof-empty" });
+        }
         const { subtotal: pdfSubtotal, itemDiscountTotal: pdfItemDiscountTotal, discountAmount: pdfDiscountAmount, total: pdfTotal } =
           quoteTotals(src.items, src.orderDiscount, src.orderDiscountType || "amount");
         const pdfSplit = govProfSplit(src.items, q.feeType);
@@ -3990,21 +4008,29 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
                 </tr>
               </thead>
               <tbody>
-                {rows.map(r => r.kind === "gap" ? (
+                {rows.map(r => r.kind === "add-button" ? (
+                  <tr key={r.key}>
+                    <td colSpan={editingNow ? 6 : 4} style={{ padding:"2px 10px 10px" }}>
+                      <AddItemControl label={r.feeType === "Government Fee" ? "Add government fee item" : "Add professional fee item"} onAdd={addItem(r.feeType)} />
+                    </td>
+                  </tr>
+                ) : r.kind === "gap" ? (
                   <tr key={r.key}><td colSpan={editingNow ? 6 : 4} style={{ padding:0, height:14, border:"none" }}></td></tr>
                 ) : r.kind === "category" ? (
                   <tr key={r.key} style={{ background:r.bg }}>
-                    <td colSpan={editingNow ? 6 : 4} style={{ padding:"9px 10px", fontWeight:600, fontSize:12, borderBottom:"1px solid var(--hair)" }}>
+                    <td colSpan={editingNow ? 6 : 4} style={{ padding:"9px 10px", fontWeight:600, fontSize:12, borderBottom:"1px solid var(--hair)",
+                      borderTopLeftRadius:r.groupStart?8:0, borderTopRightRadius:r.groupStart?8:0, borderBottomLeftRadius:r.groupEnd?8:0, borderBottomRightRadius:r.groupEnd?8:0 }}>
                       {r.label}
                     </td>
                   </tr>
                 ) : (
                   <tr key={r.key} style={{ borderBottom:"1px solid var(--hair)", background:r.bg }}>
-                    <td style={{ padding:"9px 10px", verticalAlign:"top" }}>{r.number}</td>
+                    <td style={{ padding:"9px 10px", verticalAlign:"top", borderTopLeftRadius:r.groupStart?8:0, borderBottomLeftRadius:r.groupEnd?8:0 }}>{r.number}</td>
                     <td style={{ padding:"9px 10px" }}>
                       {editingNow ? (
                         <>
                           <input style={inputStyle} value={r.it.description || ""} onChange={e=>updateItemField(r.idx,"description",e.target.value)} placeholder="Item description" />
+                          {!(r.it.description || "").trim() && <span style={{ fontSize:10, color:"var(--danger)", display:"block", marginTop:2 }}>Required</span>}
                           <textarea rows={2} style={{ ...inputStyle, fontSize:11, color:"var(--ink-soft)", marginTop:3, resize:"vertical" }} value={r.it.note || ""} onChange={e=>updateItemField(r.idx,"note",e.target.value)} placeholder={"Note (optional) — a numbered list gets its own line per number, e.g. 1 - ... 2 - ..."} />
                           {isActivityFeeItem(r.it) && <AddActivityControl onAdd={(name)=>addActivityToItem(r.idx,name)} />}
                         </>
@@ -4023,9 +4049,9 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
                         <input type="number" style={{ ...inputStyle, textAlign:"right" }} value={r.it.price} onChange={e=>updateItemField(r.idx,"price",(e.target.value === "" ? "" : Number(e.target.value)))} />
                       ) : Number(r.it.price).toFixed(2)}
                     </td>
-                    <td className="mono" style={{ padding:"9px 10px", textAlign:"right", verticalAlign:"top" }}>{(r.it.qty*r.it.price*(1-(r.it.discountPct||0)/100)).toFixed(2)}</td>
+                    <td className="mono" style={{ padding:"9px 10px", textAlign:"right", verticalAlign:"top", borderTopRightRadius:(!editingNow&&r.groupStart)?8:0, borderBottomRightRadius:(!editingNow&&r.groupEnd)?8:0 }}>{(r.it.qty*r.it.price*(1-(r.it.discountPct||0)/100)).toFixed(2)}</td>
                     {editingNow && (
-                      <td style={{ padding:"9px 10px", verticalAlign:"top", textAlign:"center" }}>
+                      <td style={{ padding:"9px 10px", verticalAlign:"top", textAlign:"center", borderTopRightRadius:r.groupStart?8:0, borderBottomRightRadius:r.groupEnd?8:0 }}>
                         <button type="button" className="btn btn-sm btn-ghost" style={{color:"var(--danger)", padding:2}} title="Remove" onClick={()=>removeItemAt(r.idx)}><X size={13}/></button>
                       </td>
                     )}
@@ -4033,12 +4059,6 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
                 ))}
               </tbody>
             </table>
-            {editingNow && (
-              <div className="row2" style={{ marginBottom:16 }}>
-                <AddItemControl label="Add government fee item" onAdd={addItem("Government Fee")} />
-                <AddItemControl label="Add professional fee item" onAdd={addItem("Professional Fee")} />
-              </div>
-            )}
 
             <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:24 }}>
               <table style={{ fontSize:13 }}>
