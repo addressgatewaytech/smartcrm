@@ -4210,6 +4210,8 @@ function QuotationTemplateEditor({ state, dispatch }) {
   const [showNewService, setShowNewService] = useState(false);
   const [newServiceName, setNewServiceName] = useState("");
   const [removingTemplate, setRemovingTemplate] = useState(false);
+  const [savingTemplate, setSavingTemplate] = useState(false);
+  const [savingServiceCost, setSavingServiceCost] = useState(false);
   const hasTemplate = !!state.quotationTemplates[service];
 
   const clearForm = () => {
@@ -4270,15 +4272,35 @@ function QuotationTemplateEditor({ state, dispatch }) {
           <label>Service cost (internal — what it costs Address Gateway to deliver this service, e.g. Office Space Assistance = 2,000 QAR. Not shown to the client — subtracted once per transaction from the Professional Fee to get Business Volume.)</label>
           <div style={{ display:"flex", gap:8, maxWidth: 280 }}>
             <input type="number" min="0" step="0.01" value={serviceCost} onChange={e=>setServiceCost(e.target.value)} />
-            <button className="btn btn-sm" onClick={()=>dispatch({type:"UPDATE_SERVICE_COST", service, cost: Number(serviceCost)||0})}>Save</button>
+            <button className="btn btn-sm" onClick={()=>setSavingServiceCost(true)}>Save</button>
           </div>
         </div>
+        {savingServiceCost && (
+          <ConfirmModal
+            title={`Update the service cost for ${service}?`}
+            body={`This changes what every future Business Volume calculation for ${service} subtracts per transaction, from now on.`}
+            confirmLabel="Save"
+            onConfirm={()=>{ dispatch({type:"UPDATE_SERVICE_COST", service, cost: Number(serviceCost)||0}); setSavingServiceCost(false); }}
+            onClose={()=>setSavingServiceCost(false)}
+          />
+        )}
         <div className="field"><label>Footer note (optional — shown at the bottom of every page)</label><textarea rows={2} value={footerNote} onChange={e=>setFooterNote(e.target.value)} placeholder={DEFAULT_FOOTER_NOTE} /></div>
 
         <div style={{ display:"flex", gap:8, marginTop: 8 }}>
-          <button className="btn btn-primary" onClick={()=>dispatch({type:"UPDATE_QUOTATION_TEMPLATE", service, items, terms, notes, subject, orderDiscount, orderDiscountType, bank, footerNote})}>Save template</button>
+          <button className="btn btn-primary" onClick={()=>setSavingTemplate(true)}>Save template</button>
           {hasTemplate && <button className="btn btn-ghost" style={{color:"var(--danger)"}} onClick={()=>setRemovingTemplate(true)}><Trash2 size={13}/> Delete template</button>}
         </div>
+        {savingTemplate && (
+          <ConfirmModal
+            title={`Save the template for ${service}?`}
+            body={hasTemplate
+              ? "This overwrites the existing template for this service — every new quotation for it will start from these items, terms and notes from now on."
+              : "This creates the template for this service — every new quotation for it will start from these items, terms and notes from now on."}
+            confirmLabel="Save template"
+            onConfirm={()=>{ dispatch({type:"UPDATE_QUOTATION_TEMPLATE", service, items, terms, notes, subject, orderDiscount, orderDiscountType, bank, footerNote}); setSavingTemplate(false); }}
+            onClose={()=>setSavingTemplate(false)}
+          />
+        )}
         {removingTemplate && (
           <ConfirmModal
             title={`Delete the template for ${service}?`}
