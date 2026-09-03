@@ -767,6 +767,20 @@ function CloudLinkButton({ url, onSave, big=false }) {
   );
 }
 
+// A quote/order line item's note is often typed as a numbered list ("1 - ... 2 - ... 3 - ...")
+// but the field used to be a single-line input with nowhere to press Enter, so every point ran
+// together as one squished paragraph. Splits onto its own line before each "N - " marker (and
+// respects any real line breaks already in the text, from the multi-line field notes are typed
+// into now) — a best-effort heuristic on existing data, not a guaranteed-perfect parser, since a
+// stray number-dash elsewhere in the sentence (e.g. a price range) would also split.
+function NoteLines({ note, style }) {
+  if (!note) return null;
+  // (?<!\d) keeps a multi-digit code like "331295 - Repair..." from being torn apart mid-number —
+  // without it, "5 - " inside "...295 - ..." looks like its own list marker too.
+  const lines = note.split(/\n|(?<!\d)(?=\d{1,2}\s*-\s)/g).map(s => s.trim()).filter(Boolean);
+  return <div style={style}>{lines.map((line, i) => <div key={i}>{line}</div>)}</div>;
+}
+
 // Small "copy to clipboard" icon button — pairs with any piece of contact info (phone, email,
 // mobile) so it can be copied without selecting/retyping it. Briefly swaps to a checkmark as
 // its own feedback instead of relying on a separate toast.
@@ -3036,7 +3050,7 @@ function ItemSection({ title, bg, feeType, items, setItems, service, catalog, re
           <div>
             {it.category && <div style={{ fontSize:11, color:"var(--ink-soft)" }}>{it.category}</div>}
             <div style={{ fontSize:13 }}>{it.description || it.service}</div>
-            {it.note && <div style={{ fontSize:11.5, color:"var(--ink-soft)" }}>{it.note}</div>}
+            <NoteLines note={it.note} style={{ fontSize:11.5, color:"var(--ink-soft)" }} />
           </div>
           <div style={{ textAlign:"right", flexShrink:0 }}>
             <div className="mono" style={{ fontSize:13 }}>{money(it.qty*it.price*(1-(it.discountPct||0)/100))}</div>
@@ -3054,7 +3068,7 @@ function ItemSection({ title, bg, feeType, items, setItems, service, catalog, re
             </div>
           </div>
           <div className="field"><label>Note (optional)</label>
-            <input value={it.note || ""} onChange={e=>update(i,"note",e.target.value)} placeholder="e.g. 50 QAR per partner" />
+            <textarea rows={2} value={it.note || ""} onChange={e=>update(i,"note",e.target.value)} placeholder={"e.g. 50 QAR per partner, or a numbered list —\n1 - first point\n2 - second point"} />
           </div>
           <div className="row2">
             <div className="field"><label>Qty</label><input type="number" min={1} value={it.qty} onChange={e=>update(i,"qty",(e.target.value === "" ? "" : Number(e.target.value)))} /></div>
@@ -3947,11 +3961,11 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
                       {editingNow ? (
                         <>
                           <input style={inputStyle} value={r.it.description || ""} onChange={e=>updateItemField(r.idx,"description",e.target.value)} placeholder="Item description" />
-                          <input style={{ ...inputStyle, fontSize:11, color:"var(--ink-soft)", marginTop:3 }} value={r.it.note || ""} onChange={e=>updateItemField(r.idx,"note",e.target.value)} placeholder="Note (optional)" />
+                          <textarea rows={2} style={{ ...inputStyle, fontSize:11, color:"var(--ink-soft)", marginTop:3, resize:"vertical" }} value={r.it.note || ""} onChange={e=>updateItemField(r.idx,"note",e.target.value)} placeholder={"Note (optional) — a numbered list gets its own line per number, e.g. 1 - ... 2 - ..."} />
                         </>
                       ) : (<>
                         {r.it.description || r.it.service}
-                        {r.it.note && <div style={{ fontSize:11, color:"var(--ink-soft)", marginTop:2 }}>{r.it.note}</div>}
+                        <NoteLines note={r.it.note} style={{ fontSize:11, color:"var(--ink-soft)", marginTop:2 }} />
                       </>)}
                     </td>
                     {editingNow && (
@@ -4261,7 +4275,7 @@ function ItemCatalogManager({ catalog, services, dispatch }) {
             </div>
           </div>
           <div className="field"><label>Description (goes onto the quotation line)</label><input value={form.description} onChange={e=>setForm(f=>({...f, description:e.target.value}))} placeholder="e.g. Issue New CR" /></div>
-          <div className="field"><label>Note (optional)</label><input value={form.note} onChange={e=>setForm(f=>({...f, note:e.target.value}))} placeholder="e.g. 50 QAR per partner" /></div>
+          <div className="field"><label>Note (optional)</label><textarea rows={2} value={form.note} onChange={e=>setForm(f=>({...f, note:e.target.value}))} placeholder={"e.g. 50 QAR per partner, or a numbered list —\n1 - first point\n2 - second point"} /></div>
           <div className="row2">
             <div className="field"><label>Default price (QAR)</label><input type="number" value={form.price} onChange={e=>setForm(f=>({...f, price:e.target.value}))} /></div>
             <div className="field"><label>Only show for service (optional)</label>
@@ -6022,7 +6036,7 @@ function SalesOrderPdfModal({ salesOrder: so, onboarded, items=[], role, onClose
               {items.map((it,i)=>(
                 <tr key={i}>
                   <td style={{fontSize:11.5, color:"var(--ink-soft)"}}>{it.category || "—"}</td>
-                  <td>{it.description || it.service}{it.note && <div style={{fontSize:11, color:"var(--ink-soft)"}}>{it.note}</div>}</td>
+                  <td>{it.description || it.service}<NoteLines note={it.note} style={{fontSize:11, color:"var(--ink-soft)"}} /></td>
                   <td>{it.qty}</td><td className="mono">{money(it.price)}</td>
                   <td>{it.discountPct||0}%</td><td className="mono">{money(it.qty*it.price*(1-(it.discountPct||0)/100))}</td>
                 </tr>
@@ -6287,7 +6301,7 @@ function InvoicePdfModal({ invoice: inv, items=[], role, onClose }) {
               {items.map((it,i)=>(
                 <tr key={i}>
                   <td style={{fontSize:11.5, color:"var(--ink-soft)"}}>{it.category || "—"}</td>
-                  <td>{it.description || it.service}{it.note && <div style={{fontSize:11, color:"var(--ink-soft)"}}>{it.note}</div>}</td>
+                  <td>{it.description || it.service}<NoteLines note={it.note} style={{fontSize:11, color:"var(--ink-soft)"}} /></td>
                   <td>{it.qty}</td><td className="mono">{money(it.price)}</td>
                   <td>{it.discountPct||0}%</td><td className="mono">{money(it.qty*it.price*(1-(it.discountPct||0)/100))}</td>
                 </tr>
