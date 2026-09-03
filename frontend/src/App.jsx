@@ -3048,6 +3048,13 @@ function ItemSection({ title, bg, feeType, items, setItems, service, readOnly })
   };
   const subtotal = items.reduce((a,it)=>a+it.qty*it.price*(1-(it.discountPct||0)/100), 0);
   if (readOnly && items.length === 0) return null;
+  // A service that never needs this fee type (e.g. Office Space Assistance has no Government Fee
+  // line) shouldn't have to look at a permanently-empty colored band with "No ... items yet." —
+  // collapse down to just the add control until an item actually exists, then show the normal
+  // section in full.
+  if (!readOnly && items.length === 0) {
+    return <div style={{ marginBottom:16 }}><AddItemControl onAdd={addEntry} label={`Add ${title.toLowerCase()} item`} /></div>;
+  }
 
   return (
     <div style={{ marginBottom: 16 }}>
@@ -3055,7 +3062,6 @@ function ItemSection({ title, bg, feeType, items, setItems, service, readOnly })
         <strong style={{ fontSize:13 }}>{title}</strong>
         <span className="mono" style={{ fontSize:12.5, color:"var(--ink-soft)" }}>{money(subtotal)}</span>
       </div>
-      {items.length === 0 && <div style={{ fontSize:12, color:"var(--ink-soft)", padding:"0 4px 10px" }}>No {title.toLowerCase()} items yet.</div>}
       {items.map((it, i) => readOnly ? (
         <div key={i} style={{ background:bg, borderRadius:8, padding:"8px 12px", marginBottom:6, display:"flex", justifyContent:"space-between", gap:12 }}>
           <div>
