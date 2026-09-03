@@ -2987,40 +2987,14 @@ function EditDealModal({ deal: d, state, dispatch, onClose }) {
   );
 }
 
-// Type to search the item catalog (scoped to this section's fee type, and to `service` when a
-// catalog row has one set) or just type a one-off description and press Enter — either way it
-// calls onAdd with { description, note, price }. Shared by every item-adding surface below.
-function AddItemControl({ catalog, feeType, service, onAdd, label }) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const options = catalog.filter(c => c.feeType === feeType && (!c.service || c.service === service));
-  const matches = query.trim() ? options.filter(c => `${c.name} ${c.description}`.toLowerCase().includes(query.trim().toLowerCase())) : options;
-
-  if (!open) return <button type="button" className="btn btn-sm" onClick={()=>setOpen(true)}><Plus size={13}/> {label}</button>;
-
-  const commitFreeText = () => {
-    if (query.trim()) onAdd({ description: query.trim(), note: "", price: 0 });
-    setQuery(""); setOpen(false);
-  };
-
+// Adds a blank item straight into this fee section — no search step. The row that appears is the
+// normal editable item card (category/description/note/qty/price) already rendered by ItemSection/
+// the quote's inline table editor, so the user just types straight into it.
+function AddItemControl({ onAdd, label }) {
   return (
-    <div style={{ position:"relative", maxWidth:360 }}>
-      <input autoFocus value={query} onChange={e=>setQuery(e.target.value)}
-        onKeyDown={e=>{ if (e.key==="Enter") { e.preventDefault(); commitFreeText(); } if (e.key==="Escape") { setQuery(""); setOpen(false); } }}
-        onBlur={()=>setTimeout(()=>setOpen(false), 150)}
-        placeholder="Search items or type a new one — Enter to add" style={{ width:"100%" }} />
-      {matches.length > 0 && (
-        <div className="agw-card" style={{ position:"absolute", zIndex:20, width:"100%", maxHeight:220, overflowY:"auto", padding:4, marginTop:2 }}>
-          {matches.map(m => (
-            <div key={m.id} onMouseDown={()=>{ onAdd({ description:m.description, note:m.note, price:m.price }); setQuery(""); setOpen(false); }}
-              style={{ padding:"6px 8px", fontSize:12.5, cursor:"pointer", borderRadius:6, display:"flex", justifyContent:"space-between", gap:8 }}
-              onMouseEnter={e=>e.currentTarget.style.background="var(--brand-tint)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-              <span>{m.name}</span><span className="mono" style={{ color:"var(--ink-soft)", flexShrink:0 }}>{money(m.price)}</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+    <button type="button" className="btn btn-sm" onClick={()=>onAdd({ description:"", note:"", price:0 })}>
+      <Plus size={13}/> {label}
+    </button>
   );
 }
 
@@ -3054,7 +3028,7 @@ function AddActivityControl({ onAdd }) {
 // light-tinted block, its own item rows, its own "add item" control. Adding here always sets
 // the new item's feeType to this section's, so there's no more relying on category text or a
 // per-item dropdown to classify a line correctly.
-function ItemSection({ title, bg, feeType, items, setItems, service, catalog, readOnly }) {
+function ItemSection({ title, bg, feeType, items, setItems, service, readOnly }) {
   const update = (i, field, val) => setItems(items.map((it,idx) => idx===i ? { ...it, [field]: val } : it));
   const updateMulti = (i, patch) => setItems(items.map((it,idx) => idx===i ? { ...it, ...patch } : it));
   const addActivity = (i, name) => {
@@ -3119,7 +3093,7 @@ function ItemSection({ title, bg, feeType, items, setItems, service, catalog, re
           </div>
         </div>
       ))}
-      {!readOnly && <AddItemControl catalog={catalog} feeType={feeType} service={service} onAdd={addEntry} label={`Add ${title.toLowerCase()} item`} />}
+      {!readOnly && <AddItemControl onAdd={addEntry} label={`Add ${title.toLowerCase()} item`} />}
     </div>
   );
 }
@@ -3130,14 +3104,14 @@ function ItemSection({ title, bg, feeType, items, setItems, service, catalog, re
 // keep working unchanged) — this only splits it for editing and re-concatenates gov+prof on save.
 // `readOnly` renders a plain summary (no inputs/add/remove) — used for Current View before "Edit
 // items" is clicked, where items are still shown but not being edited.
-function QuoteItemsEditor({ items, onChange, service, catalog = [], quotationFeeType, readOnly = false }) {
+function QuoteItemsEditor({ items, onChange, service, quotationFeeType, readOnly = false }) {
   const govItems = items.filter(it => isGovFeeLine(it, quotationFeeType));
   const profItems = items.filter(it => !isGovFeeLine(it, quotationFeeType));
   return (
     <div>
-      <ItemSection title="Government Fee" bg={GOV_FEE_BG} feeType="Government Fee" items={govItems} service={service} catalog={catalog} readOnly={readOnly}
+      <ItemSection title="Government Fee" bg={GOV_FEE_BG} feeType="Government Fee" items={govItems} service={service} readOnly={readOnly}
         setItems={(next)=>onChange([...next, ...profItems])} />
-      <ItemSection title="Professional Fee" bg={PROF_FEE_BG} feeType="Professional Fee" items={profItems} service={service} catalog={catalog} readOnly={readOnly}
+      <ItemSection title="Professional Fee" bg={PROF_FEE_BG} feeType="Professional Fee" items={profItems} service={service} readOnly={readOnly}
         setItems={(next)=>onChange([...govItems, ...next])} />
     </div>
   );
@@ -3745,7 +3719,7 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
           {editable && (
             <div className="side-note" style={{marginBottom:10}}>Use Visual edit under the PDF preview tab to make changes.</div>
           )}
-          <QuoteItemsEditor items={cq.items} onChange={(next)=>updDraft("items", next)} service={cq.items[0]?.service} catalog={state?.itemCatalog || []} quotationFeeType={q.feeType} readOnly />
+          <QuoteItemsEditor items={cq.items} onChange={(next)=>updDraft("items", next)} service={cq.items[0]?.service} quotationFeeType={q.feeType} readOnly />
           {editingNow && (
             <div style={{ maxWidth:320, marginLeft:"auto", marginTop:10 }}>
               <OrderDiscountField value={cq.orderDiscount||0} type={cq.orderDiscountType||"amount"}
@@ -4033,8 +4007,8 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
             </table>
             {editingNow && (
               <div className="row2" style={{ marginBottom:16 }}>
-                <AddItemControl catalog={state?.itemCatalog || []} feeType="Government Fee" service={src.items[0]?.service} label="Add government fee item" onAdd={addItem("Government Fee")} />
-                <AddItemControl catalog={state?.itemCatalog || []} feeType="Professional Fee" service={src.items[0]?.service} label="Add professional fee item" onAdd={addItem("Professional Fee")} />
+                <AddItemControl label="Add government fee item" onAdd={addItem("Government Fee")} />
+                <AddItemControl label="Add professional fee item" onAdd={addItem("Professional Fee")} />
               </div>
             )}
 
@@ -4231,7 +4205,7 @@ function QuotationTemplateEditor({ state, dispatch }) {
 
         <div className="field"><label>Subject</label><input value={subject} onChange={e=>setSubject(e.target.value)} placeholder="e.g. 100% FOREIGN OWNERSHIP COMPANY FORMATION - Professional fees" /></div>
 
-        <QuoteItemsEditor items={items} onChange={setItems} service={service} catalog={state.itemCatalog} />
+        <QuoteItemsEditor items={items} onChange={setItems} service={service} />
 
         <div className="row2" style={{ marginTop: 14 }}>
           <div className="field"><label>Notes (shown as-is on the quotation)</label><textarea rows={4} value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Looking forward for your business..." /></div>
