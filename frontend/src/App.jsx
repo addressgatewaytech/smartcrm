@@ -776,10 +776,13 @@ function CloudLinkButton({ url, onSave, big=false }) {
 // (?<!\d) keeps a multi-digit code like "331295 - Repair..." from being torn apart mid-number —
 // without it, "5 - " inside "...295 - ..." looks like its own list marker too.
 const splitNoteLines = (note) => note ? note.split(/\n|(?<!\d)(?=\d{1,2}\s*-\s)/g).map(s => s.trim()).filter(Boolean) : [];
-function NoteLines({ note, style }) {
+// `bullet` prefixes each line with "• " — used for Professional Fee items only (Government Fee
+// items keep plain lines), matching how a "PROFESSIONAL FEE IS INCLUSIVE OF THE FOLLOWING:" note
+// is meant to read as a bullet list rather than a numbered one.
+function NoteLines({ note, style, bullet }) {
   const lines = splitNoteLines(note);
   if (!lines.length) return null;
-  return <div style={style}>{lines.map((line, i) => <div key={i}>{line}</div>)}</div>;
+  return <div style={style}>{lines.map((line, i) => <div key={i}>{bullet ? `• ${line}` : line}</div>)}</div>;
 }
 
 // Small "copy to clipboard" icon button — pairs with any piece of contact info (phone, email,
@@ -3058,7 +3061,7 @@ function ItemSection({ title, bg, feeType, items, setItems, service, readOnly })
           <div>
             {it.category && <div style={{ fontSize:11, color:"var(--ink-soft)" }}>{it.category}</div>}
             <div style={{ fontSize:13 }}>{it.description || it.service}</div>
-            <NoteLines note={it.note} style={{ fontSize:11.5, color:"var(--ink-soft)" }} />
+            <NoteLines note={it.note} style={{ fontSize:11.5, color:"var(--ink-soft)" }} bullet={feeType==="Professional Fee"} />
           </div>
           <div style={{ textAlign:"right", flexShrink:0 }}>
             <div className="mono" style={{ fontSize:13 }}>{money(it.qty*it.price*(1-(it.discountPct||0)/100))}</div>
@@ -3856,15 +3859,25 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
 
         let lastCategory = null;
         let runningNumber = 0;
+        let lastIsGov = null;
         const rows = [];
         src.items.forEach((it, i) => {
-          const bg = isGovFeeLine(it, q.feeType) ? GOV_FEE_BG : PROF_FEE_BG;
+          const isGov = isGovFeeLine(it, q.feeType);
+          const bg = isGov ? GOV_FEE_BG : PROF_FEE_BG;
+          // A visible gap wherever the document switches from Government Fee rows to Professional
+          // Fee rows (or back) — items of one fee type are normally kept contiguous (see addItem
+          // below), so this only fires once per document, right at that section boundary.
+          if (lastIsGov !== null && isGov !== lastIsGov) {
+            rows.push({ kind: "gap", key: "gap-"+i });
+            lastCategory = null;
+          }
           if ((it.category || "") !== lastCategory && it.category) {
             rows.push({ kind: "category", label: it.category, key: "cat-"+i, bg, idx: i });
             lastCategory = it.category;
           }
           runningNumber++;
           rows.push({ kind: "item", it, number: runningNumber, idx: i, key: "item-"+i, bg });
+          lastIsGov = isGov;
         });
         const { subtotal: pdfSubtotal, itemDiscountTotal: pdfItemDiscountTotal, discountAmount: pdfDiscountAmount, total: pdfTotal } =
           quoteTotals(src.items, src.orderDiscount, src.orderDiscountType || "amount");
@@ -3884,7 +3897,20 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
           updateItemFields(idx, { note: newNote, qty: (Number(it.qty) || 0) + 1 });
         };
         const removeItemAt = (idx) => updDraft("items", src.items.filter((_,i) => i!==idx));
-        const addItem = (feeType) => ({ description, note, price }) => updDraft("items", [...src.items, { category:"", service: src.items[0]?.service, description, note, qty:1, price, discountPct:0, feeType }]);
+        // Inserts right after the last existing item of the same fee type, keeping Government Fee
+        // and Professional Fee rows in their own contiguous block instead of always tacking the
+        // new row onto the very end of the whole document (where it could land in the wrong
+        // section). When a document has no items of this type yet, Government Fee defaults to the
+        // top and Professional Fee to the bottom, matching the usual document order.
+        const addItem = (feeType) => ({ description, note, price }) => {
+          const items = src.items;
+          const isGov = feeType === "Government Fee";
+          const newItem = { category:"", service: items[0]?.service, description, note, qty:1, price, discountPct:0, feeType };
+          let lastMatchIdx = -1;
+          items.forEach((it, i) => { if (isGovFeeLine(it, q.feeType) === isGov) lastMatchIdx = i; });
+          const insertAt = lastMatchIdx !== -1 ? lastMatchIdx + 1 : (isGov ? 0 : items.length);
+          updDraft("items", [...items.slice(0, insertAt), newItem, ...items.slice(insertAt)]);
+        };
 
         return (
         <div>
@@ -3964,7 +3990,9 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
                 </tr>
               </thead>
               <tbody>
-                {rows.map(r => r.kind === "category" ? (
+                {rows.map(r => r.kind === "gap" ? (
+                  <tr key={r.key}><td colSpan={editingNow ? 6 : 4} style={{ padding:0, height:14, border:"none" }}></td></tr>
+                ) : r.kind === "category" ? (
                   <tr key={r.key} style={{ background:r.bg }}>
                     <td colSpan={editingNow ? 6 : 4} style={{ padding:"9px 10px", fontWeight:600, fontSize:12, borderBottom:"1px solid var(--hair)" }}>
                       {r.label}
@@ -3982,7 +4010,7 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
                         </>
                       ) : (<>
                         {r.it.description || r.it.service}
-                        <NoteLines note={r.it.note} style={{ fontSize:11, color:"var(--ink-soft)", marginTop:2 }} />
+                        <NoteLines note={r.it.note} style={{ fontSize:11, color:"var(--ink-soft)", marginTop:2 }} bullet={!isGovFeeLine(r.it, q.feeType)} />
                       </>)}
                     </td>
                     {editingNow && (
@@ -6053,7 +6081,7 @@ function SalesOrderPdfModal({ salesOrder: so, onboarded, items=[], role, onClose
               {items.map((it,i)=>(
                 <tr key={i}>
                   <td style={{fontSize:11.5, color:"var(--ink-soft)"}}>{it.category || "—"}</td>
-                  <td>{it.description || it.service}<NoteLines note={it.note} style={{fontSize:11, color:"var(--ink-soft)"}} /></td>
+                  <td>{it.description || it.service}<NoteLines note={it.note} style={{fontSize:11, color:"var(--ink-soft)"}} bullet={!isGovFeeLine(it, so.feeType)} /></td>
                   <td>{it.qty}</td><td className="mono">{money(it.price)}</td>
                   <td>{it.discountPct||0}%</td><td className="mono">{money(it.qty*it.price*(1-(it.discountPct||0)/100))}</td>
                 </tr>
@@ -6318,7 +6346,7 @@ function InvoicePdfModal({ invoice: inv, items=[], role, onClose }) {
               {items.map((it,i)=>(
                 <tr key={i}>
                   <td style={{fontSize:11.5, color:"var(--ink-soft)"}}>{it.category || "—"}</td>
-                  <td>{it.description || it.service}<NoteLines note={it.note} style={{fontSize:11, color:"var(--ink-soft)"}} /></td>
+                  <td>{it.description || it.service}<NoteLines note={it.note} style={{fontSize:11, color:"var(--ink-soft)"}} bullet={!isGovFeeLine(it, inv.feeType)} /></td>
                   <td>{it.qty}</td><td className="mono">{money(it.price)}</td>
                   <td>{it.discountPct||0}%</td><td className="mono">{money(it.qty*it.price*(1-(it.discountPct||0)/100))}</td>
                 </tr>
