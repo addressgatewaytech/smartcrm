@@ -773,11 +773,12 @@ function CloudLinkButton({ url, onSave, big=false }) {
 // respects any real line breaks already in the text, from the multi-line field notes are typed
 // into now) — a best-effort heuristic on existing data, not a guaranteed-perfect parser, since a
 // stray number-dash elsewhere in the sentence (e.g. a price range) would also split.
+// (?<!\d) keeps a multi-digit code like "331295 - Repair..." from being torn apart mid-number —
+// without it, "5 - " inside "...295 - ..." looks like its own list marker too.
+const splitNoteLines = (note) => note ? note.split(/\n|(?<!\d)(?=\d{1,2}\s*-\s)/g).map(s => s.trim()).filter(Boolean) : [];
 function NoteLines({ note, style }) {
-  if (!note) return null;
-  // (?<!\d) keeps a multi-digit code like "331295 - Repair..." from being torn apart mid-number —
-  // without it, "5 - " inside "...295 - ..." looks like its own list marker too.
-  const lines = note.split(/\n|(?<!\d)(?=\d{1,2}\s*-\s)/g).map(s => s.trim()).filter(Boolean);
+  const lines = splitNoteLines(note);
+  if (!lines.length) return null;
   return <div style={style}>{lines.map((line, i) => <div key={i}>{line}</div>)}</div>;
 }
 
@@ -3023,12 +3024,40 @@ function AddItemControl({ catalog, feeType, service, onAdd, label }) {
   );
 }
 
+// Appends a numbered activity ("N - name") to a per-activity-billed line item's note and bumps
+// its Quantity by 1 in the same step — e.g. "Activity Fees (QAR 300 per activity)" is charged per
+// activity, so adding one more activity naturally means one more billable unit; Amount then just
+// falls out of the item's existing qty × rate math, no separate calculation needed.
+function AddActivityControl({ onAdd }) {
+  const [value, setValue] = useState("");
+  const add = () => {
+    const name = value.trim();
+    if (!name) return;
+    onAdd(name);
+    setValue("");
+  };
+  return (
+    <div style={{ display:"flex", gap:6, marginTop:6 }}>
+      <input value={value} onChange={e=>setValue(e.target.value)} placeholder="Add an activity…"
+        onKeyDown={e=>{ if (e.key==="Enter") { e.preventDefault(); add(); } }} style={{ flex:1 }} />
+      <button type="button" className="btn btn-sm" disabled={!value.trim()} onClick={add}><Plus size={13}/> Activity</button>
+    </div>
+  );
+}
+
 // One fee-type section (Government Fee or Professional Fee) within QuoteItemsEditor — its own
 // light-tinted block, its own item rows, its own "add item" control. Adding here always sets
 // the new item's feeType to this section's, so there's no more relying on category text or a
 // per-item dropdown to classify a line correctly.
 function ItemSection({ title, bg, feeType, items, setItems, service, catalog, readOnly }) {
   const update = (i, field, val) => setItems(items.map((it,idx) => idx===i ? { ...it, [field]: val } : it));
+  const updateMulti = (i, patch) => setItems(items.map((it,idx) => idx===i ? { ...it, ...patch } : it));
+  const addActivity = (i, name) => {
+    const it = items[i];
+    const n = splitNoteLines(it.note).length + 1;
+    const newNote = (it.note && it.note.trim() ? it.note.trim() + "\n" : "") + `${n} - ${name}`;
+    updateMulti(i, { note: newNote, qty: (Number(it.qty) || 0) + 1 });
+  };
   const remove = (i) => setItems(items.filter((_,idx) => idx!==i));
   const move = (i, dir) => setItems(moveArrayItem(items, i, dir));
   const addEntry = ({ description, note, price }) => {
@@ -3069,6 +3098,7 @@ function ItemSection({ title, bg, feeType, items, setItems, service, catalog, re
           </div>
           <div className="field"><label>Note (optional)</label>
             <textarea rows={2} value={it.note || ""} onChange={e=>update(i,"note",e.target.value)} placeholder={"e.g. 50 QAR per partner, or a numbered list —\n1 - first point\n2 - second point"} />
+            <AddActivityControl onAdd={(name)=>addActivity(i,name)} />
           </div>
           <div className="row2">
             <div className="field"><label>Qty</label><input type="number" min={1} value={it.qty} onChange={e=>update(i,"qty",(e.target.value === "" ? "" : Number(e.target.value)))} /></div>
@@ -3867,6 +3897,13 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
         // what you're looking at while editing is the actual document, not a different-shaped form
         // you have to mentally translate back into it.
         const updateItemField = (idx, field, val) => updDraft("items", src.items.map((it,i) => i===idx ? { ...it, [field]: val } : it));
+        const updateItemFields = (idx, patch) => updDraft("items", src.items.map((it,i) => i===idx ? { ...it, ...patch } : it));
+        const addActivityToItem = (idx, name) => {
+          const it = src.items[idx];
+          const n = splitNoteLines(it.note).length + 1;
+          const newNote = (it.note && it.note.trim() ? it.note.trim() + "\n" : "") + `${n} - ${name}`;
+          updateItemFields(idx, { note: newNote, qty: (Number(it.qty) || 0) + 1 });
+        };
         const removeItemAt = (idx) => updDraft("items", src.items.filter((_,i) => i!==idx));
         const addItem = (feeType) => ({ description, note, price }) => updDraft("items", [...src.items, { category:"", service: src.items[0]?.service, description, note, qty:1, price, discountPct:0, feeType }]);
 
@@ -3962,6 +3999,7 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
                         <>
                           <input style={inputStyle} value={r.it.description || ""} onChange={e=>updateItemField(r.idx,"description",e.target.value)} placeholder="Item description" />
                           <textarea rows={2} style={{ ...inputStyle, fontSize:11, color:"var(--ink-soft)", marginTop:3, resize:"vertical" }} value={r.it.note || ""} onChange={e=>updateItemField(r.idx,"note",e.target.value)} placeholder={"Note (optional) — a numbered list gets its own line per number, e.g. 1 - ... 2 - ..."} />
+                          <AddActivityControl onAdd={(name)=>addActivityToItem(r.idx,name)} />
                         </>
                       ) : (<>
                         {r.it.description || r.it.service}
