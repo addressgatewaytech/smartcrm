@@ -4182,20 +4182,21 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
 /* QUOTATION TEMPLATES (ADMIN / SALES MANAGER)                             */
 /* ---------------------------------------------------------------------- */
 
-function QuotationTemplatesPage({ state, dispatch }) {
+function QuotationTemplatesPage({ state, dispatch, role }) {
   const [tab, setTab] = useState("templates");
+  const isAdmin = ADMIN_LIKE.includes(role);
   return (
     <div>
       <div className="tabbar" style={{ marginBottom: 16 }}>
         <button className={`tab ${tab==="templates"?"active":""}`} onClick={()=>setTab("templates")}>Templates</button>
         <button className={`tab ${tab==="catalog"?"active":""}`} onClick={()=>setTab("catalog")}>Items catalog</button>
       </div>
-      {tab === "templates" ? <QuotationTemplateEditor state={state} dispatch={dispatch} /> : <ItemCatalogManager catalog={state.itemCatalog} services={state.services} dispatch={dispatch} />}
+      {tab === "templates" ? <QuotationTemplateEditor state={state} dispatch={dispatch} isAdmin={isAdmin} /> : <ItemCatalogManager catalog={state.itemCatalog} services={state.services} dispatch={dispatch} />}
     </div>
   );
 }
 
-function QuotationTemplateEditor({ state, dispatch }) {
+function QuotationTemplateEditor({ state, dispatch, isAdmin }) {
   const [service, setService] = useState(SERVICES[0]);
   const seed = state.quotationTemplates[SERVICES[0]] || { items: [], terms: "", notes: "", subject: "", orderDiscount: 0, orderDiscountType: "amount", bank: "", footerNote: "" };
   const [subject, setSubject] = useState(seed.subject || "");
@@ -4212,6 +4213,7 @@ function QuotationTemplateEditor({ state, dispatch }) {
   const [removingTemplate, setRemovingTemplate] = useState(false);
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [savingServiceCost, setSavingServiceCost] = useState(false);
+  const [removingService, setRemovingService] = useState(null);
   const hasTemplate = !!state.quotationTemplates[service];
 
   const clearForm = () => {
@@ -4236,7 +4238,10 @@ function QuotationTemplateEditor({ state, dispatch }) {
     <div className="agw-grid" style={{ gridTemplateColumns: "220px 1fr" }}>
       <div className="agw-card" style={{ padding: 8 }}>
         {state.services.map(s => (
-          <button key={s} className="agw-nav-item" style={{ color: s===service?"var(--brand)":"var(--ink)", background: s===service?"var(--brand-tint)":"transparent", marginBottom: 4 }} onClick={()=>switchService(s)}>{s}</button>
+          <div key={s} style={{ display:"flex", alignItems:"center", marginBottom: 4 }}>
+            <button className="agw-nav-item" style={{ flex:1, color: s===service?"var(--brand)":"var(--ink)", background: s===service?"var(--brand-tint)":"transparent" }} onClick={()=>switchService(s)}>{s}</button>
+            {isAdmin && <RowActions onRemove={()=>setRemovingService(s)} />}
+          </div>
         ))}
         {showNewService ? (
           <div style={{ padding:8 }}>
@@ -4308,6 +4313,23 @@ function QuotationTemplateEditor({ state, dispatch }) {
             confirmLabel="Delete template"
             onConfirm={()=>{ dispatch({type:"DELETE_QUOTATION_TEMPLATE", service}); clearForm(); setRemovingTemplate(false); }}
             onClose={()=>setRemovingTemplate(false)}
+          />
+        )}
+        {removingService && (
+          <ConfirmModal
+            title={`Remove "${removingService}" from services?`}
+            body="This removes it from the services list everywhere it's picked (leads, deals, quotations, job cards) and deletes its quotation template, checklist template and service cost. Any lead, deal, quotation or job card that already used it keeps that saved text as-is. This can't be undone."
+            confirmLabel="Remove service"
+            onConfirm={()=>{
+              const removed = removingService;
+              dispatch({type:"REMOVE_SERVICE_OPTION", name:removed});
+              if (removed === service) {
+                const next = state.services.find(s => s !== removed);
+                if (next) switchService(next); else clearForm();
+              }
+              setRemovingService(null);
+            }}
+            onClose={()=>setRemovingService(null)}
           />
         )}
       </div>
