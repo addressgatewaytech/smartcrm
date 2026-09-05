@@ -124,20 +124,24 @@ router.post("/", async (req, res) => {
 });
 
 router.patch("/:id", async (req, res) => {
-  const [row] = await query("SELECT customer, fee_type, theme, status, deal_id, package_tier FROM quotations WHERE id = ?", [req.params.id]);
+  const [row] = await query("SELECT customer, fee_type, theme, status, deal_id, package_tier, created_at FROM quotations WHERE id = ?", [req.params.id]);
   if (!row) return res.status(404).json({ error: "Not found" });
   if (!["Draft", "Pending Manager Approval"].includes(row.status)) {
     return res.status(400).json({ error: "Only Draft or Pending Manager Approval quotations can be edited" });
   }
   const b = req.body;
   // Visual edit (the only edit path in the UI) only ever sends subject/items/notes/terms/discount/
-  // bank/footerNote/theme — customer, feeType and packageTier aren't part of that form, so fall
-  // back to the existing row rather than writing a SQL NULL bind error (or silently wiping the
-  // package tier) every single save.
+  // bank/footerNote/theme/createdAt — customer, feeType and packageTier aren't part of that form,
+  // so fall back to the existing row rather than writing a SQL NULL bind error (or silently wiping
+  // the package tier) every single save.
   let customer = b.customer ?? row.customer;
   const feeType = b.feeType ?? row.fee_type;
   const theme = b.theme !== undefined ? validTheme(b.theme) : row.theme;
   const packageTier = b.packageTier !== undefined ? b.packageTier : row.package_tier;
+  // Quote Date is editable from Visual edit (e.g. after Revise, to reflect when the revised
+  // version is actually being sent) — a bare "YYYY-MM-DD" is a valid TIMESTAMP literal in MySQL,
+  // defaulting to midnight, so no extra parsing is needed here.
+  const createdAt = b.createdAt || row.created_at;
   const hasDiscount = (b.items || []).some((it) => it.discountPct > 0) || (b.orderDiscount || 0) > 0;
   const newStatus = hasDiscount ? "Pending Manager Approval" : "Draft";
   // Editing the customer name means it may now belong to a different (or new) Customer profile.
@@ -148,10 +152,10 @@ router.patch("/:id", async (req, res) => {
     ({ customerId, resolvedName: customer } = await findOrCreateCustomer(query, { name: customer, ownerId: req.user.id }));
   }
   await query(
-    `UPDATE quotations SET customer=?, fee_type=?, theme=?, subject=?, items=?, order_discount=?, order_discount_type=?, package_tier=?, bank=?, footer_note=?, notes=?, terms=?, status=?${customerId !== undefined ? ", customer_id=?" : ""}
+    `UPDATE quotations SET customer=?, fee_type=?, theme=?, subject=?, items=?, order_discount=?, order_discount_type=?, package_tier=?, bank=?, footer_note=?, notes=?, terms=?, status=?, created_at=?${customerId !== undefined ? ", customer_id=?" : ""}
      WHERE id = ?`,
     [customer, feeType, theme, b.subject || null, JSON.stringify(b.items || []), b.orderDiscount || 0, b.orderDiscountType === "percent" ? "percent" : "amount", packageTier,
-      b.bank || null, b.footerNote || null, b.notes || null, b.terms || null, newStatus, ...(customerId !== undefined ? [customerId] : []), req.params.id]
+      b.bank || null, b.footerNote || null, b.notes || null, b.terms || null, newStatus, createdAt, ...(customerId !== undefined ? [customerId] : []), req.params.id]
   );
   // Only notify on the transition INTO Pending Manager Approval — not on every re-save of a
   // quotation that was already sitting there, which would spam the approver on each edit.

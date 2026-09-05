@@ -3974,7 +3974,13 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:20 }}>
               <div>
                 <div style={{ fontSize:12, color:"var(--ink-soft)" }}>Quote Date :</div>
-                <div style={{ fontSize:13, marginTop:2 }}>{fmtDate(q.createdAt || daysFromNow(0))}</div>
+                {editingNow ? (
+                  <input type="date" style={{ ...inputStyle, fontSize:13, marginTop:2, maxWidth:150 }}
+                    value={(src.createdAt || daysFromNow(0)).slice(0,10)}
+                    onChange={e=>updDraft("createdAt", e.target.value)} />
+                ) : (
+                  <div style={{ fontSize:13, marginTop:2 }}>{fmtDate(cq.createdAt || daysFromNow(0))}</div>
+                )}
               </div>
               <div style={{ textAlign:"right" }}>
                 <div style={{ fontSize:12, color:"var(--ink-soft)" }}>Bill To</div>
