@@ -3609,7 +3609,7 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
     subject: q.subject || "", items: q.items.map(it => ({...it})), notes: q.notes || "",
     terms: q.terms || "", orderDiscount: q.orderDiscount || 0, orderDiscountType: q.orderDiscountType || "amount",
     bank: q.bank || "", footerNote: q.footerNote || "",
-    theme: q.theme || "charcoal",
+    theme: q.theme || "charcoal", createdAt: q.createdAt || "",
   }));
   const [visualEdit, setVisualEdit] = useState(startInEdit);
   const [draft, setDraft] = useState(() => startInEdit ? { ...content, items: content.items.map(it=>({...it})) } : null);
