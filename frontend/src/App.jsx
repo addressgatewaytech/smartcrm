@@ -2384,6 +2384,7 @@ function LeadsPage({ state, dispatch, userId, role }) {
   const [editLead, setEditLead] = useState(null);
   const [removeLead, setRemoveLead] = useState(null);
   const [convert, setConvert] = useState(null);
+  const [quoteFor, setQuoteFor] = useState(null);
   const [followFor, setFollowFor] = useState(null);
   const [fuNote, setFuNote] = useState("");
   const [fuStatus, setFuStatus] = useState("Contacted");
@@ -2674,10 +2675,15 @@ function LeadsPage({ state, dispatch, userId, role }) {
           <div className="side-note" style={{ marginTop:0 }}>The deal's value will reflect its actual quotation once one is created — there's nothing to estimate up front.</div>
           <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop: 16 }}>
             <button className="btn" onClick={()=>setConvert(null)}>Cancel</button>
-            <button className="btn btn-primary" onClick={()=>{ dispatch({type:"CONVERT_LEAD_TO_DEAL", id:convert.id}); setConvert(null); }}>Create deal</button>
+            <button className="btn btn-primary" onClick={async ()=>{
+              const r = await dispatch({type:"CONVERT_LEAD_TO_DEAL", id:convert.id});
+              setQuoteFor({ id: r?.dealId, customer: convert.company, service: convert.service, owner: convert.owner });
+              setConvert(null);
+            }}>Create deal</button>
           </div>
         </Modal>
       )}
+      {quoteFor && <QuoteBuilderModal dealId={quoteFor.id} customerName={quoteFor.customer} defaultService={quoteFor.service} services={state.services} itemCatalog={state.itemCatalog} dispatch={dispatch} templates={state.quotationTemplates} subscriptionPlans={state.subscriptionPlans} subscriptions={state.subscriptions} role={role} employees={state.employees} defaultOwner={quoteFor.owner} onClose={()=>setQuoteFor(null)} />}
     </div>
   );
 }
@@ -4837,6 +4843,7 @@ function CustomerDetailModal({ customer: c, state, dispatch, role, userId, onClo
   const isAdmin = ADMIN_LIKE.includes(role);
   const [tab, setTab] = useState("profile");
   const [creatingDeal, setCreatingDeal] = useState(false);
+  const [quoteFor, setQuoteFor] = useState(null);
   const [merging, setMerging] = useState(false);
   const blankDoc = { type: "Passport", number: "", expiry: daysFromNow(365) };
   const [doc, setDoc] = useState(blankDoc);
@@ -4909,7 +4916,8 @@ function CustomerDetailModal({ customer: c, state, dispatch, role, userId, onClo
 
       {merging && <MergeCustomersModal customer={c} state={state} dispatch={dispatch} onClose={()=>setMerging(false)} onMerged={onClose} />}
 
-      {creatingDeal && <NewDealModal state={state} dispatch={dispatch} userId={userId} initialCustomer={c.name} onClose={()=>setCreatingDeal(false)} />}
+      {creatingDeal && <NewDealModal state={state} dispatch={dispatch} userId={userId} initialCustomer={c.name} onClose={()=>setCreatingDeal(false)} onCreated={(deal)=>setQuoteFor(deal)} />}
+      {quoteFor && <QuoteBuilderModal dealId={quoteFor.id} customerName={quoteFor.customer} defaultService={quoteFor.service} services={state.services} itemCatalog={state.itemCatalog} dispatch={dispatch} templates={state.quotationTemplates} subscriptionPlans={state.subscriptionPlans} subscriptions={state.subscriptions} role={role} employees={state.employees} defaultOwner={quoteFor.owner} onClose={()=>setQuoteFor(null)} />}
 
       {emailingCustomer && (() => {
         const tpl = emailTemplateFor(state, "customer_email", { contactName: c.contact || c.name },

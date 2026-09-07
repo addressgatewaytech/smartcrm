@@ -143,7 +143,7 @@ export function useApiStore(enabled) {
       case "LOG_FOLLOWUP": await api.leads.followUp(action.id, { note: action.note, status: action.status, nextFollowUp: action.nextFollowUp }); return refresh(["leads"]);
       case "UPDATE_LEAD": await api.leads.update(action.id, action.payload); return refresh(["leads"]);
       case "DELETE_LEAD": await api.leads.remove(action.id); return refresh(["leads"]);
-      case "CONVERT_LEAD_TO_DEAL": await api.leads.convertToDeal(action.id); return refresh(["leads", "deals"]);
+      case "CONVERT_LEAD_TO_DEAL": { const r = await api.leads.convertToDeal(action.id); await refresh(["leads", "deals"]); return r; }
       case "ASSIGN_LEAD": await api.leads.assign(action.id, action.userId); return refresh(["leads", "notifications"]);
 
       // --- Deals ----------------------------------------------------------------------------
