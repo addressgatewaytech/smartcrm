@@ -85,13 +85,14 @@ export function LeadAssignmentManagerPage({ state, dispatch, role }) {
         {visible.length === 0 ? <Empty icon={UserCog} text="No leads to distribute yet — add one to get started." /> : (
           <div style={{ overflowX: "auto" }}>
             <table className="agw-table" style={{ minWidth: 900 }}>
-              <thead><tr><th>Lead</th><th>Company</th><th>Owner</th><th>Status</th><th>Assigned at</th><th>Follow-up due by</th><th>SLA</th><th></th></tr></thead>
+              <thead><tr><th>#</th><th>Lead</th><th>Company</th><th>Owner</th><th>Status</th><th>Assigned at</th><th>Follow-up due by</th><th>SLA</th><th></th></tr></thead>
               <tbody>
-                {visible.map((l) => {
+                {visible.map((l, i) => {
                   const sla = slaState(l);
                   const overdue = sla.label === "Violated" || sla.label === "Overdue";
                   return (
                     <tr key={l.id} style={overdue ? { background: "var(--danger-tint)" } : undefined}>
+                      <td className="mono" style={{ fontSize: 12, color: "var(--ink-soft)" }}>{i + 1}</td>
                       <td>{l.name}<div className="mono" style={{ fontSize: 11, color: "var(--ink-soft)" }}>{l.id}</div></td>
                       <td>{l.company}</td>
                       <td>{l.owner ? <><span className="avatar">{initialsOf(l.owner)}</span> {nameOf(l.owner)}</> : "Unassigned"}</td>

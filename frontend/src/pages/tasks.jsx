@@ -95,10 +95,11 @@ export function TasksPage({ state, dispatch, role, userId }) {
           {visible.length === 0 ? <Empty icon={ListChecks} text="No tasks yet." /> : (
             <div style={{ overflowX: "auto" }}>
               <table className="agw-table" style={{ minWidth: 820 }}>
-                <thead><tr><th>Task</th><th>Title</th><th>Assigned to</th><th>Department</th><th>Priority</th><th>Progress</th><th>Due date</th><th>Status</th><th></th></tr></thead>
+                <thead><tr><th>#</th><th>Task</th><th>Title</th><th>Assigned to</th><th>Department</th><th>Priority</th><th>Progress</th><th>Due date</th><th>Status</th><th></th></tr></thead>
                 <tbody>
-                  {visible.map((t) => (
+                  {visible.map((t, i) => (
                     <tr key={t.id} onClick={() => setDetailId(t.id)}>
+                      <td className="mono" style={{ fontSize: 12, color: "var(--ink-soft)" }}>{i + 1}</td>
                       <td className="mono">{t.id}</td>
                       <td style={{ maxWidth: 220 }}>{t.title}</td>
                       <td><span className="avatar">{initialsOf(t.assignedTo)}</span> {nameOf(t.assignedTo)}</td>

@@ -32,10 +32,11 @@ export function TaskTemplatesTab({ state, dispatch, role }) {
         {templates.length === 0 ? <Empty icon={Files} text="No task templates yet — create one to speed up repeat tasks for a department." /> : (
           <div style={{ overflowX: "auto" }}>
             <table className="agw-table">
-              <thead><tr><th>Name</th><th>Department</th><th>Priority</th><th>Task title</th><th>Due (days)</th>{isAdmin && <th></th>}</tr></thead>
+              <thead><tr><th>#</th><th>Name</th><th>Department</th><th>Priority</th><th>Task title</th><th>Due (days)</th>{isAdmin && <th></th>}</tr></thead>
               <tbody>
-                {templates.map((t) => (
+                {templates.map((t, i) => (
                   <tr key={t.id}>
+                    <td className="mono" style={{ fontSize: 12, color: "var(--ink-soft)" }}>{i + 1}</td>
                     <td>{t.name}</td>
                     <td>{t.department || "—"}</td>
                     <td>{t.priority}</td>

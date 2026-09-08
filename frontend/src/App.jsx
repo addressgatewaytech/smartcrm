@@ -2466,10 +2466,11 @@ function LeadsPage({ state, dispatch, userId, role }) {
         {owned.length === 0 ? <Empty icon={Users} text="No leads yet. Add your first enquiry." /> : (
         <div style={{ overflowX: "auto" }}>
         <table className="agw-table" style={{ minWidth: 1120 }}>
-          <thead><tr><th>Lead</th><th>Email</th><th>Phone</th><th>Created</th><th>Company</th><th>Service</th><th>Lead type</th><th>Source</th><th>Reference</th><th>Owner</th><th>Status</th><th>Next follow-up</th><th></th></tr></thead>
+          <thead><tr><th>#</th><th>Lead</th><th>Email</th><th>Phone</th><th>Created</th><th>Company</th><th>Service</th><th>Lead type</th><th>Source</th><th>Reference</th><th>Owner</th><th>Status</th><th>Next follow-up</th><th></th></tr></thead>
           <tbody>
-            {pg.pageRows.map(l => (
+            {pg.pageRows.map((l, i) => (
               <tr key={l.id} style={l.status === "Converted" ? { background: "var(--success-tint)" } : undefined}>
+                <td className="mono" style={{fontSize:12, color:"var(--ink-soft)"}}>{pg.start + i + 1}</td>
                 <td>{l.name}
                   <div className="mono" style={{fontSize:11,color:"var(--ink-soft)"}}>{l.id}</div>
                 </td>
@@ -2773,11 +2774,12 @@ function DealsPage({ state, dispatch, setPage, onViewQuotation, role, userId }) 
           {deals.length === 0 ? <Empty icon={Handshake} text="No deals yet. Convert a lead to get started." /> : (
           <div style={{ overflowX:"auto" }}>
           <table className="agw-table" style={{ minWidth: 720 }}>
-            <thead><tr><th>Customer</th><th>Created</th><th>Service</th><th>Value</th><th>Lead type</th><th>Owner</th><th>Stage</th><th>Expected close</th><th></th></tr></thead>
+            <thead><tr><th>#</th><th>Customer</th><th>Created</th><th>Service</th><th>Value</th><th>Lead type</th><th>Owner</th><th>Stage</th><th>Expected close</th><th></th></tr></thead>
             <tbody>
-              {pg.pageRows.map(d => (
+              {pg.pageRows.map((d, i) => (
                 <tr key={d.id} id={`deal-row-${d.id}`} onClick={()=>{ if (highlightDealId===d.id) setHighlightDealId(null); }}
                   style={dealHighlightStyle(d) || (d.stage === "Won" ? { background: "var(--success-tint)" } : undefined)}>
+                  <td className="mono" style={{fontSize:12, color:"var(--ink-soft)"}}>{pg.start + i + 1}</td>
                   <td>{d.customer}<div className="mono" style={{fontSize:11,color:"var(--ink-soft)"}}>{d.id}</div></td>
                   <td className="mono" style={{fontSize:12}}>{fmtDate(d.createdAt)}</td>
                   <td style={{maxWidth:200}}>{d.service}</td>
@@ -3530,12 +3532,13 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, autoOpenPd
       <div className="agw-card" style={{ padding: 0 }}>
         {rows.length === 0 ? <Empty icon={favoritesOnly ? Star : FileText} text={favoritesOnly ? "No favorite quotations yet — star a quotation to use it as a go-to format." : "No quotations yet — create one from an open Deal's \"Create quotation\" button."} /> : (
         <table className="agw-table">
-          <thead><tr><th></th><th>Quotation</th><th>Created</th><th>Customer</th><th>Service</th><th>Sales person</th><th>Lead type</th><th>Amount (QAR)</th><th>Professional fees (QAR)</th><th>Valid till</th><th>Status</th><th></th><th></th></tr></thead>
+          <thead><tr><th>#</th><th></th><th>Quotation</th><th>Created</th><th>Customer</th><th>Service</th><th>Sales person</th><th>Lead type</th><th>Amount (QAR)</th><th>Professional fees (QAR)</th><th>Valid till</th><th>Status</th><th></th><th></th></tr></thead>
           <tbody>
-            {pg.pageRows.map(q => (
+            {pg.pageRows.map((q, i) => (
               <tr key={q.id} id={`quote-row-${q.id}`}
                 onClick={()=>{ setOpenId(q.id); if (highlightId) onHighlightHandled(); }}
                 style={q.id === highlightId ? { background:"var(--gold-tint)", boxShadow:"inset 3px 0 0 var(--gold)" } : undefined}>
+                <td className="mono" style={{fontSize:12, color:"var(--ink-soft)"}}>{pg.start + i + 1}</td>
                 <td>
                   <button className="btn btn-sm btn-ghost" title={q.favorite ? "Remove from favorites" : "Mark as favorite"}
                     onClick={(e)=>{ e.stopPropagation(); dispatch({type:"TOGGLE_QUOTATION_FAVORITE", id:q.id}); }}>
@@ -5483,15 +5486,16 @@ function SubscriptionsPage({ state, dispatch, role, userId }) {
         <div className="agw-card" style={{ padding: 0 }}>
           {visibleSubs.length === 0 ? <Empty icon={Repeat} text="No subscriptions yet — start one from the Growth Partner Program." /> : (
           <table className="agw-table">
-            <thead><tr><th>Customer</th><th>Plan</th><th>Tier</th><th>Annual fee</th><th>Start</th><th>Expiry</th><th>Job cards used</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th>#</th><th>Customer</th><th>Plan</th><th>Tier</th><th>Annual fee</th><th>Start</th><th>Expiry</th><th>Job cards used</th><th>Status</th><th></th></tr></thead>
             <tbody>
-              {pg.pageRows.map(sub => {
+              {pg.pageRows.map((sub, i) => {
                 const tierDef = state.subscriptionPlans[sub.plan]?.tiers.find(t=>t.name===sub.tier);
                 const status = subStatusOf(sub);
                 const used = subTransactionsUsed(sub, state);
                 const over = tierDef && used > tierDef.transactionsIncluded;
                 return (
                   <tr key={sub.id} onClick={()=>setDetailFor(sub)}>
+                    <td className="mono" style={{fontSize:12, color:"var(--ink-soft)"}}>{pg.start + i + 1}</td>
                     <td>{sub.customer}<div className="mono" style={{fontSize:11,color:"var(--ink-soft)"}}>{sub.id}</div></td>
                     <td>{sub.plan}</td>
                     <td><span className="pill">{sub.tier}</span></td>
@@ -6063,15 +6067,16 @@ function OrdersPage({ state, dispatch, role, highlightId, onHighlightHandled, se
       <div className="agw-card" style={{ padding: 0 }}>
       {rows.length === 0 ? <Empty icon={ShoppingCart} text="No sales orders yet — approve a quotation to create one." /> : (
       <table className="agw-table">
-        <thead><tr><th>Order</th><th>Created</th><th>Customer</th><th>Sales person</th><th>Service</th><th>Fee type</th><th>Amount (QAR)</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th>#</th><th>Order</th><th>Created</th><th>Customer</th><th>Sales person</th><th>Service</th><th>Fee type</th><th>Amount (QAR)</th><th>Status</th><th></th></tr></thead>
         <tbody>
-          {pg.pageRows.map(so => {
+          {pg.pageRows.map((so, i) => {
             const onboarded = isOnboarded(so.id);
             const isHighlighted = highlightId === so.id;
             return (
             <tr key={so.id} id={`so-row-${so.id}`}
               style={isHighlighted ? { background:"var(--gold-tint)", boxShadow:"inset 3px 0 0 var(--gold)" } : undefined}
               onClick={isHighlighted ? () => onHighlightHandled?.() : undefined}>
+              <td className="mono" style={{fontSize:12, color:"var(--ink-soft)"}}>{pg.start + i + 1}</td>
               <td className="mono">{so.id}</td>
               <td>
                 <EditableCreatedDate value={so.createdAt} canEdit={canOnboard}
@@ -6291,9 +6296,9 @@ function InvoicesPage({ state, dispatch, role, highlightId, onHighlightHandled, 
       <div className="agw-card" style={{ padding: 0 }}>
         {rows.length === 0 ? <Empty icon={Receipt} text="No invoices yet." /> : (
         <table className="agw-table">
-          <thead><tr><th>Invoice</th><th>Created</th><th>Customer</th><th>Sales person</th><th>Service</th><th>Fee type</th><th>Amount</th><th>Paid</th><th>Balance</th><th>Due</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>#</th><th>Invoice</th><th>Created</th><th>Customer</th><th>Sales person</th><th>Service</th><th>Fee type</th><th>Amount</th><th>Paid</th><th>Balance</th><th>Due</th><th>Status</th><th></th></tr></thead>
           <tbody>
-            {pg.pageRows.map(inv => {
+            {pg.pageRows.map((inv, i) => {
               const paid = inv.payments.reduce((a,p)=>a+p.amount,0);
               const balance = Math.max(0, inv.professionalFeeAmount - paid);
               const isHighlighted = highlightId === inv.id;
@@ -6301,6 +6306,7 @@ function InvoicesPage({ state, dispatch, role, highlightId, onHighlightHandled, 
                 <tr key={inv.id} id={`inv-row-${inv.id}`}
                   style={isHighlighted ? { background:"var(--gold-tint)", boxShadow:"inset 3px 0 0 var(--gold)" } : undefined}
                   onClick={isHighlighted ? () => onHighlightHandled?.() : undefined}>
+                  <td className="mono" style={{fontSize:12, color:"var(--ink-soft)"}}>{pg.start + i + 1}</td>
                   <td className="mono">{inv.id}</td>
                   <td>
                     <EditableCreatedDate value={inv.createdAt} canEdit={canRecordPayment}
@@ -6575,13 +6581,14 @@ function ChequesTab({ state, dispatch }) {
         {filtered.length === 0 ? <Empty icon={Landmark} text="No cheques recorded yet." /> : (
           <div style={{ overflowX:"auto" }}>
           <table className="agw-table" style={{ minWidth: 960 }}>
-            <thead><tr><th>Direction</th><th>Cheque #</th><th>Bank</th><th>Party</th><th>Amount</th><th>Cheque date</th><th>Deposit date</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th>#</th><th>Direction</th><th>Cheque #</th><th>Bank</th><th>Party</th><th>Amount</th><th>Cheque date</th><th>Deposit date</th><th>Status</th><th></th></tr></thead>
             <tbody>
-              {pg.pageRows.map(c => {
+              {pg.pageRows.map((c, i) => {
                 const due = dueState(c.depositDate);
                 const resolved = ["Deposited","Cleared","Bounced","Cancelled"].includes(c.status);
                 return (
                   <tr key={c.id}>
+                    <td className="mono" style={{fontSize:12, color:"var(--ink-soft)"}}>{pg.start + i + 1}</td>
                     <td><Stamp tone={c.direction==="Incoming"?"success":"info"}>{c.direction}</Stamp></td>
                     <td className="mono">{c.chequeNumber}</td>
                     <td style={{fontSize:12.5}}>{c.bankName || "—"}</td>
@@ -6702,12 +6709,13 @@ function SoftwareSubscriptionsTab({ state, dispatch }) {
         {state.companySoftwareSubscriptions.length === 0 ? <Empty icon={Landmark} text="No software subscriptions tracked yet." /> : (
           <div style={{ overflowX:"auto" }}>
           <table className="agw-table" style={{ minWidth: 960 }}>
-            <thead><tr><th>Software</th><th>Vendor</th><th>Cost</th><th>Billing cycle</th><th>Renewal date</th><th>Status</th><th>Email reminder</th><th></th></tr></thead>
+            <thead><tr><th>#</th><th>Software</th><th>Vendor</th><th>Cost</th><th>Billing cycle</th><th>Renewal date</th><th>Status</th><th>Email reminder</th><th></th></tr></thead>
             <tbody>
-              {pg.pageRows.map(s => {
+              {pg.pageRows.map((s, i) => {
                 const due = dueState(s.renewalDate);
                 return (
                   <tr key={s.id}>
+                    <td className="mono" style={{fontSize:12, color:"var(--ink-soft)"}}>{pg.start + i + 1}</td>
                     <td>{s.softwareName}</td>
                     <td style={{fontSize:12.5}}>{s.vendor || "—"}</td>
                     <td className="mono">{money(s.cost)}</td>
@@ -6918,14 +6926,15 @@ function JobsPage({ state, dispatch, role, userId, highlightId, onHighlightHandl
           {visible.length === 0 ? <Empty icon={ClipboardList} text="No job cards yet." /> : (
           <div style={{ overflowX:"auto" }}>
           <table className="agw-table" style={{ minWidth: 980 }}>
-            <thead><tr><th>Job card</th><th>Age</th><th>Customer</th><th>Service</th><th>Lead by</th><th>Assigned</th><th>Checklist</th><th>Priority</th><th>Target date</th><th>Status</th></tr></thead>
+            <thead><tr><th>#</th><th>Job card</th><th>Age</th><th>Customer</th><th>Service</th><th>Lead by</th><th>Assigned</th><th>Checklist</th><th>Priority</th><th>Target date</th><th>Status</th></tr></thead>
             <tbody>
-              {pg.pageRows.map(j => {
+              {pg.pageRows.map((j, i) => {
                 const isHighlighted = highlightId === j.id;
                 return (
                 <tr key={j.id} id={`job-row-${j.id}`}
                   style={isHighlighted ? { background:"var(--gold-tint)", boxShadow:"inset 3px 0 0 var(--gold)" } : undefined}
                   onClick={()=>{ if (isHighlighted) onHighlightHandled?.(); openDetail(j); }}>
+                  <td className="mono" style={{fontSize:12, color:"var(--ink-soft)"}}>{pg.start + i + 1}</td>
                   <td className="mono">{j.id}</td>
                   <td className="mono" style={{fontSize:12, whiteSpace:"nowrap"}}>{daysSince(j.createdAt)}d<div style={{fontSize:11,color:"var(--ink-soft)"}}>{fmtDate(j.createdAt)}</div></td>
                   <td style={{ display:"flex", alignItems:"center", gap:6, maxWidth:200 }}>
@@ -7664,13 +7673,14 @@ function HrPage({ state, dispatch, role, userId }) {
           {filtered.length === 0 ? <Empty icon={Search} text="No team members match that search." /> : (
           <div style={{ overflowX:"auto" }}>
           <table className="agw-table" style={{ minWidth: 940 }}>
-            <thead><tr><th>Employee</th><th>Category</th><th>Department</th><th>Designation</th><th>Join date</th><th>Date of birth</th><th>Today</th><th>Leave balance</th><th>Docs</th><th></th></tr></thead>
+            <thead><tr><th>#</th><th>Employee</th><th>Category</th><th>Department</th><th>Designation</th><th>Join date</th><th>Date of birth</th><th>Today</th><th>Leave balance</th><th>Docs</th><th></th></tr></thead>
             <tbody>
-              {pg.pageRows.map(e => {
+              {pg.pageRows.map((e, i) => {
                 const status = onLeaveToday(e) ? "Leave" : todayStatusOf(e);
                 const flagged = e.docs.filter(d => docState(d.expiry).label !== "Valid").length;
                 return (
                   <tr key={e.id}>
+                    <td className="mono" style={{fontSize:12, color:"var(--ink-soft)"}}>{pg.start + i + 1}</td>
                     <td style={{display:"flex",alignItems:"center",gap:8}}>
                       {e.photoUrl ? <img src={e.photoUrl} alt={e.name} style={{width:28,height:28,borderRadius:"50%",objectFit:"cover"}} /> : <span className="avatar">{e.initials}</span>}
                       {e.name}
@@ -8668,10 +8678,11 @@ function UsersPage({ state, dispatch, role }) {
       {tab === "users" && <>
       <div className="agw-card" style={{ padding: 0 }}>
         <table className="agw-table">
-          <thead><tr><th>User</th><th>Roles</th><th>Category</th><th>Department</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>#</th><th>User</th><th>Roles</th><th>Category</th><th>Department</th><th>Status</th><th></th></tr></thead>
           <tbody>
-            {pg.pageRows.map(e => (
+            {pg.pageRows.map((e, i) => (
               <tr key={e.id}>
+                <td className="mono" style={{fontSize:12, color:"var(--ink-soft)"}}>{pg.start + i + 1}</td>
                 <td style={{display:"flex",alignItems:"center",gap:8}}><span className="avatar">{e.initials}</span>{e.name}</td>
                 <td style={{display:"flex",gap:4,flexWrap:"wrap"}}>{e.roles.map(r=><span key={r} className="pill">{ROLE_LABEL[r]}</span>)}</td>
                 <td><Stamp tone={e.category==="Management" ? "gold" : "neutral"}>{e.category||"Staff"}</Stamp></td>
@@ -10169,12 +10180,13 @@ function MyDataTab({ state, dispatch, role, userId }) {
         {myRecords.length === 0 ? <Empty icon={Database} text="No data assigned yet — check Add Data or wait for the daily auto-assignment." /> : (
         <div style={{ overflowX:"auto" }}>
         <table className="agw-table" style={{ minWidth: 1080 }}>
-          <thead><tr><th>Company</th><th>Contact</th><th>Mobile</th><th>Email</th><th>Category</th><th>Status</th><th>Email</th><th>WhatsApp</th><th>Call</th><th></th></tr></thead>
+          <thead><tr><th>#</th><th>Company</th><th>Contact</th><th>Mobile</th><th>Email</th><th>Category</th><th>Status</th><th>Email</th><th>WhatsApp</th><th>Call</th><th></th></tr></thead>
           <tbody>
-            {pg.pageRows.map(d => {
+            {pg.pageRows.map((d, i) => {
               const eDis = emailBlockedReason(d), wDis = whatsappBlockedReason(d), cDis = callBlockedReason(d);
               return (
                 <tr key={d.id}>
+                  <td className="mono" style={{fontSize:12, color:"var(--ink-soft)"}}>{pg.start + i + 1}</td>
                   <td>{d.companyName}<div className="mono" style={{fontSize:11,color:"var(--ink-soft)"}}>{d.id}</div></td>
                   <td>{d.contactName}</td>
                   <td className="mono" style={{fontSize:12}}>{d.mobile}</td>
@@ -10278,10 +10290,11 @@ function DataPoolTab({ state, dispatch, role, userId }) {
         {pool.length === 0 ? <Empty icon={Database} text="Company Data Pool is empty — import data to get started." /> : (
         <div style={{ overflowX:"auto" }}>
         <table className="agw-table" style={{ minWidth: 860 }}>
-          <thead><tr><th>Company</th><th>Contact</th><th>Mobile</th><th>Email</th><th>Business category</th><th>Assigned to</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>#</th><th>Company</th><th>Contact</th><th>Mobile</th><th>Email</th><th>Business category</th><th>Assigned to</th><th>Status</th><th></th></tr></thead>
           <tbody>
-            {pg.pageRows.map(d => (
+            {pg.pageRows.map((d, i) => (
               <tr key={d.id}>
+                <td className="mono" style={{fontSize:12, color:"var(--ink-soft)"}}>{pg.start + i + 1}</td>
                 <td>{d.companyName}<div className="mono" style={{fontSize:11,color:"var(--ink-soft)"}}>{d.id}</div></td>
                 <td>{d.contactName}</td>
                 <td className="mono" style={{fontSize:12}}>{d.mobile}</td>
@@ -10349,10 +10362,11 @@ function DataByUserTab({ state }) {
       </div>
       <ReportTableCard title={`${state.employees.find(e=>e.id===uid)?.name || "—"}'s data`} empty={rows.length===0 ? "No data assigned to this user." : null} emptyIcon={Database}>
         <table className="agw-table">
-          <thead><tr><th>Company</th><th>Contact</th><th>Mobile</th><th>Email</th><th>Category</th><th>Status</th><th>Email</th><th>WhatsApp</th><th>Call</th></tr></thead>
+          <thead><tr><th>#</th><th>Company</th><th>Contact</th><th>Mobile</th><th>Email</th><th>Category</th><th>Status</th><th>Email</th><th>WhatsApp</th><th>Call</th></tr></thead>
           <tbody>
-            {pg.pageRows.map(d => (
+            {pg.pageRows.map((d, i) => (
               <tr key={d.id}>
+                <td className="mono" style={{fontSize:12, color:"var(--ink-soft)"}}>{pg.start + i + 1}</td>
                 <td>{d.companyName}<div className="mono" style={{fontSize:11,color:"var(--ink-soft)"}}>{d.id}</div></td>
                 <td>{d.contactName}</td>
                 <td className="mono" style={{fontSize:12}}>{d.mobile}</td>
@@ -10422,10 +10436,11 @@ function DataSetsTab({ state, dispatch }) {
 
       <ReportTableCard title={selected} onExport={rows.length ? runExport : null} empty={rows.length===0 ? "No records in this data set." : null} emptyIcon={Database}>
         <table className="agw-table">
-          <thead><tr><th>Company</th><th>Contact</th><th>Mobile</th><th>Email</th><th>Category</th><th>Assigned to</th><th>Status</th><th>Email</th><th>WhatsApp</th><th>Call</th></tr></thead>
+          <thead><tr><th>#</th><th>Company</th><th>Contact</th><th>Mobile</th><th>Email</th><th>Category</th><th>Assigned to</th><th>Status</th><th>Email</th><th>WhatsApp</th><th>Call</th></tr></thead>
           <tbody>
-            {pg.pageRows.map(d => (
+            {pg.pageRows.map((d, i) => (
               <tr key={d.id}>
+                <td className="mono" style={{fontSize:12, color:"var(--ink-soft)"}}>{pg.start + i + 1}</td>
                 <td>{d.companyName}<div className="mono" style={{fontSize:11,color:"var(--ink-soft)"}}>{d.id}</div></td>
                 <td>{d.contactName}</td>
                 <td className="mono" style={{fontSize:12}}>{d.mobile}</td>
@@ -10585,10 +10600,11 @@ function ArchivedDataTab({ state, dispatch }) {
       onExport={rows.length ? ()=>exportCSV("archived-data.csv", ["ID","Company","Contact","Mobile","Email","Reason","Category"],
         rows.map(d=>[d.id,d.companyName,d.contactName,d.mobile,d.email,d.archivedReason,d.dataCategory])) : null}>
       <table className="agw-table">
-        <thead><tr><th>Company</th><th>Contact</th><th>Mobile</th><th>Email</th><th>Reason</th><th>Category</th></tr></thead>
+        <thead><tr><th>#</th><th>Company</th><th>Contact</th><th>Mobile</th><th>Email</th><th>Reason</th><th>Category</th></tr></thead>
         <tbody>
-          {pg.pageRows.map(d => (
+          {pg.pageRows.map((d, i) => (
             <tr key={d.id}>
+              <td className="mono" style={{fontSize:12, color:"var(--ink-soft)"}}>{pg.start + i + 1}</td>
               <td>{d.companyName}</td><td>{d.contactName}</td>
               <td className="mono" style={{fontSize:12}}>{d.mobile}</td><td style={{fontSize:12}}>{d.email}</td>
               <td><Stamp tone="danger">{d.archivedReason}</Stamp></td>
