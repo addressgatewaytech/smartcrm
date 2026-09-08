@@ -4692,12 +4692,13 @@ function CustomersPage({ state, dispatch, role, userId, expiryFilterRequest, onE
           ) : (
           <div style={{ overflowX:"auto" }}>
           <table className="agw-table" style={{ minWidth: 1360 }}>
-            <thead><tr><th>Customer</th><th>Sales Person</th><th>Created</th><th>Contact</th><th>Phone</th><th>Email</th><th>Company size</th><th>Status</th><th>CR</th><th>CP</th><th>EC</th><th>KYC</th><th>Category</th><th></th></tr></thead>
+            <thead><tr><th>#</th><th>Customer</th><th>Sales Person</th><th>Created</th><th>Contact</th><th>Phone</th><th>Email</th><th>Company size</th><th>Status</th><th>CR</th><th>CP</th><th>EC</th><th>KYC</th><th>Category</th><th></th></tr></thead>
             <tbody>
-              {pg.pageRows.map(c => {
+              {pg.pageRows.map((c, i) => {
                 const flagged = [...c.docs, ...c.employees.flatMap(e=>e.docs)].filter(d => docState(d.expiry).label !== "Valid").length;
                 return (
                   <tr key={c.id} onClick={()=>setOpenId(c.id)}>
+                    <td className="mono" style={{fontSize:12, color:"var(--ink-soft)"}}>{pg.start + i + 1}</td>
                     <td>{c.name}
                       <div className="mono" style={{fontSize:11,color:"var(--ink-soft)"}}>{c.id}</div>
                     </td>
