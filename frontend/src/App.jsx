@@ -1640,8 +1640,18 @@ function Dashboard({ state, dispatch, role, userId, setPage, onOpenExpiredCustom
   const [showAllClosed, setShowAllClosed] = useState(false);
   const today = daysFromNow(0);
   const todayWonDeals = state.deals.filter(d => d.stage === "Won" && (d.wonAt || "").slice(0,10) === today);
+  // Credit goes to whoever the deal's quotation is actually attributed to right now, not the
+  // deal's own (possibly stale) owner — an admin can reassign a quotation's "Sales person"
+  // independently of the deal's owner (see QuoteDetailModal), precisely so a deal opened by one
+  // rep but actually sold by another attributes correctly. Same resolution the backend already
+  // uses for a Sales Order/Invoice's own salesPerson: latest quotation's owner, falling back to
+  // the deal's own owner only when it has no quotation yet.
+  const ownerForDeal = (d) => {
+    const dealQuotes = state.quotations.filter(q => q.dealId === d.id).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+    return dealQuotes[0]?.owner || d.owner;
+  };
   const closedByOwner = {};
-  todayWonDeals.forEach(d => { if (d.owner) (closedByOwner[d.owner] ||= []).push(d); });
+  todayWonDeals.forEach(d => { const uid = ownerForDeal(d); if (uid) (closedByOwner[uid] ||= []).push(d); });
   const closedOwners = Object.entries(closedByOwner)
     .map(([uid, deals]) => ({ employee: state.employees.find(e=>e.id===uid), deals }))
     .filter(x => x.employee)
