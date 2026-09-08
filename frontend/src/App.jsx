@@ -8,7 +8,7 @@ import {
   Plus, X, Check, ChevronRight, ChevronUp, ChevronDown, AlertTriangle, CircleDollarSign, RefreshCw,
   UserPlus, ShieldCheck, Ban, Clock, ArrowRight, Search, Mail, Phone,
   BadgeCheck, CalendarClock, Briefcase, Copy, Files, Link2, Pencil, Trash2, Repeat, BarChart3, Download, MoreHorizontal, ChevronsLeft, ChevronsRight, Camera, Star,
-  Database, Upload, MessageCircle, ArchiveX, ShieldAlert, Settings as SettingsIcon,
+  Database, Upload, MessageCircle, ArchiveX, Settings as SettingsIcon,
   Sun, Moon, BookOpen, Award, Landmark, Presentation, ExternalLink, KeyRound, BellOff
 } from "lucide-react";
 import { money, fmtDate, fmtDateDMY, Stamp, statusTone, Rail, DonutChart, LineChart, BarChart, SalesPersonBars, ProgressRing, progressColor, Modal, Empty, ConfirmModal, RowActions, exportCSV, usePagination, PaginationBar, TableScrollHint, useConfirm, ADMIN_LIKE, ROLE_LABEL, isSalesRole, isAssignable } from "./ui.jsx";
@@ -1190,7 +1190,10 @@ export default function App() {
   }, []);
 
   const handleLogin = (user) => { setCurrentUser(user); setActiveRole(pickActiveRole(user)); };
-  const handleLogout = () => { clearAllTokens(); setCurrentUser(null); };
+  // Fired (and awaited, so it still carries the still-valid token) before clearing it — records
+  // the sign-out in the audit log. A failed call shouldn't block the user from actually logging
+  // out, so the client-side cleanup always runs regardless.
+  const handleLogout = () => { api.auth.logout().catch(() => {}).finally(() => { clearAllTokens(); setCurrentUser(null); }); };
 
   // Real impersonation (not a cosmetic relabel) — the admin gets an actual token for the target
   // user, so the whole app (nav, data, every permission check) reflects exactly what that user's

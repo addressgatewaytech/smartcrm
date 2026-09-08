@@ -38,8 +38,6 @@ const normPhone = (p) => (p || "").replace(/[^\d]/g, "");
 const normEmail = (e) => (e || "").trim().toLowerCase();
 const normCompany = (c) => (c || "").trim().toLowerCase();
 
-const money = (n) => `QAR ${Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
 /**
  * Single source of truth for "is this the same customer" — used by both POST/PATCH /customers
  * (block outright) and lead creation (auto-link instead of creating a second profile). A previous
@@ -174,4 +172,4 @@ async function renameCustomerCascade(query, customerId, newName) {
   await query("UPDATE customer_subscriptions SET customer = ? WHERE customer_id = ?", [newName, customerId]);
 }
 
-module.exports = { nextId, nextSequentialId, today, daysFromNow, normPhone, normEmail, normCompany, money, quoteTotal, professionalFeeTotal, findDuplicateCustomer, findOrCreateCustomer, COMPULSORY_KYC_DOC_TYPES, seedDefaultKycDocs, renderTemplate, renameCustomerCascade };
+module.exports = { nextId, nextSequentialId, today, daysFromNow, normPhone, normEmail, normCompany, quoteTotal, professionalFeeTotal, findDuplicateCustomer, findOrCreateCustomer, COMPULSORY_KYC_DOC_TYPES, seedDefaultKycDocs, renderTemplate, renameCustomerCascade };

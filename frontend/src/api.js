@@ -84,6 +84,7 @@ const postForm = (path, formData) => request("POST", path, formData, true);
 export const api = {
   auth: {
     login: (email, password) => post("/auth/login", { email, password }),
+    logout: () => post("/auth/logout"),
     me: () => get("/auth/me"),
     forgotPassword: (email) => post("/auth/forgot-password", { email }),
     resetPassword: (email, otp, newPassword) => post("/auth/reset-password", { email, otp, newPassword }),
