@@ -4652,15 +4652,15 @@ function CustomersPage({ state, dispatch, role, userId, expiryFilterRequest, onE
         </div>
         <div style={{ display:"flex", gap:8 }}>
           <button className="btn btn-sm" onClick={()=>exportCSV("customers-kyc.csv",
-            ["Customer ID","Customer","Sales Person","Category","Type","Contact","Phone","Contact Mobile","Landline","Email","Address","Company Size","Status",
-             "CR Number","CR Expiry","CP Number","CP Expiry","EC Number","EC Expiry","Cloud Folder Link","Created","KYC Status"],
+            ["Customer ID","Customer","Sales Person","Type","Contact","Phone","Contact Mobile","Landline","Email","Address","Company Size","Status",
+             "CR Number","CR Expiry","CP Number","CP Expiry","EC Number","EC Expiry","Cloud Folder Link","Created","KYC Status","Category"],
             filtered.map(c=>{
               const flagged = [...c.docs, ...c.employees.flatMap(e=>e.docs)].filter(d => docState(d.expiry).label !== "Valid").length;
               const doc = (type) => kycDocOf(c, type) || {};
               const numWithPrefix = (type) => doc(type).number ? `${type}-${doc(type).number}` : "";
-              return [c.id, c.name, c.salesPerson||"", c.category, c.type||"", c.contact||"", c.phone||"", c.contactMobile||"", c.landline||"", c.email||"", c.address||"", c.companySize||"", c.status,
+              return [c.id, c.name, c.salesPerson||"", c.type||"", c.contact||"", c.phone||"", c.contactMobile||"", c.landline||"", c.email||"", c.address||"", c.companySize||"", c.status,
                 numWithPrefix("CR"), doc("CR").expiry||"", numWithPrefix("CP"), doc("CP").expiry||"", numWithPrefix("EC"), doc("EC").expiry||"",
-                c.cloudLink||"", c.createdAt, flagged>0?`${flagged} flagged`:"Clear"];
+                c.cloudLink||"", c.createdAt, flagged>0?`${flagged} flagged`:"Clear", c.category];
             }))}>
             <Download size={13}/> Export
           </button>
@@ -4692,7 +4692,7 @@ function CustomersPage({ state, dispatch, role, userId, expiryFilterRequest, onE
           ) : (
           <div style={{ overflowX:"auto" }}>
           <table className="agw-table" style={{ minWidth: 1360 }}>
-            <thead><tr><th>Customer</th><th>Sales Person</th><th>Category</th><th>Created</th><th>Contact</th><th>Phone</th><th>Email</th><th>Company size</th><th>Status</th><th>CR</th><th>CP</th><th>EC</th><th>KYC</th><th></th></tr></thead>
+            <thead><tr><th>Customer</th><th>Sales Person</th><th>Created</th><th>Contact</th><th>Phone</th><th>Email</th><th>Company size</th><th>Status</th><th>CR</th><th>CP</th><th>EC</th><th>KYC</th><th>Category</th><th></th></tr></thead>
             <tbody>
               {pg.pageRows.map(c => {
                 const flagged = [...c.docs, ...c.employees.flatMap(e=>e.docs)].filter(d => docState(d.expiry).label !== "Valid").length;
@@ -4702,7 +4702,6 @@ function CustomersPage({ state, dispatch, role, userId, expiryFilterRequest, onE
                       <div className="mono" style={{fontSize:11,color:"var(--ink-soft)"}}>{c.id}</div>
                     </td>
                     <td style={{fontSize:12.5}}>{c.salesPerson || "—"}</td>
-                    <td><Stamp tone={c.category==="Address Gateway Customers"?"success":"neutral"}>{c.category}</Stamp></td>
                     <td className="mono" style={{fontSize:12}}>{fmtDate(c.createdAt)}</td>
                     <td>{c.contact || "—"}</td>
                     <td className="mono" style={{fontSize:12}}>{c.phone || "—"}</td>
@@ -4718,6 +4717,7 @@ function CustomersPage({ state, dispatch, role, userId, expiryFilterRequest, onE
                       </td>;
                     })}
                     <td>{flagged > 0 ? <Stamp tone="warning">{flagged} flagged</Stamp> : <Stamp tone="success">Clear</Stamp>}</td>
+                    <td><Stamp tone={c.category==="Address Gateway Customers"?"success":"neutral"}>{c.category}</Stamp></td>
                     <td><RowActions onEdit={canEditCustomer ? ()=>setEditCustomer(c) : null} onRemove={isAdmin ? ()=>setRemoveCustomer(c) : null} /></td>
                   </tr>
                 );
