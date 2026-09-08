@@ -6810,14 +6810,21 @@ function JobsPage({ state, dispatch, role, userId, highlightId, onHighlightHandl
   const [query, setQuery] = useState("");
   const { period, setPeriod, customFrom, setCustomFrom, customTo, setCustomTo, range } = usePeriod("all");
   const [leadByFilter, setLeadByFilter] = useState("");
+  // Distinct from "Lead by" above — that's the salesperson who brought the job in, not who's
+  // actually doing the operational work. A job card can have several assignees, so this filters
+  // on membership rather than an exact match.
+  const [assignedFilter, setAssignedFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [ageFilter, setAgeFilter] = useState("");
   const visibleByRole = role === "ops_member" ? state.jobCards.filter(j => j.assignees.includes(userId)) : state.jobCards;
   const periodFiltered = visibleByRole.filter(j => inRange(j.createdAt, range));
   const leadBySalespeople = [...new Set(periodFiltered.map(j => j.leadCreatorName).filter(Boolean))];
   const leadByFiltered = leadByFilter ? periodFiltered.filter(j => j.leadCreatorName === leadByFilter) : periodFiltered;
+  const assignedPeople = [...new Set(periodFiltered.flatMap(j => j.assignees))]
+    .map(id => state.employees.find(e => e.id === id)).filter(Boolean).sort((a,b) => a.name.localeCompare(b.name));
+  const assignedFiltered = assignedFilter ? leadByFiltered.filter(j => j.assignees.includes(assignedFilter)) : leadByFiltered;
   const jobCategories = [...new Set(periodFiltered.map(j => j.service).filter(Boolean))].sort();
-  const categoryFiltered = categoryFilter ? leadByFiltered.filter(j => j.service === categoryFilter) : leadByFiltered;
+  const categoryFiltered = categoryFilter ? assignedFiltered.filter(j => j.service === categoryFilter) : assignedFiltered;
   const ageBucket = JOB_AGE_BUCKETS.find(b => b.key === ageFilter);
   const ageFiltered = ageBucket ? categoryFiltered.filter(j => ageBucket.test(daysSince(j.createdAt))) : categoryFiltered;
   const visible = ageFiltered.filter(j => [j.customer, j.id, j.service].filter(Boolean).join(" ").toLowerCase().includes(query.trim().toLowerCase()));
@@ -6870,6 +6877,13 @@ function JobsPage({ state, dispatch, role, userId, highlightId, onHighlightHandl
               style={{ fontSize:13, border:"1px solid var(--hair)", borderRadius:8, padding:"7px 10px", background:"var(--surface)" }}>
               <option value="">All salespeople</option>
               {leadBySalespeople.map(name=><option key={name} value={name}>{name}</option>)}
+            </select>
+          )}
+          {assignedPeople.length > 0 && (
+            <select value={assignedFilter} onChange={e=>setAssignedFilter(e.target.value)}
+              style={{ fontSize:13, border:"1px solid var(--hair)", borderRadius:8, padding:"7px 10px", background:"var(--surface)" }}>
+              <option value="">All assignees</option>
+              {assignedPeople.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}
             </select>
           )}
           {jobCategories.length > 0 && (
