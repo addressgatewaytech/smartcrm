@@ -6551,9 +6551,69 @@ function CompanyFinancePage({ state, dispatch }) {
       <div className="tabbar" style={{ marginBottom: 14 }}>
         <button className={`tab ${tab==="cheques"?"active":""}`} onClick={()=>setTab("cheques")}>Cheques</button>
         <button className={`tab ${tab==="software"?"active":""}`} onClick={()=>setTab("software")}>Software Subscriptions</button>
+        <button className={`tab ${tab==="bank"?"active":""}`} onClick={()=>setTab("bank")}>Bank Account Details</button>
       </div>
       {tab === "cheques" && <ChequesTab state={state} dispatch={dispatch} />}
       {tab === "software" && <SoftwareSubscriptionsTab state={state} dispatch={dispatch} />}
+      {tab === "bank" && <BankAccountDetailsTab />}
+    </div>
+  );
+}
+
+// Reference-only — the actual bank details customers see per quotation/invoice come from the
+// bank field on the document itself (defaulting to DEFAULT_BANK above), not from here. This tab
+// just gives staff a single place to look up and copy any of the company's account details
+// without having to dig through an old email or a quotation PDF.
+function BankDetailRow({ label, value, copy }) {
+  if (!value) return null;
+  return (
+    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"7px 0", borderBottom:"1px solid var(--hair)" }}>
+      <span style={{ fontSize:12.5, color:"var(--ink-soft)" }}>{label}</span>
+      <span style={{ display:"flex", alignItems:"center", gap:4 }}>
+        <span className="mono" style={{ fontSize:13 }}>{value}</span>
+        {copy && <CopyButton value={value} />}
+      </span>
+    </div>
+  );
+}
+function BankAccountDetailsTab() {
+  return (
+    <div className="agw-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))" }}>
+      <div className="agw-card">
+        <strong style={{ fontSize:14 }}>Main Customer Payment Account</strong>
+        <p className="modal-sub" style={{ marginTop:2 }}>Default account for customer payments.</p>
+        <div style={{ marginTop:8 }}>
+          <BankDetailRow label="Account Name" value="ADDRESS GATEWAY BUSINESS SERVICES" />
+          <BankDetailRow label="Account Number" value="021513170010010010000" copy />
+          <BankDetailRow label="IBAN" value="QA82DOHB021513170010010010000" copy />
+          <BankDetailRow label="Swift Code" value="DOHBQAQA" copy />
+          <BankDetailRow label="Fawran Alias Type" value="CR Number" />
+          <BankDetailRow label="Alias ID" value="CR-209532" copy />
+          <BankDetailRow label="Branch" value="C Ring Road, Doha, Qatar" />
+        </div>
+      </div>
+
+      <div className="agw-card">
+        <strong style={{ fontSize:14 }}>Credit Card Account</strong>
+        <p className="modal-sub" style={{ marginTop:2 }}>For Government Payment customers — should transfer here.</p>
+        <div style={{ marginTop:8 }}>
+          <BankDetailRow label="Account" value="Address Gateway Amex Card IBAN For Fawran" />
+          <BankDetailRow label="To Alias ID" value="QA52BBME000000000500010681060" copy />
+          <BankDetailRow label="To Beneficiary" value="AMEX MIDDLE EAST B S C CLOSED" />
+        </div>
+      </div>
+
+      <div className="agw-card">
+        <strong style={{ fontSize:14 }}>Secondary — CBQ Account</strong>
+        <p className="modal-sub" style={{ marginTop:2 }}>Only for special purpose.</p>
+        <div style={{ marginTop:8 }}>
+          <BankDetailRow label="Account Name" value="ADDRESS GATEWAY BUSINESS SERVICES" />
+          <BankDetailRow label="Account Number" value="4680-21670035-001" copy />
+          <BankDetailRow label="IBAN" value="QA14CBQA000000468021670035001" copy />
+          <BankDetailRow label="Company Fawran — Establishment Card" value="ER-17274261" copy />
+          <BankDetailRow label="Bank" value="Commercial Bank, Doha, Qatar" />
+        </div>
+      </div>
     </div>
   );
 }
