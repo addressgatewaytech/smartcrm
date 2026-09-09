@@ -887,6 +887,7 @@ const NAV = [
     { key: "orders", label: "Sales Orders", icon: ShoppingCart, roles: [...ADMIN_LIKE,"sales_manager","accounts"] },
     { key: "invoices", label: "Invoices", icon: Receipt, roles: [...ADMIN_LIKE,"accounts","sales_manager"] },
     { key: "companyFinance", label: "Company Finance", icon: Landmark, roles: [...ADMIN_LIKE,"accounts"] },
+    { key: "bankAccountDetails", label: "Bank Account Details", icon: Landmark, roles: [...ADMIN_LIKE,"accounts"] },
   ]},
   { group: "Operations", items: [
     { key: "jobs", label: "Job Cards", icon: ClipboardList, roles: [...ADMIN_LIKE,"ops_manager","ops_member","accounts","sales_manager","sales_exec","pro_head","pro"] },
@@ -1333,6 +1334,7 @@ export default function App() {
     orders: ["Sales Orders", "Confirmed orders converted from approved quotations"],
     invoices: ["Invoices", "Billing, payments and outstanding balances"],
     companyFinance: ["Company Finance", "Cheques (in and out) and company software subscription expenses"],
+    bankAccountDetails: ["Bank Account Details", "Reference only — the company's own bank accounts for customer payments"],
     jobs: ["Job Cards", "Operations board — assignment through completion"],
     tasks: ["Tasks", "Assign, track and approve employee tasks through to completion"],
     incentives: ["Incentives", "Daily, weekly and monthly incentive tracking"],
@@ -1470,6 +1472,7 @@ export default function App() {
             {page === "invoices" && <InvoicesPage {...ctx} setPage={setPage} highlightId={highlightInvoiceId} onHighlightHandled={()=>setHighlightInvoiceId(null)}
               onJobCardTarget={setHighlightJobCardId} />}
             {page === "companyFinance" && <CompanyFinancePage {...ctx} />}
+            {page === "bankAccountDetails" && <BankAccountDetailsPage />}
             {page === "jobs" && <JobsPage {...ctx} highlightId={highlightJobCardId} onHighlightHandled={()=>setHighlightJobCardId(null)} />}
             {page === "tasks" && <TasksPage {...ctx} />}
             {page === "incentives" && <IncentivesPage {...ctx} />}
@@ -6551,17 +6554,15 @@ function CompanyFinancePage({ state, dispatch }) {
       <div className="tabbar" style={{ marginBottom: 14 }}>
         <button className={`tab ${tab==="cheques"?"active":""}`} onClick={()=>setTab("cheques")}>Cheques</button>
         <button className={`tab ${tab==="software"?"active":""}`} onClick={()=>setTab("software")}>Software Subscriptions</button>
-        <button className={`tab ${tab==="bank"?"active":""}`} onClick={()=>setTab("bank")}>Bank Account Details</button>
       </div>
       {tab === "cheques" && <ChequesTab state={state} dispatch={dispatch} />}
       {tab === "software" && <SoftwareSubscriptionsTab state={state} dispatch={dispatch} />}
-      {tab === "bank" && <BankAccountDetailsTab />}
     </div>
   );
 }
 
 // Reference-only — the actual bank details customers see per quotation/invoice come from the
-// bank field on the document itself (defaulting to DEFAULT_BANK above), not from here. This tab
+// bank field on the document itself (defaulting to DEFAULT_BANK above), not from here. This page
 // just gives staff a single place to look up and copy any of the company's account details
 // without having to dig through an old email or a quotation PDF.
 function BankDetailRow({ label, value, copy }) {
@@ -6576,44 +6577,59 @@ function BankDetailRow({ label, value, copy }) {
     </div>
   );
 }
-function BankAccountDetailsTab() {
+// Copies every row's label/value as one plain-text block — for pasting the whole account
+// straight into an email or payment instruction instead of copying field by field.
+function CopyAllButton({ text }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button type="button" className="btn btn-sm" onClick={()=>{ navigator.clipboard.writeText(text).then(()=>{ setCopied(true); setTimeout(()=>setCopied(false), 1500); }); }}>
+      {copied ? <Check size={13} style={{color:"var(--success)"}}/> : <Copy size={13}/>} {copied ? "Copied!" : "Copy all"}
+    </button>
+  );
+}
+function BankAccountCard({ title, sub, rows }) {
+  const fullText = rows.map(r => `${r.label}: ${r.value}`).join("\n");
+  return (
+    <div className="agw-card">
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8 }}>
+        <div>
+          <strong style={{ fontSize:14 }}>{title}</strong>
+          <p className="modal-sub" style={{ marginTop:2 }}>{sub}</p>
+        </div>
+        <CopyAllButton text={fullText} />
+      </div>
+      <div style={{ marginTop:8 }}>
+        {rows.map(r => <BankDetailRow key={r.label} label={r.label} value={r.value} copy={r.copy} />)}
+      </div>
+    </div>
+  );
+}
+function BankAccountDetailsPage() {
   return (
     <div className="agw-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))" }}>
-      <div className="agw-card">
-        <strong style={{ fontSize:14 }}>Main Customer Payment Account</strong>
-        <p className="modal-sub" style={{ marginTop:2 }}>Default account for customer payments.</p>
-        <div style={{ marginTop:8 }}>
-          <BankDetailRow label="Account Name" value="ADDRESS GATEWAY BUSINESS SERVICES" />
-          <BankDetailRow label="Account Number" value="021513170010010010000" copy />
-          <BankDetailRow label="IBAN" value="QA82DOHB021513170010010010000" copy />
-          <BankDetailRow label="Swift Code" value="DOHBQAQA" copy />
-          <BankDetailRow label="Fawran Alias Type" value="CR Number" />
-          <BankDetailRow label="Alias ID" value="CR-209532" copy />
-          <BankDetailRow label="Branch" value="C Ring Road, Doha, Qatar" />
-        </div>
-      </div>
+      <BankAccountCard title="Main Customer Payment Account" sub="Default account for customer payments." rows={[
+        { label:"Account Name", value:"ADDRESS GATEWAY BUSINESS SERVICES" },
+        { label:"Account Number", value:"021513170010010010000", copy:true },
+        { label:"IBAN", value:"QA82DOHB021513170010010010000", copy:true },
+        { label:"Swift Code", value:"DOHBQAQA", copy:true },
+        { label:"Fawran Alias Type", value:"CR Number" },
+        { label:"Alias ID", value:"CR-209532", copy:true },
+        { label:"Branch", value:"C Ring Road, Doha, Qatar" },
+      ]} />
 
-      <div className="agw-card">
-        <strong style={{ fontSize:14 }}>Credit Card Account</strong>
-        <p className="modal-sub" style={{ marginTop:2 }}>For Government Payment customers — should transfer here.</p>
-        <div style={{ marginTop:8 }}>
-          <BankDetailRow label="Account" value="Address Gateway Amex Card IBAN For Fawran" />
-          <BankDetailRow label="To Alias ID" value="QA52BBME000000000500010681060" copy />
-          <BankDetailRow label="To Beneficiary" value="AMEX MIDDLE EAST B S C CLOSED" />
-        </div>
-      </div>
+      <BankAccountCard title="Credit Card Account" sub="For Government Payment customers — should transfer here." rows={[
+        { label:"Account", value:"Address Gateway Amex Card IBAN For Fawran" },
+        { label:"To Alias ID", value:"QA52BBME000000000500010681060", copy:true },
+        { label:"To Beneficiary", value:"AMEX MIDDLE EAST B S C CLOSED" },
+      ]} />
 
-      <div className="agw-card">
-        <strong style={{ fontSize:14 }}>Secondary — CBQ Account</strong>
-        <p className="modal-sub" style={{ marginTop:2 }}>Only for special purpose.</p>
-        <div style={{ marginTop:8 }}>
-          <BankDetailRow label="Account Name" value="ADDRESS GATEWAY BUSINESS SERVICES" />
-          <BankDetailRow label="Account Number" value="4680-21670035-001" copy />
-          <BankDetailRow label="IBAN" value="QA14CBQA000000468021670035001" copy />
-          <BankDetailRow label="Company Fawran — Establishment Card" value="ER-17274261" copy />
-          <BankDetailRow label="Bank" value="Commercial Bank, Doha, Qatar" />
-        </div>
-      </div>
+      <BankAccountCard title="Secondary — CBQ Account" sub="Only for special purpose." rows={[
+        { label:"Account Name", value:"ADDRESS GATEWAY BUSINESS SERVICES" },
+        { label:"Account Number", value:"4680-21670035-001", copy:true },
+        { label:"IBAN", value:"QA14CBQA000000468021670035001", copy:true },
+        { label:"Company Fawran — Establishment Card", value:"ER-17274261", copy:true },
+        { label:"Bank", value:"Commercial Bank, Doha, Qatar" },
+      ]} />
     </div>
   );
 }
