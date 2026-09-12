@@ -889,6 +889,11 @@ const NAV = [
     { key: "companyFinance", label: "Company Finance", icon: Landmark, roles: [...ADMIN_LIKE,"accounts"] },
     { key: "bankAccountDetails", label: "Bank Account Details", icon: Landmark, roles: [...ADMIN_LIKE,"accounts"] },
   ]},
+  // Deliberately its own group, not nested under Finance — a simple room/rent ledger for renting
+  // office space out to third parties, unrelated to the company's own Cheques/Software Subscriptions.
+  { group: "Tenant Management", items: [
+    { key: "tenants", label: "Tenant Management", icon: Building2, roles: [...ADMIN_LIKE,"accounts"] },
+  ]},
   { group: "Operations", items: [
     { key: "jobs", label: "Job Cards", icon: ClipboardList, roles: [...ADMIN_LIKE,"ops_manager","ops_member","accounts","sales_manager","sales_exec","pro_head","pro"] },
     { key: "tasks", label: "Tasks", icon: ListChecks, roles: "all" },
@@ -1335,6 +1340,7 @@ export default function App() {
     invoices: ["Invoices", "Billing, payments and outstanding balances"],
     companyFinance: ["Company Finance", "Cheques (in and out) and company software subscription expenses"],
     bankAccountDetails: ["Bank Account Details", "Reference only — the company's own bank accounts for customer payments"],
+    tenants: ["Tenant Management", "Office rooms rented out to third parties — rent ledger, payments, statements"],
     jobs: ["Job Cards", "Operations board — assignment through completion"],
     tasks: ["Tasks", "Assign, track and approve employee tasks through to completion"],
     incentives: ["Incentives", "Daily, weekly and monthly incentive tracking"],
@@ -1473,6 +1479,7 @@ export default function App() {
               onJobCardTarget={setHighlightJobCardId} />}
             {page === "companyFinance" && <CompanyFinancePage {...ctx} />}
             {page === "bankAccountDetails" && <BankAccountDetailsPage />}
+            {page === "tenants" && <TenantManagementPage {...ctx} />}
             {page === "jobs" && <JobsPage {...ctx} highlightId={highlightJobCardId} onHighlightHandled={()=>setHighlightJobCardId(null)} />}
             {page === "tasks" && <TasksPage {...ctx} />}
             {page === "incentives" && <IncentivesPage {...ctx} />}
@@ -6631,6 +6638,255 @@ function BankAccountDetailsPage() {
         { label:"Bank", value:"Commercial Bank, Doha, Qatar" },
       ]} />
     </div>
+  );
+}
+
+// Local-date parse (not new Date(isoString), which reads as UTC and can roll a day-1 month back
+// a day early in timezones behind UTC) — every "month" column in Tenant Management goes through
+// this.
+const tenantMonthLabel = (m) => {
+  const [y, mo] = m.split("-");
+  return new Date(Number(y), Number(mo) - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+};
+
+function TenantManagementPage({ state, dispatch, role }) {
+  const isAdmin = ADMIN_LIKE.includes(role);
+  const [showNew, setShowNew] = useState(false);
+  const [openId, setOpenId] = useState(null);
+  const [removeTenant, setRemoveTenant] = useState(null);
+  const tenants = state.tenants;
+  const pg = usePagination(tenants);
+  const balanceOf = (t) => t.payments.reduce((a, p) => a + p.amountDue, 0) - t.payments.reduce((a, p) => a + p.amountPaid, 0);
+  const open = openId ? tenants.find(t => t.id === openId) : null;
+
+  return (
+    <div>
+      <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:14 }}>
+        <button className="btn btn-primary" onClick={()=>setShowNew(true)}><Plus size={15}/> Add room / tenant</button>
+      </div>
+      <div className="agw-card" style={{ padding:0 }}>
+        {tenants.length === 0 ? <Empty icon={Building2} text="No rooms added yet." /> : (
+          <div style={{ overflowX:"auto" }}>
+          <table className="agw-table">
+            <thead><tr><th>#</th><th>Room</th><th>Tenant</th><th>Monthly Rent</th><th>Status</th><th>Balance</th><th></th></tr></thead>
+            <tbody>
+              {pg.pageRows.map((t, i) => {
+                const balance = balanceOf(t);
+                return (
+                  <tr key={t.id} onClick={()=>setOpenId(t.id)} style={{ cursor:"pointer" }}>
+                    <td className="mono" style={{ fontSize:12, color:"var(--ink-soft)" }}>{pg.start + i + 1}</td>
+                    <td>{t.room}</td>
+                    <td>{t.tenantName}<div className="mono" style={{ fontSize:11, color:"var(--ink-soft)" }}>{t.id}</div></td>
+                    <td className="mono">{money(t.monthlyRent)}</td>
+                    <td><Stamp tone={t.status==="Vacated" ? "neutral" : "success"}>{t.status}</Stamp></td>
+                    <td className="mono" style={{ color: balance > 0 ? "var(--danger)" : "var(--success)" }}>{money(balance)}</td>
+                    <td onClick={e=>e.stopPropagation()}>{isAdmin && <RowActions onRemove={()=>setRemoveTenant(t)} />}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          </div>
+        )}
+        <PaginationBar {...pg} />
+      </div>
+      {showNew && <NewTenantModal dispatch={dispatch} onClose={()=>setShowNew(false)} />}
+      {open && <TenantDetailModal tenant={open} dispatch={dispatch} isAdmin={isAdmin} onClose={()=>setOpenId(null)} />}
+      {removeTenant && <ConfirmModal title={`Remove ${removeTenant.room}?`} body={`This deletes ${removeTenant.tenantName}'s tenancy and its entire payment history. This can't be undone.`}
+        onConfirm={()=>dispatch({type:"DELETE_TENANT", id:removeTenant.id})} onClose={()=>setRemoveTenant(null)} />}
+    </div>
+  );
+}
+
+function NewTenantModal({ dispatch, onClose }) {
+  const [form, setForm] = useState({ room:"", tenantName:"", contact:"", phone:"", monthlyRent:"", startDate: daysFromNow(0), notes:"" });
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const save = async () => {
+    setSaving(true); setSaveError("");
+    try {
+      await dispatch({ type:"ADD_TENANT", payload: { ...form, monthlyRent: Number(form.monthlyRent) || 0 } });
+      onClose();
+    } catch (err) {
+      setSaveError(err instanceof ApiError ? err.message : "Couldn't save — please try again.");
+    } finally { setSaving(false); }
+  };
+  return (
+    <Modal title="Add room / tenant" onClose={onClose}>
+      <div className="row2">
+        <div className="field"><label>Room</label><input value={form.room} onChange={e=>setForm({...form,room:e.target.value})} placeholder="e.g. Room 101" autoFocus /></div>
+        <div className="field"><label>Tenant name</label><input value={form.tenantName} onChange={e=>setForm({...form,tenantName:e.target.value})} /></div>
+      </div>
+      <div className="row2">
+        <div className="field"><label>Contact person (optional)</label><input value={form.contact} onChange={e=>setForm({...form,contact:e.target.value})} /></div>
+        <div className="field"><label>Phone (optional)</label><input value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} /></div>
+      </div>
+      <div className="row2">
+        <div className="field"><label>Monthly rent (QAR)</label><input type="number" min="0" value={form.monthlyRent} onChange={e=>setForm({...form,monthlyRent:e.target.value})} /></div>
+        <div className="field"><label>Start date</label><input type="date" value={form.startDate} onChange={e=>setForm({...form,startDate:e.target.value})} /></div>
+      </div>
+      <div className="field"><label>Notes (optional)</label><textarea rows={2} value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} /></div>
+      {saveError && <div className="side-note" style={{color:"var(--danger)"}}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{saveError}</div>}
+      <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:16}}>
+        <button className="btn" onClick={onClose}>Cancel</button>
+        <button className="btn btn-primary" disabled={saving || !form.room.trim() || !form.tenantName.trim() || !form.startDate} onClick={save}>{saving ? "Saving…" : "Add"}</button>
+      </div>
+    </Modal>
+  );
+}
+
+function TenantDetailModal({ tenant: t, dispatch, isAdmin, onClose }) {
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState({ room:t.room, tenantName:t.tenantName, contact:t.contact||"", phone:t.phone||"", monthlyRent:t.monthlyRent, status:t.status, notes:t.notes||"" });
+  const [payFor, setPayFor] = useState(null);
+  const [downloading, setDownloading] = useState(false);
+  // Already ORDER BY month DESC from the API — no need to re-sort here.
+  const totalDue = t.payments.reduce((a,p)=>a+p.amountDue,0);
+  const totalPaid = t.payments.reduce((a,p)=>a+p.amountPaid,0);
+
+  const saveEdit = () => { dispatch({ type:"UPDATE_TENANT", id:t.id, payload:{...form, monthlyRent:Number(form.monthlyRent)||0} }); setEditing(false); };
+
+  const statusOf = (p) => (p.amountDue > 0 && p.amountPaid >= p.amountDue) ? "Paid" : p.amountPaid > 0 ? "Partial" : "Pending";
+  const statusTone = { Paid:"success", Partial:"warning", Pending:"neutral" };
+
+  return (
+    <Modal title={`${t.room} — ${t.tenantName}`} sub={`ID: ${t.id}`} onClose={onClose} width={880}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:14, flexWrap:"wrap", gap:8 }}>
+        <div style={{display:"flex", gap:20, flexWrap:"wrap"}}>
+          <div><div className="kpi-label">Monthly rent</div><div style={{fontSize:16,fontWeight:600}}>{money(t.monthlyRent)}</div></div>
+          <div><div className="kpi-label">Total due</div><div style={{fontSize:16,fontWeight:600}}>{money(totalDue)}</div></div>
+          <div><div className="kpi-label">Total paid</div><div style={{fontSize:16,fontWeight:600,color:"var(--success)"}}>{money(totalPaid)}</div></div>
+          <div><div className="kpi-label">Balance</div><div style={{fontSize:16,fontWeight:600,color: totalDue-totalPaid>0?"var(--danger)":"var(--success)"}}>{money(totalDue-totalPaid)}</div></div>
+        </div>
+        <div style={{display:"flex", gap:8, flexShrink:0}}>
+          {isAdmin && <button className="btn btn-sm" onClick={()=>setEditing(true)}><Pencil size={13}/> Edit</button>}
+          <button className="btn btn-sm" disabled={downloading} onClick={async ()=>{
+            setDownloading(true);
+            try { const blob = await api.tenants.downloadStatementPdf(t.id); downloadBlob(`SOA-${t.room}.pdf`, blob); }
+            finally { setDownloading(false); }
+          }}><Download size={13}/> {downloading ? "Generating…" : "Download SOA"}</button>
+        </div>
+      </div>
+
+      {editing && (
+        <div className="agw-card" style={{marginBottom:14}}>
+          <div className="row2">
+            <div className="field"><label>Room</label><input value={form.room} onChange={e=>setForm({...form,room:e.target.value})} /></div>
+            <div className="field"><label>Tenant name</label><input value={form.tenantName} onChange={e=>setForm({...form,tenantName:e.target.value})} /></div>
+          </div>
+          <div className="row2">
+            <div className="field"><label>Contact</label><input value={form.contact} onChange={e=>setForm({...form,contact:e.target.value})} /></div>
+            <div className="field"><label>Phone</label><input value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} /></div>
+          </div>
+          <div className="row2">
+            <div className="field"><label>Monthly rent (QAR)</label><input type="number" min="0" value={form.monthlyRent} onChange={e=>setForm({...form,monthlyRent:e.target.value})} /></div>
+            <div className="field"><label>Status</label>
+              <select value={form.status} onChange={e=>setForm({...form,status:e.target.value})}>
+                <option>Active</option><option>Vacated</option>
+              </select>
+            </div>
+          </div>
+          <div className="field"><label>Notes</label><textarea rows={2} value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} /></div>
+          <div style={{display:"flex",justifyContent:"flex-end",gap:8}}>
+            <button className="btn btn-sm" onClick={()=>setEditing(false)}>Cancel</button>
+            <button className="btn btn-sm btn-primary" onClick={saveEdit}>Save</button>
+          </div>
+        </div>
+      )}
+
+      {(t.contact || t.phone) && !editing && (
+        <div style={{fontSize:12.5, color:"var(--ink-soft)", marginBottom:14}}>{[t.contact, t.phone].filter(Boolean).join(" · ")}</div>
+      )}
+
+      <div style={{ overflowX:"auto" }}>
+      <table className="agw-table">
+        <thead><tr><th>Month</th><th>Due</th><th>Paid</th><th>Balance</th><th>Status</th><th>Mode</th><th>Cheque</th><th></th></tr></thead>
+        <tbody>
+          {t.payments.map(p => {
+            const bal = p.amountDue - p.amountPaid;
+            const st = statusOf(p);
+            return (
+              <tr key={p.id}>
+                <td style={{whiteSpace:"nowrap"}}>{tenantMonthLabel(p.month)}</td>
+                <td className="mono">{money(p.amountDue)}</td>
+                <td className="mono">{money(p.amountPaid)}</td>
+                <td className="mono">{money(bal)}</td>
+                <td><Stamp tone={statusTone[st]}>{st}</Stamp></td>
+                <td>{p.mode || "—"}</td>
+                <td style={{fontSize:11.5}}>
+                  {p.mode === "Cheque" ? (
+                    <>
+                      {p.chequeNumber}{p.chequeBank ? ` · ${p.chequeBank}` : ""}
+                      <div style={{marginTop:2}}><Stamp tone={p.chequeDeposited ? "success" : "warning"}>{p.chequeDeposited ? "Deposited" : "Not deposited"}</Stamp></div>
+                    </>
+                  ) : "—"}
+                </td>
+                <td style={{display:"flex", gap:4, flexWrap:"wrap"}}>
+                  <button className="btn btn-sm btn-ghost" onClick={()=>setPayFor(p)}>{st==="Pending" ? "Add payment" : "Edit"}</button>
+                  {p.mode === "Cheque" && !p.chequeDeposited && (
+                    <>
+                      <button className="btn btn-sm btn-ghost" onClick={()=>dispatch({type:"MARK_TENANT_CHEQUE_DEPOSITED", tenantId:t.id, paymentId:p.id})}>Mark deposited</button>
+                      <button className="btn btn-sm btn-ghost" title="Send a deposit reminder" onClick={()=>dispatch({type:"REMIND_TENANT_CHEQUE_DEPOSIT", tenantId:t.id, paymentId:p.id})}><Bell size={12}/></button>
+                    </>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      </div>
+
+      {payFor && <RecordTenantPaymentModal tenant={t} payment={payFor} dispatch={dispatch} onClose={()=>setPayFor(null)} />}
+    </Modal>
+  );
+}
+
+function RecordTenantPaymentModal({ tenant, payment, dispatch, onClose }) {
+  const [amountPaid, setAmountPaid] = useState(payment.amountPaid || payment.amountDue);
+  const [paidAt, setPaidAt] = useState(payment.paidAt || daysFromNow(0));
+  const [mode, setMode] = useState(payment.mode || "Cash");
+  const [chequeNumber, setChequeNumber] = useState(payment.chequeNumber || "");
+  const [chequeBank, setChequeBank] = useState(payment.chequeBank || "");
+  const [chequeDate, setChequeDate] = useState(payment.chequeDate || daysFromNow(0));
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await dispatch({ type:"RECORD_TENANT_PAYMENT", tenantId: tenant.id, paymentId: payment.id, payload: {
+        amountPaid: Number(amountPaid) || 0, paidAt, mode, chequeNumber, chequeBank, chequeDate,
+      }});
+      onClose();
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <Modal title={`Record payment — ${tenantMonthLabel(payment.month)}`} sub={`${tenant.room} — ${tenant.tenantName}`} onClose={onClose} width={480}>
+      <div className="side-note" style={{marginTop:0}}>Rent due for this month: {money(payment.amountDue)}</div>
+      <div className="row2">
+        <div className="field"><label>Amount paid (QAR)</label><input type="number" min="0" value={amountPaid} onChange={e=>setAmountPaid(e.target.value)} autoFocus /></div>
+        <div className="field"><label>Paid on</label><input type="date" value={paidAt} onChange={e=>setPaidAt(e.target.value)} /></div>
+      </div>
+      <div className="field"><label>Payment mode</label>
+        <select value={mode} onChange={e=>setMode(e.target.value)}>
+          <option>Cash</option><option>Cheque</option><option>Bank Transfer</option><option>Online</option>
+        </select>
+      </div>
+      {mode === "Cheque" && (
+        <>
+          <div className="row2">
+            <div className="field"><label>Cheque number</label><input value={chequeNumber} onChange={e=>setChequeNumber(e.target.value)} /></div>
+            <div className="field"><label>Bank</label><input value={chequeBank} onChange={e=>setChequeBank(e.target.value)} /></div>
+          </div>
+          <div className="field"><label>Cheque date</label><input type="date" value={chequeDate} onChange={e=>setChequeDate(e.target.value)} /></div>
+        </>
+      )}
+      <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:16}}>
+        <button className="btn" onClick={onClose}>Cancel</button>
+        <button className="btn btn-primary" disabled={saving} onClick={save}>{saving ? "Saving…" : "Save payment"}</button>
+      </div>
+    </Modal>
   );
 }
 

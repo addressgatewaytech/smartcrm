@@ -5,7 +5,7 @@ import {
   mapNotification, mapDataRecord, mapDataSettings, mapDataActivity, mapExportHistoryEntry, mapSubscriptionPlans,
   mapSubscription, mapQuotationTemplates, mapIncentiveRule, mapLeaveRequest, mapPunchRequest, mapAttendance,
   mapAppSettings, mapTask, mapTodo, mapTaskTemplate, mapSalesTaskDef, mapSalesTaskLog, mapItemCatalogEntry,
-  mapCheque, mapCompanySoftwareSubscription, mapEmailTemplate,
+  mapCheque, mapCompanySoftwareSubscription, mapEmailTemplate, mapTenant,
 } from "./mappers";
 
 const emptyState = () => ({
@@ -13,7 +13,7 @@ const emptyState = () => ({
   salesOrders: [], invoices: [], jobCards: [], tasks: [], todos: [], notifications: [], quotationTemplates: {},
   taskTemplates: [], salesTaskDefs: [], salesTaskLogs: [],
   checklistTemplates: {}, incentiveRules: [], leaveRequests: [], punchRequests: [],
-  subscriptionPlans: {}, subscriptions: [], cheques: [], companySoftwareSubscriptions: [],
+  subscriptionPlans: {}, subscriptions: [], cheques: [], companySoftwareSubscriptions: [], tenants: [],
   dataRecords: [], dataExportHistory: [], dataUserActivity: [],
   dataSettings: { dailyEmailTarget: 10, dailyWhatsappTarget: 10, dailyCallTarget: 10, emailIntervalMinutes: 5, whatsappIntervalMinutes: 10, recyclingEnabled: true, recyclingDays: 30, emailTemplate: { subject: "", body: "" }, whatsappTemplate: { body: "" } },
   appSettings: { emailNotificationsEnabled: true },
@@ -59,6 +59,7 @@ export function useApiStore(enabled) {
       subscriptionPlans: async () => ({ subscriptionPlans: mapSubscriptionPlans(await api.subscriptions.plans()) }),
       cheques: async () => ({ cheques: (await api.companyFinance.cheques()).map(mapCheque) }),
       companySoftwareSubscriptions: async () => ({ companySoftwareSubscriptions: (await api.companyFinance.softwareSubscriptions()).map(mapCompanySoftwareSubscription) }),
+      tenants: async () => ({ tenants: (await api.tenants.list()).map(mapTenant) }),
       subscriptions: async () => ({ subscriptions: (await api.subscriptions.list()).map(mapSubscription) }),
       dataRecords: async () => ({ dataRecords: (await api.dataManager.list()).map(mapDataRecord) }),
       dataExportHistory: async () => ({ dataExportHistory: (await api.dataManager.exportHistory()).map(mapExportHistoryEntry) }),
@@ -213,6 +214,14 @@ export function useApiStore(enabled) {
       case "ADD_SOFTWARE_SUBSCRIPTION": await api.companyFinance.addSoftwareSubscription(action.payload); return refresh(["companySoftwareSubscriptions"]);
       case "UPDATE_SOFTWARE_SUBSCRIPTION": await api.companyFinance.updateSoftwareSubscription(action.id, action.payload); return refresh(["companySoftwareSubscriptions"]);
       case "DELETE_SOFTWARE_SUBSCRIPTION": await api.companyFinance.removeSoftwareSubscription(action.id); return refresh(["companySoftwareSubscriptions"]);
+
+      // --- Tenant Management (self-contained — no link into Company Finance above) -----------
+      case "ADD_TENANT": { const r = await api.tenants.create(action.payload); await refresh(["tenants"]); return r; }
+      case "UPDATE_TENANT": await api.tenants.update(action.id, action.payload); return refresh(["tenants"]);
+      case "DELETE_TENANT": await api.tenants.remove(action.id); return refresh(["tenants"]);
+      case "RECORD_TENANT_PAYMENT": await api.tenants.recordPayment(action.tenantId, action.paymentId, action.payload); return refresh(["tenants"]);
+      case "MARK_TENANT_CHEQUE_DEPOSITED": await api.tenants.markDeposited(action.tenantId, action.paymentId); return refresh(["tenants"]);
+      case "REMIND_TENANT_CHEQUE_DEPOSIT": await api.tenants.remindDeposit(action.tenantId, action.paymentId); return refresh(["notifications"]);
 
       // --- KYC docs --------------------------------------------------------------------------
       case "ADD_KYC_DOC": await api.customers.addDoc(action.customerId, action.doc); return refresh(["customers"]);

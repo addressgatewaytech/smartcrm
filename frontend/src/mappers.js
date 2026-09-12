@@ -171,6 +171,17 @@ export const mapCompanySoftwareSubscription = (s) => ({
   status: s.status, emailNotify: s.email_notify !== 0, notes: s.notes, createdBy: s.created_by, createdAt: s.created_at,
 });
 
+export const mapTenantPayment = (p) => ({
+  id: p.id, tenantId: p.tenant_id, month: p.month, amountDue: Number(p.amount_due), amountPaid: Number(p.amount_paid),
+  paidAt: p.paid_at, mode: p.mode, chequeNumber: p.cheque_number, chequeBank: p.cheque_bank, chequeDate: p.cheque_date,
+  chequeDeposited: p.cheque_deposited === 1, notes: p.notes,
+});
+export const mapTenant = (t) => ({
+  id: t.id, room: t.room, tenantName: t.tenant_name, contact: t.contact, phone: t.phone,
+  monthlyRent: Number(t.monthly_rent), startDate: t.start_date, status: t.status, notes: t.notes, createdAt: t.created_at,
+  payments: (t.payments || []).map(mapTenantPayment),
+});
+
 // Backend returns { [service]: {..., order_discount, footer_note} } — one template per service
 // (Government Fee lines are tagged per-item within the same items array); flatten field names.
 export const mapQuotationTemplates = (raw) => {

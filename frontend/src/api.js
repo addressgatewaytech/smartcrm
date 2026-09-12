@@ -311,6 +311,24 @@ export const api = {
     updateSoftwareSubscription: (id, payload) => patch(`/company-finance/software-subscriptions/${id}`, payload),
     removeSoftwareSubscription: (id) => del(`/company-finance/software-subscriptions/${id}`),
   },
+  tenants: {
+    list: () => get("/tenants"),
+    create: (payload) => post("/tenants", payload),
+    update: (id, payload) => patch(`/tenants/${id}`, payload),
+    remove: (id) => del(`/tenants/${id}`),
+    recordPayment: (id, paymentId, payload) => patch(`/tenants/${id}/payments/${paymentId}`, payload),
+    markDeposited: (id, paymentId) => post(`/tenants/${id}/payments/${paymentId}/deposited`),
+    remindDeposit: (id, paymentId) => post(`/tenants/${id}/payments/${paymentId}/remind-deposit`),
+    // Same reasoning as quotations.downloadPdf: needs the Bearer auth header a plain <a href>
+    // can't send, so fetch as a blob and let the caller turn it into a download.
+    downloadStatementPdf: async (id) => {
+      const headers = {};
+      if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
+      const res = await fetch(`/api/tenants/${id}/statement/pdf`, { headers, cache: "no-store" });
+      if (!res.ok) throw new ApiError("Failed to generate PDF", res.status);
+      return res.blob();
+    },
+  },
   hr: {
     markAttendance: (userId, date, status) => post("/hr/attendance/mark", { userId, date, status }),
     attendanceFor: (userId, from, to) => get(`/hr/attendance/${userId}?from=${from || ""}&to=${to || ""}`),

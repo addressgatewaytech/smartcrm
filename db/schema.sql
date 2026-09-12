@@ -863,6 +863,46 @@ CREATE TABLE IF NOT EXISTS data_user_activity (
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------------
+-- TENANT MANAGEMENT (office rooms rented out to third parties — kept deliberately
+-- separate from the Company Finance module: its own tables, its own simple month-by-month
+-- rent ledger, no shared cheque/expense tracking)
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS tenants (
+  id             VARCHAR(20) PRIMARY KEY,
+  room           VARCHAR(100) NOT NULL,
+  tenant_name    VARCHAR(200) NOT NULL,
+  contact        VARCHAR(150),
+  phone          VARCHAR(50),
+  monthly_rent   DECIMAL(12,2) NOT NULL DEFAULT 0,
+  start_date     DATE NOT NULL,
+  status         ENUM('Active','Vacated') DEFAULT 'Active',
+  notes          TEXT,
+  created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+-- One row per rent month for a tenant — rows from start_date through the current month are
+-- lazily backfilled (INSERT IGNORE) whenever the tenant is opened, rather than needing a cron
+-- job to create "next month" ahead of time. amount_paid/mode/cheque_* stay empty until a payment
+-- is recorded against that month; a cheque payment's cheque_deposited flag drives the reminder
+-- button (see /tenants/:id/payments/:paymentId/remind-deposit).
+CREATE TABLE IF NOT EXISTS tenant_payments (
+  id                VARCHAR(20) PRIMARY KEY,
+  tenant_id         VARCHAR(20) NOT NULL,
+  month             DATE NOT NULL,
+  amount_due        DECIMAL(12,2) NOT NULL DEFAULT 0,
+  amount_paid       DECIMAL(12,2) NOT NULL DEFAULT 0,
+  paid_at           DATE,
+  mode              ENUM('Cash','Cheque','Bank Transfer','Online'),
+  cheque_number     VARCHAR(50),
+  cheque_bank       VARCHAR(150),
+  cheque_date       DATE,
+  cheque_deposited  TINYINT(1) NOT NULL DEFAULT 0,
+  notes             VARCHAR(255),
+  UNIQUE KEY uq_tenant_month (tenant_id, month),
+  FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- ---------------------------------------------------------------------------
 -- ACTIVITY LOG (shared audit trail shown on the Dashboard)
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS activity_log (

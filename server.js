@@ -54,6 +54,7 @@ app.use("/api/sales-tasks", require("./src/routes/salesTasks.routes"));
 app.use("/api/todos", require("./src/routes/todos.routes"));
 app.use("/api/subscriptions", require("./src/routes/subscriptions.routes"));
 app.use("/api/company-finance", require("./src/routes/companyFinance.routes"));
+app.use("/api/tenants", require("./src/routes/tenants.routes"));
 app.use("/api/hr", require("./src/routes/hr.routes"));
 app.use("/api/incentives", require("./src/routes/incentives.routes"));
 app.use("/api/notifications", require("./src/routes/notifications.routes"));
