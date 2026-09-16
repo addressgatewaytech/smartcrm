@@ -9892,12 +9892,12 @@ function CollectionsReport({ state, range }) {
         { label:"Outstanding", value: money(outstanding) },
       ]} />
       <ReportTableCard title="Professional Fee invoices" empty={invoices.length===0 ? "No Professional Fee invoices in this period." : null}
-        onExport={invoices.length ? ()=>exportCSV("collections.csv", ["Invoice","Customer","Amount","Paid","Balance","Status","Date"],
-          invoices.map(inv=>{ const paid=inv.payments.reduce((a,p)=>a+p.amount,0); return [inv.id, inv.customer, inv.amount, paid, Math.max(0, inv.professionalFeeAmount-paid), inv.status, fmtDate(inv.createdAt)]; })) : null}
-        onExportExcel={invoices.length ? ()=>exportExcel("collections.xlsx", ["Invoice","Customer","Amount","Paid","Balance","Status","Date"],
-          invoices.map(inv=>{ const paid=inv.payments.reduce((a,p)=>a+p.amount,0); return [inv.id, inv.customer, inv.amount, paid, Math.max(0, inv.professionalFeeAmount-paid), inv.status, fmtDate(inv.createdAt)]; })) : null}>
+        onExport={invoices.length ? ()=>exportCSV("collections.csv", ["Invoice","Customer","Amount","Professional Fee","Paid","Balance","Status","Date"],
+          invoices.map(inv=>{ const paid=inv.payments.reduce((a,p)=>a+p.amount,0); return [inv.id, inv.customer, inv.amount, inv.professionalFeeAmount, paid, Math.max(0, inv.professionalFeeAmount-paid), inv.status, fmtDate(inv.createdAt)]; })) : null}
+        onExportExcel={invoices.length ? ()=>exportExcel("collections.xlsx", ["Invoice","Customer","Amount","Professional Fee","Paid","Balance","Status","Date"],
+          invoices.map(inv=>{ const paid=inv.payments.reduce((a,p)=>a+p.amount,0); return [inv.id, inv.customer, inv.amount, inv.professionalFeeAmount, paid, Math.max(0, inv.professionalFeeAmount-paid), inv.status, fmtDate(inv.createdAt)]; })) : null}>
         <table className="agw-table">
-          <thead><tr><th>Invoice</th><th>Customer</th><th>Amount</th><th>Paid</th><th>Balance</th><th>Status</th><th>Date</th></tr></thead>
+          <thead><tr><th>Invoice</th><th>Customer</th><th>Amount</th><th>Professional Fee</th><th>Paid</th><th>Balance</th><th>Status</th><th>Date</th></tr></thead>
           <tbody>
             {invoices.map(inv => {
               const paid = inv.payments.reduce((a,p)=>a+p.amount,0);
@@ -9905,7 +9905,9 @@ function CollectionsReport({ state, range }) {
               return (
                 <tr key={inv.id}>
                   <td className="mono">{inv.id}</td><td>{inv.customer}</td>
-                  <td className="mono">{money(inv.amount)}</td><td className="mono">{money(paid)}</td>
+                  <td className="mono">{money(inv.amount)}</td>
+                  <td className="mono">{money(inv.professionalFeeAmount)}</td>
+                  <td className="mono">{money(paid)}</td>
                   <td className="mono" style={{ color: balance>0 ? "var(--danger)" : "var(--success)" }}>{money(balance)}</td>
                   <td><Stamp tone={statusTone(inv.status)}>{inv.status}</Stamp></td>
                   <td className="mono" style={{fontSize:12}}>{fmtDate(inv.createdAt)}</td>
