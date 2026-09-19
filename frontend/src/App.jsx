@@ -6415,6 +6415,14 @@ function InvoicePdfModal({ invoice: inv, items=[], role, onClose }) {
   const feeTypeLabel = isMixed ? "Professional + Government Fee" : (inv.feeType || "Professional Fee");
   const paid = inv.payments.reduce((a,p)=>a+p.amount,0);
   const balance = Math.max(0, inv.amount - paid);
+  // An invoice that bills only the Professional Fee (amount == its professional fee amount, i.e.
+  // not mixed) shouldn't list the quotation's Government Fee lines underneath a total that doesn't
+  // include them. Falls back to every line if filtering would leave nothing to show.
+  const shownItems = (() => {
+    if (isMixed || (inv.feeType || "Professional Fee") !== "Professional Fee") return items;
+    const proOnly = items.filter(it => !isGovFeeLine(it, inv.feeType));
+    return proOnly.length ? proOnly : items;
+  })();
 
   return (
     <Modal title={`Invoice — ${inv.id}`} sub={inv.customer} onClose={onClose} width={720}>
@@ -6448,11 +6456,11 @@ function InvoicePdfModal({ invoice: inv, items=[], role, onClose }) {
         {inv.subscriptionId && <div style={{ fontSize:12.5, marginBottom:8 }}><span style={{color:"var(--ink-soft)"}}>Subscription Ref :</span> {inv.subscriptionId}</div>}
         <div style={{ fontSize:12.5, marginBottom:20 }}><span style={{color:"var(--ink-soft)"}}>Fee Type :</span> {feeTypeLabel}</div>
 
-        {items.length > 0 && (
+        {shownItems.length > 0 && (
           <table className="agw-table" style={{ marginBottom: 12 }}>
             <thead><tr><th>Category</th><th>Item & description</th><th>Qty</th><th>Rate</th><th>Disc.</th><th>Amount</th></tr></thead>
             <tbody>
-              {items.map((it,i)=>(
+              {shownItems.map((it,i)=>(
                 <tr key={i}>
                   <td style={{fontSize:11.5, color:"var(--ink-soft)"}}>{it.category || "—"}</td>
                   <td>{it.description || it.service}<NoteLines note={it.note} style={{fontSize:11, color:"var(--ink-soft)"}} bullet={!isGovFeeLine(it, inv.feeType)} /></td>

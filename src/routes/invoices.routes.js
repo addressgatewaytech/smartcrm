@@ -75,7 +75,26 @@ router.get("/:id/pdf", async (req, res) => {
   // Same rule as sales orders' PDF: only Accounts/Admin get the clean original, everyone else gets
   // it watermarked "INTERNAL USE ONLY".
   const internalOnly = !(isAdminLike(req.user.roles) || req.user.roles.includes("accounts"));
-  generateInvoicePdf({ ...row, items: items?.items || [], payments, internalOnly }, res);
+  // An invoice that bills only the Professional Fee (amount == its professional fee amount, i.e.
+  // not mixed) shouldn't list the quotation's Government Fee lines under a total that doesn't
+  // include them. Same line classification as quotationPdf.js; falls back to every line if
+  // filtering would leave nothing to show.
+  const amount = Number(row.amount || 0);
+  const profFee = Number(row.professional_fee_amount ?? amount);
+  const isMixed = Math.max(0, amount - profFee) > 0.005 && profFee > 0.005;
+  const isGovFeeLine = (it) => {
+    if (it.feeType) return it.feeType === "Government Fee";
+    const cat = (it.category || "").toLowerCase();
+    if (cat.includes("government")) return true;
+    if (cat.includes("professional")) return false;
+    return row.fee_type === "Government Fee";
+  };
+  let invoiceItems = items?.items || [];
+  if (!isMixed && row.fee_type === "Professional Fee") {
+    const proOnly = invoiceItems.filter((it) => !isGovFeeLine(it));
+    if (proOnly.length) invoiceItems = proOnly;
+  }
+  generateInvoicePdf({ ...row, items: invoiceItems, payments, internalOnly }, res);
 });
 
 router.post("/:id/payments", requireRole(["accounts", "admin_like"]), async (req, res) => {
