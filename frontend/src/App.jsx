@@ -3164,7 +3164,9 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
   // than themselves (e.g. entering a quotation on a rep's behalf). Left blank, the backend falls
   // back to the linked deal's owner or the creator, exactly as before this existed.
   const isAdmin = ADMIN_LIKE.includes(role);
-  const salesPeople = employees.filter(e => e.roles.includes("sales_exec") || e.roles.includes("sales_manager"));
+  // Admin-tier users are selectable too — an admin can be the one who actually sold/handled a
+  // quotation, not only sales_exec/sales_manager.
+  const salesPeople = employees.filter(e => e.roles.some(r => r === "sales_exec" || r === "sales_manager" || ADMIN_LIKE.includes(r)));
   const [owner, setOwner] = useState(defaultOwner || "");
   const [showNewCustomer, setShowNewCustomer] = useState(false);
   const [templateService, setTemplateService] = useState(defaultService);
@@ -3682,7 +3684,9 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
   // Sales person is attribution metadata, not something the client's document shows — kept here,
   // in the admin-facing detail view (and the list table), and reassignable regardless of status
   // since it's a correction, not a content edit.
-  const salesPeople = (state?.employees || []).filter(e => e.roles.includes("sales_exec") || e.roles.includes("sales_manager"));
+  // Admin-tier users are selectable too — an admin can be the one who actually sold/handled a
+  // quotation, not only sales_exec/sales_manager.
+  const salesPeople = (state?.employees || []).filter(e => e.roles.some(r => r === "sales_exec" || r === "sales_manager" || ADMIN_LIKE.includes(r)));
   const salesPeopleOptions = q.owner && !salesPeople.some(e=>e.id===q.owner)
     ? [...salesPeople, state?.employees.find(e=>e.id===q.owner)].filter(Boolean)
     : salesPeople;
