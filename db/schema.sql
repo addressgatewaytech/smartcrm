@@ -863,6 +863,54 @@ CREATE TABLE IF NOT EXISTS data_user_activity (
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------------
+-- DATA MANAGER: BULK EMAIL CAMPAIGNS (upload a name+email list, send one personalised email at a
+-- time, waiting a random interval between each). Server-side sending — unlike the per-record
+-- "Send email" above, which only opens the user's own mail app. See services/emailCampaignWorker.js.
+-- ---------------------------------------------------------------------------
+-- The single saved Subject/Body every new campaign starts from (edited in Data Manager >
+-- Templates). One row, id = 1. {{name}} in either field becomes the recipient's name.
+CREATE TABLE IF NOT EXISTS bulk_email_template (
+  id          INT PRIMARY KEY,
+  subject     VARCHAR(300) NOT NULL DEFAULT '',
+  body        TEXT,
+  updated_by  VARCHAR(20),
+  updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+-- subject/body are copied onto the campaign when it's created (so later edits to the saved
+-- template never change a campaign already sent). next_send_at is set in SQL (NOW() + random
+-- interval) so it never depends on the app server's clock/timezone agreeing with MySQL's.
+CREATE TABLE IF NOT EXISTS email_campaigns (
+  id                    VARCHAR(20) PRIMARY KEY,
+  name                  VARCHAR(200) NOT NULL,
+  subject               VARCHAR(300) NOT NULL,
+  body                  TEXT NOT NULL,
+  min_interval_seconds  INT NOT NULL DEFAULT 60,
+  max_interval_seconds  INT NOT NULL DEFAULT 180,
+  daily_limit           INT NOT NULL DEFAULT 100,
+  status                ENUM('Draft','Running','Paused','Completed') NOT NULL DEFAULT 'Draft',
+  next_send_at          DATETIME NULL,
+  last_error            VARCHAR(500) NULL,
+  created_by            VARCHAR(20),
+  created_at            TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  started_at            DATETIME NULL,
+  completed_at          DATETIME NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS email_campaign_recipients (
+  id           INT AUTO_INCREMENT PRIMARY KEY,
+  campaign_id  VARCHAR(20) NOT NULL,
+  seq          INT NOT NULL,             -- upload order — recipients are sent in this order
+  email        VARCHAR(255) NOT NULL,
+  name         VARCHAR(200),
+  status       ENUM('Pending','Sending','Sent','Failed') NOT NULL DEFAULT 'Pending',
+  sent_at      DATETIME NULL,
+  error        VARCHAR(255) NULL,
+  INDEX idx_campaign_status_seq (campaign_id, status, seq),
+  FOREIGN KEY (campaign_id) REFERENCES email_campaigns(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- ---------------------------------------------------------------------------
 -- TENANT MANAGEMENT (office rooms rented out to third parties — kept deliberately
 -- separate from the Company Finance module: its own tables, its own simple month-by-month
 -- rent ledger, no shared cheque/expense tracking)

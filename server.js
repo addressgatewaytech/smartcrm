@@ -59,6 +59,8 @@ app.use("/api/hr", require("./src/routes/hr.routes"));
 app.use("/api/incentives", require("./src/routes/incentives.routes"));
 app.use("/api/notifications", require("./src/routes/notifications.routes"));
 app.use("/api/reports", require("./src/routes/reports.routes"));
+// Registered before the main Data Manager router so its /email-campaigns/... paths are handled here first.
+app.use("/api/data-manager/email-campaigns", require("./src/routes/emailCampaigns.routes"));
 app.use("/api/data-manager", require("./src/routes/dataManager.routes"));
 app.use("/api/settings", require("./src/routes/settings.routes"));
 app.use("/api/approval-workflow", require("./src/routes/approvalWorkflow.routes"));
@@ -121,6 +123,13 @@ if (process.env.NODE_ENV === "production") {
   const { checkFollowUpReminders } = require("./src/services/leadFollowUpReminderJob");
   cron.schedule("*/5 * * * *", () => checkFollowUpReminders().catch((e) => console.error("Cron lead follow-up reminder sweep failed", e)));
   console.log("Lead follow-up reminder sweep scheduled (every 5 minutes).");
+
+  // Not a cron sweep: bulk email campaigns run on their own per-campaign timers (random gaps
+  // between sends, no idle DB polling). This just re-arms whatever was mid-run before a restart/deploy.
+  const { resumeRunningCampaigns } = require("./src/services/emailCampaignWorker");
+  resumeRunningCampaigns()
+    .then((n) => console.log(`Bulk email campaigns: resumed ${n} running campaign(s).`))
+    .catch((e) => console.error("Failed to resume bulk email campaigns", e));
 }
 
 const PORT = process.env.PORT || 3000;

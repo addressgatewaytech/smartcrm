@@ -18,6 +18,7 @@ import { TasksPage } from "./pages/tasks.jsx";
 import { AttendanceSignButton, AttendancePage } from "./pages/attendance.jsx";
 import { LeadAssignmentManagerPage } from "./pages/leadAssignment.jsx";
 import { OnboardingFormTab, PublicOnboardingPage } from "./pages/onboardingForm.jsx";
+import { EmailCampaignsTab, BulkEmailTemplateCard } from "./pages/emailCampaigns.jsx";
 
 /* ---------------------------------------------------------------------- */
 /* DESIGN TOKENS                                                          */
@@ -10423,7 +10424,7 @@ function DataManagerPage({ state, dispatch, role, userId }) {
   const [tab, setTab] = useState(canManage ? "pool" : "my");
 
   const tabs = canManage
-    ? [{key:"pool",label:"Company Data Pool"},{key:"my",label:"My Data"},{key:"byUser",label:"By User"},{key:"datasets",label:"Data Sets"},{key:"add",label:"Add Data"},{key:"archived",label:"Archived Data"},{key:"templates",label:"Templates"},{key:"settings",label:"Settings"},{key:"reports",label:"Reports"}]
+    ? [{key:"pool",label:"Company Data Pool"},{key:"my",label:"My Data"},{key:"byUser",label:"By User"},{key:"datasets",label:"Data Sets"},{key:"add",label:"Add Data"},{key:"campaigns",label:"Bulk Email"},{key:"archived",label:"Archived Data"},{key:"templates",label:"Templates"},{key:"settings",label:"Settings"},{key:"reports",label:"Reports"}]
     : [{key:"my",label:"My Data"},{key:"add",label:"Add Data"}];
 
   return (
@@ -10436,6 +10437,7 @@ function DataManagerPage({ state, dispatch, role, userId }) {
       {tab === "byUser" && canManage && <DataByUserTab state={state} />}
       {tab === "datasets" && canManage && <DataSetsTab state={state} dispatch={dispatch} />}
       {tab === "add" && <AddDataTab state={state} dispatch={dispatch} role={role} userId={userId} />}
+      {tab === "campaigns" && canManage && <EmailCampaignsTab />}
       {tab === "archived" && canManage && <ArchivedDataTab state={state} dispatch={dispatch} />}
       {tab === "templates" && canManage && <DataTemplatesTab state={state} dispatch={dispatch} />}
       {tab === "settings" && canManage && <DataSettingsTab state={state} dispatch={dispatch} />}
@@ -10984,6 +10986,7 @@ function DataTemplatesTab({ state, dispatch }) {
         <div className="field" style={{ marginTop:10 }}><label>Message</label><textarea rows={10} value={waBody} onChange={e=>setWaBody(e.target.value)} /></div>
         <button className="btn btn-primary" onClick={()=>dispatch({type:"UPDATE_DATA_SETTINGS", payload:{whatsappTemplate:{body:waBody}}})}>Save WhatsApp template</button>
       </div>
+      <BulkEmailTemplateCard />
     </div>
   );
 }
