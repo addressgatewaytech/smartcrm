@@ -157,7 +157,7 @@ router.delete("/:id/docs/:docId", requireRole(["super_admin", "admin", "admin_ex
 // visibility into that file; keep the two in sync by hand if a module is ever added/renamed.
 const MODULES = [
   "dashboard", "leads", "deals", "quotations", "customers", "orders", "invoices", "jobs", "tasks",
-  "subscriptions", "companyFinance", "incentives", "hr", "attendance", "knowledgeBase", "users",
+  "subscriptions", "companyFinance", "bankAccountDetails", "tenants", "incentives", "hr", "attendance", "knowledgeBase", "users",
   "dataManager", "leadAssignment", "reports", "quotationTemplates", "templates", "notifications", "settings",
 ];
 const emptyPermissionGrid = () => Object.fromEntries(MODULES.map((m) => [m, { canView: false, canAdd: false, canEdit: false, canDelete: false }]));

@@ -9203,7 +9203,10 @@ function ModuleAccessPage({ state, dispatch }) {
   };
 
   const toggle = (moduleKey, field) => {
-    setGrid(g => ({ ...g, [moduleKey]: { ...g[moduleKey], [field]: !g[moduleKey][field] } }));
+    // Tolerates a module the server's grid doesn't list (older backend / a new nav item not yet
+    // added to its MODULES list) — indexing g[moduleKey] directly used to throw inside this state
+    // updater and blank the whole app.
+    setGrid(g => ({ ...g, [moduleKey]: { ...(g[moduleKey] || {}), [field]: !g[moduleKey]?.[field] } }));
     setSaved(false);
   };
 

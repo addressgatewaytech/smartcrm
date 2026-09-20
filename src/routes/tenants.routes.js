@@ -5,12 +5,16 @@
 const express = require("express");
 const { query } = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
-const { requireRole } = require("../middleware/roles");
+const { requireRole, requireModuleView } = require("../middleware/roles");
 const { nextId, today } = require("../utils/helpers");
 const { generateTablePdf } = require("../utils/reportPdf");
 
 const router = express.Router();
 router.use(requireAuth);
+// Reading this module (the list, the SOA PDF) follows the per-user Module Access grid, same as
+// Company Finance — a grant on "tenants" is what actually lets someone in. Writes below stay
+// role-gated.
+router.use(requireModuleView("tenants"));
 
 // Same access tier as Company Finance — this deals with real money even though it's a separate
 // module. ACCESS_ROLES is for requireRole (which special-cases "admin_like"); NOTIFY_ROLES is the
@@ -33,7 +37,7 @@ function monthsBetween(startDate, endDate) {
 // a row yet, then returns every tenant with its full payment ledger embedded — same shape as
 // customers/KYC docs, so the frontend just keeps one dispatch+refresh("tenants") pattern instead
 // of a separate per-tenant detail fetch.
-router.get("/", requireRole(ACCESS_ROLES), async (req, res) => {
+router.get("/", async (req, res) => {
   const tenants = await query("SELECT * FROM tenants ORDER BY room");
   const now = today();
   for (const t of tenants) {
@@ -128,7 +132,7 @@ router.post("/:id/payments/:paymentId/remind-deposit", requireRole(ACCESS_ROLES)
 
 // Statement of Account — every month on file for this tenant, oldest first, reusing the same
 // generic table-PDF renderer every other report in the app already uses.
-router.get("/:id/statement/pdf", requireRole(ACCESS_ROLES), async (req, res) => {
+router.get("/:id/statement/pdf", async (req, res) => {
   const [tenant] = await query("SELECT * FROM tenants WHERE id = ?", [req.params.id]);
   if (!tenant) return res.status(404).json({ error: "Not found" });
   const payments = await query("SELECT * FROM tenant_payments WHERE tenant_id = ? ORDER BY month ASC", [req.params.id]);
