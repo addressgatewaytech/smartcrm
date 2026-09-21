@@ -403,7 +403,12 @@ export const api = {
     removeCampaign: (id) => del(`/data-manager/email-campaigns/${id}`),
     bulkEmailTemplate: () => get("/data-manager/email-campaigns/template"),
     saveBulkEmailTemplate: (subject, body) => request("PUT", "/data-manager/email-campaigns/template", { subject, body }),
-    sendTestEmail: (subject, body) => post("/data-manager/email-campaigns/test-email", { subject, body }),
+    sendTestEmail: (subject, body, senderId) => post("/data-manager/email-campaigns/test-email", { subject, body, senderId }),
+    // Mailboxes a campaign can send from ("" / omitted = the server's default account).
+    campaignSenders: () => get("/data-manager/email-campaigns/senders"),
+    createCampaignSender: (payload) => post("/data-manager/email-campaigns/senders", payload),
+    updateCampaignSender: (id, payload) => request("PUT", `/data-manager/email-campaigns/senders/${id}`, payload),
+    removeCampaignSender: (id) => del(`/data-manager/email-campaigns/senders/${id}`),
   },
   services: {
     list: () => get("/services"),

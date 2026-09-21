@@ -11,6 +11,7 @@ const { nextId } = require("../utils/helpers");
 const mailer = require("../utils/mailer");
 const { parseRecipients } = require("../utils/campaignRecipients");
 const worker = require("../services/emailCampaignWorker");
+const senders = require("../utils/bulkSenders");
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
@@ -25,10 +26,11 @@ const MAX_RECIPIENTS = 5000;
 // server, and over an hour is almost certainly a typo.
 const MIN_ALLOWED_SECONDS = 10;
 const MAX_ALLOWED_SECONDS = 3600;
-const SMTP_MISSING = "Email sending isn't set up on the server (SMTP settings are missing) — ask your administrator to configure it.";
+const { SMTP_MISSING } = senders;
 
 const shape = (c) => ({
   id: c.id, name: c.name, subject: c.subject, body: c.body,
+  senderId: c.sender_id ?? null, senderEmail: c.sender_email || null,
   minIntervalSeconds: c.min_interval_seconds, maxIntervalSeconds: c.max_interval_seconds, dailyLimit: c.daily_limit,
   status: c.status, lastError: c.last_error, createdAt: c.created_at, startedAt: c.started_at, completedAt: c.completed_at,
   total: Number(c.total || 0), sent: Number(c.sent || 0), failed: Number(c.failed || 0), pending: Number(c.pending || 0),
@@ -69,6 +71,19 @@ function checkContent(subject, body) {
   return null;
 }
 
+// Reads the "send from" choice out of a request body. `undefined` = not supplied (leave as is);
+// ""/null/"default" = the server's default account; otherwise a saved sender's id, which must exist.
+// Returns { unchanged } | { id, email } | { error }.
+async function readSenderChoice(raw) {
+  if (raw === undefined) return { unchanged: true };
+  if (raw === null || raw === "" || raw === "default") return { id: null, email: null };
+  const id = Number(raw);
+  if (!Number.isInteger(id)) return { error: "Choose one of the saved sender mailboxes" };
+  const [row] = await query("SELECT id, email FROM bulk_email_senders WHERE id = ?", [id]);
+  if (!row) return { error: "That sender mailbox no longer exists — pick another one" };
+  return { id: row.id, email: row.email };
+}
+
 // --- Saved bulk email template (Data Manager > Templates) -----------------------------------
 router.get("/template", async (req, res) => {
   const [row] = await query("SELECT subject, body FROM bulk_email_template WHERE id = 1");
@@ -89,21 +104,111 @@ router.put("/template", async (req, res) => {
 });
 
 // One real email to the person clicking, so they can see exactly how it will land before
-// starting a campaign to hundreds of people.
+// starting a campaign to hundreds of people. Sent from the same mailbox the campaign will use.
 router.post("/test-email", async (req, res) => {
   const subject = String(req.body.subject || "").trim();
   const body = String(req.body.body || "").trim();
   const problem = checkContent(subject, body);
   if (problem) return res.status(400).json({ error: problem });
-  if (!mailer.isSmtpConfigured()) return res.status(400).json({ error: SMTP_MISSING });
+  const choice = await readSenderChoice(req.body.senderId);
+  if (choice.error) return res.status(400).json({ error: choice.error });
+  const from = await senders.resolveCampaignSender({ sender_id: choice.id ?? null });
+  if (from.error) return res.status(400).json({ error: from.error });
   const [me] = await query("SELECT name, email FROM users WHERE id = ?", [req.user.id]);
   if (!me?.email) return res.status(400).json({ error: "Your account has no email address to send the test to" });
   const vars = { name: (me.name || "").split(" ")[0] || worker.FALLBACK_NAME, email: me.email };
-  const result = await mailer.sendMail({ to: me.email, subject: `[TEST] ${worker.fillTemplate(subject, vars)}`, text: worker.fillTemplate(body, vars), critical: true });
+  const result = await mailer.sendMail({ to: me.email, subject: `[TEST] ${worker.fillTemplate(subject, vars)}`, text: worker.fillTemplate(body, vars), critical: true, sender: from.sender });
   if (!result || result.failed || result.simulated || result.skipped) {
     return res.status(502).json({ error: `The test email couldn't be sent${result?.error ? `: ${result.error}` : ""}` });
   }
   res.json({ ok: true, to: me.email });
+});
+
+// --- Sender mailboxes -----------------------------------------------------------------------
+// Real mailboxes a campaign can send from. Registered before the "/:id" routes below. The password is
+// write-only: it's checked against the mail server on every save, stored encrypted, never sent back.
+const EMAIL_RE = /^[^\s@<>",;:]+@[^\s@<>",;:]+\.[^\s@<>",;:]+$/;
+
+const shapeSender = (s) => ({
+  id: s.id, name: s.name, email: s.email, host: s.smtp_host || "", port: s.smtp_port || null,
+  createdAt: s.created_at, activeCampaigns: Number(s.active_campaigns || 0),
+});
+
+const SENDER_SELECT = `SELECT s.id, s.name, s.email, s.smtp_host, s.smtp_port, s.created_at,
+    (SELECT COUNT(*) FROM email_campaigns c WHERE c.sender_id = s.id AND c.status <> 'Completed') AS active_campaigns
+  FROM bulk_email_senders s`;
+
+function loginProblem(v, host, port) {
+  if (v.code === "EAUTH" || v.responseCode === 535) return "The mail server rejected that email address and password.";
+  if (["ECONNECTION", "ETIMEDOUT", "ESOCKET", "ENOTFOUND", "ECONNREFUSED", "EDNS"].includes(v.code)) return `Couldn't reach the mail server (${host}:${port}) — check the host and port.`;
+  return `Couldn't sign in to that mailbox: ${v.error}`;
+}
+
+router.get("/senders", async (req, res) => {
+  const rows = await query(`${SENDER_SELECT} ORDER BY s.email`);
+  const defaultSender = mailer.isSmtpConfigured() ? senders.parseFromHeader(process.env.SMTP_FROM) || { name: "", email: process.env.SMTP_USER || "" } : null;
+  res.json({ defaultSender, smtpDefaults: senders.smtpDefaults(), senders: rows.map(shapeSender) });
+});
+
+// Create (existing = undefined) and update share the same validation and the same live login check.
+async function saveSender(req, res, existing) {
+  const b = req.body;
+  const email = String(b.email !== undefined ? b.email : existing?.email || "").trim().toLowerCase();
+  const name = String(b.name !== undefined ? b.name : existing?.name || "").trim();
+  const host = String(b.host !== undefined ? b.host : existing?.smtp_host || "").trim();
+  const portRaw = b.port !== undefined ? b.port : existing?.smtp_port;
+  const port = portRaw === undefined || portRaw === null || portRaw === "" ? null : Number(portRaw);
+  const newPassword = typeof b.password === "string" && b.password !== "" ? b.password : null;
+
+  if (!EMAIL_RE.test(email) || email.length > 255) return res.status(400).json({ error: "Enter the mailbox's full email address, e.g. sales@addressgateway.com" });
+  if (name.length > 100) return res.status(400).json({ error: "The sender name is too long (100 characters at most)" });
+  if (port !== null && (!Number.isInteger(port) || port < 1 || port > 65535)) return res.status(400).json({ error: "The port must be a number between 1 and 65535" });
+  if (!host && !senders.smtpDefaults().host) return res.status(400).json({ error: "Enter the mail server (SMTP host) for this mailbox" });
+  const pass = newPassword ?? (existing ? senders.decryptSecret(existing.password_enc) : null);
+  if (pass === null) return res.status(400).json({ error: existing ? "Enter this mailbox's password again — the saved one can't be read" : "Enter the mailbox's password" });
+
+  const transport = senders.buildTransport({ name, email, host, port, pass });
+  const verdict = await mailer.verifySender(transport);
+  if (!verdict.ok) return res.status(400).json({ error: loginProblem(verdict, transport.host, transport.port) });
+
+  try {
+    if (existing) {
+      await query(
+        "UPDATE bulk_email_senders SET name = ?, email = ?, smtp_host = ?, smtp_port = ?, password_enc = ? WHERE id = ?",
+        [name, email, host || null, port, newPassword ? senders.encryptSecret(newPassword) : existing.password_enc, existing.id]
+      );
+      // Keep the "sent from" snapshot on this mailbox's campaigns in step with a renamed address.
+      await query("UPDATE email_campaigns SET sender_email = ? WHERE sender_id = ?", [email, existing.id]);
+      return res.json({ ok: true });
+    }
+    const result = await query(
+      "INSERT INTO bulk_email_senders (name, email, smtp_host, smtp_port, password_enc, created_by) VALUES (?,?,?,?,?,?)",
+      [name, email, host || null, port, senders.encryptSecret(pass), req.user.id]
+    );
+    res.status(201).json({ id: result.insertId });
+  } catch (err) {
+    if (err.code === "ER_DUP_ENTRY") return res.status(409).json({ error: "A sender mailbox with that email address already exists" });
+    throw err;
+  }
+}
+
+router.post("/senders", (req, res) => saveSender(req, res, undefined));
+
+router.put("/senders/:id", async (req, res) => {
+  const [existing] = await query("SELECT * FROM bulk_email_senders WHERE id = ?", [req.params.id]);
+  if (!existing) return res.status(404).json({ error: "Not found" });
+  return saveSender(req, res, existing);
+});
+
+// A mailbox still attached to a campaign that hasn't finished can't go — otherwise that campaign
+// would have nothing to send from. Finished campaigns keep the address they were sent from.
+router.delete("/senders/:id", async (req, res) => {
+  const [s] = await query("SELECT id, email FROM bulk_email_senders WHERE id = ?", [req.params.id]);
+  if (!s) return res.status(404).json({ error: "Not found" });
+  const [inUse] = await query("SELECT name FROM email_campaigns WHERE sender_id = ? AND status <> 'Completed' LIMIT 1", [s.id]);
+  if (inUse) return res.status(409).json({ error: `${s.email} is still used by the campaign "${inUse.name}" — change that campaign's sender (or delete it) first` });
+  await query("DELETE FROM bulk_email_senders WHERE id = ?", [s.id]);
+  res.json({ ok: true });
 });
 
 // --- Campaigns ------------------------------------------------------------------------------
@@ -123,6 +228,8 @@ router.post("/", upload.single("file"), async (req, res) => {
   if (problem) return res.status(400).json({ error: problem });
   const pacing = readPacing(b);
   if (pacing.error) return res.status(400).json({ error: pacing.error });
+  const choice = await readSenderChoice(b.senderId);
+  if (choice.error) return res.status(400).json({ error: choice.error });
   if (!req.file) return res.status(400).json({ error: "Upload a CSV or Excel file that has an email column" });
 
   let parsed;
@@ -134,8 +241,8 @@ router.post("/", upload.single("file"), async (req, res) => {
 
   const id = nextId("EC");
   await query(
-    "INSERT INTO email_campaigns (id, name, subject, body, min_interval_seconds, max_interval_seconds, daily_limit, created_by) VALUES (?,?,?,?,?,?,?,?)",
-    [id, name, subject, body, pacing.min, pacing.max, pacing.daily, req.user.id]
+    "INSERT INTO email_campaigns (id, name, subject, body, min_interval_seconds, max_interval_seconds, daily_limit, sender_id, sender_email, created_by) VALUES (?,?,?,?,?,?,?,?,?,?)",
+    [id, name, subject, body, pacing.min, pacing.max, pacing.daily, choice.id ?? null, choice.email ?? null, req.user.id]
   );
   try {
     for (let i = 0; i < parsed.recipients.length; i += 200) {
@@ -181,21 +288,28 @@ router.patch("/:id", async (req, res) => {
   if (problem) return res.status(400).json({ error: problem });
   const pacing = readPacing(b, { min: c.min_interval_seconds, max: c.max_interval_seconds, daily: c.daily_limit });
   if (pacing.error) return res.status(400).json({ error: pacing.error });
+  const choice = await readSenderChoice(b.senderId);
+  if (choice.error) return res.status(400).json({ error: choice.error });
+  // Omitted = keep the current sender; anything else (including the default account) replaces it.
+  const senderId = choice.unchanged ? c.sender_id : choice.id;
+  const senderEmail = choice.unchanged ? c.sender_email : choice.email;
   await query(
-    "UPDATE email_campaigns SET name = ?, subject = ?, body = ?, min_interval_seconds = ?, max_interval_seconds = ?, daily_limit = ? WHERE id = ?",
-    [name, subject, body, pacing.min, pacing.max, pacing.daily, req.params.id]
+    "UPDATE email_campaigns SET name = ?, subject = ?, body = ?, min_interval_seconds = ?, max_interval_seconds = ?, daily_limit = ?, sender_id = ?, sender_email = ? WHERE id = ?",
+    [name, subject, body, pacing.min, pacing.max, pacing.daily, senderId, senderEmail, req.params.id]
   );
   res.json({ ok: true });
 });
 
 router.post("/:id/start", async (req, res) => {
-  const [c] = await query("SELECT id, status FROM email_campaigns WHERE id = ?", [req.params.id]);
+  const [c] = await query("SELECT id, status, sender_id, sender_email FROM email_campaigns WHERE id = ?", [req.params.id]);
   if (!c) return res.status(404).json({ error: "Not found" });
   if (c.status === "Running") return res.status(400).json({ error: "This campaign is already running" });
   if (c.status === "Completed") return res.status(400).json({ error: "This campaign has already finished — use Retry failed to resend any that didn't go out" });
-  if (!mailer.isSmtpConfigured()) return res.status(400).json({ error: SMTP_MISSING });
-  // One at a time — every campaign shares the one mailbox, so two running together would double the
-  // real pace and blow past the daily limit each of them thinks it's respecting.
+  const from = await senders.resolveCampaignSender(c);
+  if (from.error) return res.status(400).json({ error: from.error });
+  // One at a time — a mailbox has one hourly/daily sending allowance, and the daily limit is counted
+  // per campaign, so two running together would double the real pace and blow past a limit each of
+  // them thinks it's respecting.
   const [other] = await query("SELECT name FROM email_campaigns WHERE status = 'Running' AND id != ? LIMIT 1", [req.params.id]);
   if (other) return res.status(409).json({ error: `"${other.name}" is already sending — pause it first, then start this one` });
   const [{ pending }] = await query("SELECT COUNT(*) AS pending FROM email_campaign_recipients WHERE campaign_id = ? AND status = 'Pending'", [req.params.id]);

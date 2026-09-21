@@ -3,7 +3,7 @@
 // .routes.js + services/emailCampaignWorker.js). Campaign state lives on the server — closing this
 // page never stops a running campaign; this screen only starts, pauses and watches it.
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Plus, Play, Pause, Trash2, Mail, Send, RotateCcw, Pencil, Eye, AlertTriangle } from "lucide-react";
+import { Plus, Play, Pause, Trash2, Mail, Send, RotateCcw, Pencil, Eye, AlertTriangle, AtSign } from "lucide-react";
 import { api, ApiError } from "../api";
 import { Modal, ConfirmModal, Stamp, Empty, usePagination, PaginationBar } from "../ui.jsx";
 
@@ -59,14 +59,141 @@ function PlaceholderHelp() {
   );
 }
 
+// --- Sender mailboxes -------------------------------------------------------------------------
+const senderLabel = (s) => (s.name ? `${s.name} <${s.email}>` : s.email);
+
+// The saved mailboxes + the server's default account. Loaded once by the tab and shared with the
+// New campaign / detail windows so they all offer the same list.
+function useSenderData() {
+  const [data, setData] = useState({ defaultSender: null, smtpDefaults: { host: "", port: 587 }, senders: [] });
+  const reload = useCallback(() => api.dataManager.campaignSenders().then(setData).catch(() => {}), []);
+  useEffect(() => { reload(); }, [reload]);
+  return [data, reload];
+}
+
+// value: "" = the server's default account, otherwise a saved mailbox's id. "removed" only appears
+// when the mailbox a campaign was set to has since been deleted — it can't be re-picked.
+function SenderSelect({ value, onChange, data, onManage, removedEmail }) {
+  const def = data.defaultSender;
+  return (
+    <div className="field">
+      <label>Send from</label>
+      <select value={value} onChange={(e) => onChange(e.target.value)}>
+        {removedEmail && <option value="removed" disabled>{removedEmail} (removed — choose another)</option>}
+        <option value="">{def ? `Default — ${senderLabel(def)}` : "Default account (not set up on this server)"}</option>
+        {data.senders.map((s) => <option key={s.id} value={String(s.id)}>{senderLabel(s)}</option>)}
+      </select>
+      <div style={{ fontSize: 12, color: "var(--ink-soft)", marginTop: 4 }}>
+        Recipients see this as the sender, and replies come back to it.{" "}
+        <button type="button" className="btn btn-sm btn-ghost" style={{ padding: "0 4px" }} onClick={onManage}>Manage sender mailboxes</button>
+      </div>
+    </div>
+  );
+}
+
+const BLANK_SENDER = { name: "", email: "", password: "", host: "", port: "" };
+
+// Add / edit / remove the mailboxes campaigns can send from. The password is only ever typed in here:
+// the server checks it against the mail server before saving, stores it encrypted, and never sends
+// it back (so editing a mailbox leaves the password box empty = keep the current one).
+function SendersModal({ data, onClose, onChanged }) {
+  const [form, setForm] = useState(null); // null = showing the list; otherwise the add/edit form
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [removing, setRemoving] = useState(null);
+
+  const startEdit = (s) => { setError(""); setForm(s ? { id: s.id, name: s.name, email: s.email, password: "", host: s.host, port: s.port ? String(s.port) : "" } : { ...BLANK_SENDER }); };
+  const save = async () => {
+    setSaving(true);
+    setError("");
+    try {
+      const payload = { name: form.name, email: form.email, password: form.password, host: form.host, port: form.port === "" ? null : Number(form.port) };
+      if (form.id) await api.dataManager.updateCampaignSender(form.id, payload);
+      else await api.dataManager.createCampaignSender(payload);
+      await onChanged();
+      setForm(null);
+    } catch (err) {
+      setError(errMsg(err, "Couldn't save that mailbox — please try again."));
+    } finally {
+      setSaving(false);
+    }
+  };
+  const remove = async (s) => {
+    setError("");
+    try { await api.dataManager.removeCampaignSender(s.id); await onChanged(); } catch (err) { setError(errMsg(err, "Couldn't delete that mailbox")); }
+  };
+
+  const d = data.smtpDefaults;
+  return (
+    <Modal title="Sender mailboxes" sub="The email accounts a campaign can send from." onClose={onClose} width={680}>
+      {error && <div className="side-note" style={{ color: "var(--danger)", marginTop: 0 }}><AlertTriangle size={13} style={{ verticalAlign: -2, marginRight: 4 }} />{error}</div>}
+      {form ? (
+        <div>
+          <div className="row2">
+            <div className="field"><label>Email address</label><input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="e.g. sales@addressgateway.com" autoFocus /></div>
+            <div className="field"><label>Sender name (shown to recipients)</label><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Address Gateway Sales" /></div>
+          </div>
+          <div className="field">
+            <label>{form.id ? "Mailbox password (leave blank to keep the current one)" : "Mailbox password"}</label>
+            <input type="password" autoComplete="new-password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+            <div style={{ fontSize: 12, color: "var(--ink-soft)", marginTop: 4 }}>The password you use to sign in to this mailbox. It's checked with the mail server when you save, stored encrypted, and never shown again.</div>
+          </div>
+          <details style={{ marginBottom: 12 }}>
+            <summary style={{ cursor: "pointer", fontSize: 12.5, color: "var(--ink-soft)" }}>Advanced — mail server</summary>
+            <div className="row2" style={{ marginTop: 8 }}>
+              <div className="field"><label>SMTP host</label><input value={form.host} onChange={(e) => setForm({ ...form, host: e.target.value })} placeholder={d.host || "e.g. smtp.hostinger.com"} /></div>
+              <div className="field"><label>Port</label><input type="number" value={form.port} onChange={(e) => setForm({ ...form, port: e.target.value })} placeholder={String(d.port)} /></div>
+            </div>
+            <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>Leave blank to use the company mail server{d.host ? ` (${d.host}:${d.port})` : ""}.</div>
+          </details>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+            <button className="btn" onClick={() => { setForm(null); setError(""); }}>Back</button>
+            <button className="btn btn-primary" disabled={saving || !form.email.trim() || (!form.id && !form.password)} onClick={save}>{saving ? "Checking the login…" : form.id ? "Save changes" : "Add mailbox"}</button>
+          </div>
+        </div>
+      ) : (
+        <div>
+          <div className="agw-card" style={{ padding: 0, marginBottom: 12 }}>
+            <table className="agw-table">
+              <thead><tr><th>Mailbox</th><th>Mail server</th><th></th></tr></thead>
+              <tbody>
+                {data.defaultSender && (
+                  <tr>
+                    <td>{senderLabel(data.defaultSender)} <Stamp tone="neutral">Default</Stamp></td>
+                    <td style={{ fontSize: 12, color: "var(--ink-soft)" }}>Set up on the server</td>
+                    <td />
+                  </tr>
+                )}
+                {data.senders.map((s) => (
+                  <tr key={s.id}>
+                    <td>{senderLabel(s)}{s.activeCampaigns > 0 && <div style={{ fontSize: 11.5, color: "var(--ink-soft)" }}>Used by {s.activeCampaigns} unfinished campaign{s.activeCampaigns === 1 ? "" : "s"}</div>}</td>
+                    <td style={{ fontSize: 12, color: "var(--ink-soft)" }}>{s.host ? `${s.host}${s.port ? `:${s.port}` : ""}` : "Company mail server"}</td>
+                    <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                      <button className="btn btn-sm btn-ghost" title="Edit" onClick={() => startEdit(s)}><Pencil size={13} /></button>
+                      <button className="btn btn-sm btn-ghost" title={s.activeCampaigns ? "Change those campaigns' sender first" : "Delete"} disabled={s.activeCampaigns > 0} style={{ color: "var(--danger)" }} onClick={() => setRemoving(s)}><Trash2 size={13} /></button>
+                    </td>
+                  </tr>
+                ))}
+                {!data.defaultSender && data.senders.length === 0 && <tr><td colSpan={3}><Empty icon={AtSign} text="No mailboxes yet — add one to send campaigns from it." /></td></tr>}
+              </tbody>
+            </table>
+          </div>
+          <button className="btn btn-primary" onClick={() => startEdit(null)}><Plus size={14} /> Add mailbox</button>
+        </div>
+      )}
+      {removing && <ConfirmModal title={`Delete ${removing.email}?`} body="This removes the saved mailbox and its password. Campaigns that already finished keep the address they were sent from." confirmLabel="Delete mailbox" onConfirm={() => remove(removing)} onClose={() => setRemoving(null)} />}
+    </Modal>
+  );
+}
+
 // One real email to whoever is logged in — so the wording can be checked in a real inbox before it
-// goes to a whole list.
-function TestEmailButton({ subject, body }) {
+// goes to a whole list. Sent from the chosen mailbox ("" / undefined = the default account).
+function TestEmailButton({ subject, body, senderId }) {
   const [state, setState] = useState({ busy: false, msg: "", ok: true });
   const send = async () => {
     setState({ busy: true, msg: "", ok: true });
     try {
-      const r = await api.dataManager.sendTestEmail(subject, body);
+      const r = await api.dataManager.sendTestEmail(subject, body, senderId || "");
       setState({ busy: false, ok: true, msg: `Test sent to ${r.to}` });
     } catch (err) {
       setState({ busy: false, ok: false, msg: errMsg(err, "Couldn't send the test email") });
@@ -74,7 +201,7 @@ function TestEmailButton({ subject, body }) {
   };
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-      <button type="button" className="btn btn-sm" disabled={state.busy || !subject.trim() || !body.trim()} onClick={send}>
+      <button type="button" className="btn btn-sm" disabled={state.busy || senderId === "removed" || !subject.trim() || !body.trim()} onClick={send}>
         <Send size={13} /> {state.busy ? "Sending…" : "Send test to me"}
       </button>
       {state.msg && <span style={{ fontSize: 12, color: state.ok ? "var(--success)" : "var(--danger)" }}>{state.msg}</span>}
@@ -120,9 +247,11 @@ export function BulkEmailTemplateCard() {
 }
 
 // --- New campaign ---------------------------------------------------------------------------
-function NewCampaignModal({ onClose, onCreated }) {
+function NewCampaignModal({ senderData, reloadSenders, onClose, onCreated }) {
   const [name, setName] = useState("");
   const [file, setFile] = useState(null);
+  const [senderId, setSenderId] = useState("");
+  const [showSenders, setShowSenders] = useState(false);
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [minSeconds, setMinSeconds] = useState(60);
@@ -153,6 +282,7 @@ function NewCampaignModal({ onClose, onCreated }) {
       fd.append("name", name);
       fd.append("subject", subject);
       fd.append("body", body);
+      fd.append("senderId", senderId);
       fd.append("minSeconds", String(minSeconds));
       fd.append("maxSeconds", String(maxSeconds));
       fd.append("dailyLimit", String(dailyLimit));
@@ -176,6 +306,8 @@ function NewCampaignModal({ onClose, onCreated }) {
         One row per person, with an <strong>Email</strong> column and (optionally) a <strong>Name</strong> column. Repeated addresses and rows without a valid email are skipped automatically.
       </div>
 
+      <SenderSelect value={senderId} onChange={setSenderId} data={senderData} onManage={() => setShowSenders(true)} />
+
       <div className="field"><label>Subject</label><input value={subject} onChange={(e) => setSubject(e.target.value)} /></div>
       <div className="field" style={{ marginBottom: 4 }}>
         <label>Email body</label>
@@ -198,22 +330,23 @@ function NewCampaignModal({ onClose, onCreated }) {
 
       {error && <div className="side-note" style={{ color: "var(--danger)" }}><AlertTriangle size={13} style={{ verticalAlign: -2, marginRight: 4 }} />{error}</div>}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
-        <TestEmailButton subject={subject} body={body} />
+        <TestEmailButton subject={subject} body={body} senderId={senderId} />
         <div style={{ display: "flex", gap: 8 }}>
           <button className="btn" onClick={onClose}>Cancel</button>
           <button className="btn btn-primary" disabled={saving || !name.trim() || !file || !subject.trim() || !body.trim()} onClick={submit}>{saving ? "Reading list…" : "Create campaign"}</button>
         </div>
       </div>
+      {showSenders && <SendersModal data={senderData} onChanged={reloadSenders} onClose={() => setShowSenders(false)} />}
     </Modal>
   );
 }
 
 // Start is a normal confirmation, not a destructive one — ConfirmModal's red button would read wrong here.
-function StartConfirmModal({ campaign: c, onConfirm, onClose }) {
+function StartConfirmModal({ campaign: c, fromLabel, onConfirm, onClose }) {
   return (
     <Modal title={`Start "${c.name}"?`} onClose={onClose} width={480}>
       <p style={{ fontSize: 13.5, lineHeight: 1.6, marginTop: 0 }}>
-        <strong>{c.pending}</strong> email{c.pending === 1 ? "" : "s"} will go out one at a time, waiting <strong>{c.minIntervalSeconds}–{c.maxIntervalSeconds} seconds</strong> between each — {estimateText(c)}.
+        <strong>{c.pending}</strong> email{c.pending === 1 ? "" : "s"} will go out from <strong>{fromLabel}</strong>, one at a time, waiting <strong>{c.minIntervalSeconds}–{c.maxIntervalSeconds} seconds</strong> between each — {estimateText(c)}.
         The first one is sent right away. You can pause at any time, and it keeps running even if you close this page.
       </p>
       <div className="side-note" style={{ marginTop: 0 }}>Sent emails can't be recalled. Use "Send test to me" first if you haven't checked the wording.</div>
@@ -229,7 +362,8 @@ function StartConfirmModal({ campaign: c, onConfirm, onClose }) {
 // `version` changes whenever the list sees this campaign's status/counts change (e.g. Start pressed
 // from the confirmation dialog, which lives in the parent) — so this window reloads instead of
 // showing a stale "Paused" until its own next refresh.
-function CampaignDetailModal({ campaignId, version, onClose, onStart, onPause, onChanged }) {
+function CampaignDetailModal({ campaignId, version, senderData, reloadSenders, fromLabelOf, onClose, onStart, onPause, onChanged }) {
+  const [showSenders, setShowSenders] = useState(false);
   const [c, setC] = useState(null);
   const [recipients, setRecipients] = useState([]);
   const [filter, setFilter] = useState("all");
@@ -260,8 +394,15 @@ function CampaignDetailModal({ campaignId, version, onClose, onStart, onPause, o
     setError("");
     try { await fn(); await load(); onChanged(); } catch (err) { setError(errMsg(err, "That didn't work — please try again.")); } finally { setBusy(false); }
   };
-  const startEdit = () => { setForm({ name: c.name, subject: c.subject, body: c.body, minSeconds: c.minIntervalSeconds, maxSeconds: c.maxIntervalSeconds, dailyLimit: c.dailyLimit }); setEditing(true); };
-  const saveEdit = () => run(async () => { await api.dataManager.updateCampaign(c.id, form); setEditing(false); });
+  // "removed" = its mailbox was deleted; leaving it untouched keeps the campaign blocked (Start explains why)
+  // rather than quietly switching it to the default account.
+  const startEdit = () => { setForm({ name: c.name, subject: c.subject, body: c.body, minSeconds: c.minIntervalSeconds, maxSeconds: c.maxIntervalSeconds, dailyLimit: c.dailyLimit, senderId: c.senderId ? String(c.senderId) : c.senderEmail ? "removed" : "" }); setEditing(true); };
+  const saveEdit = () => run(async () => {
+    const payload = { ...form };
+    if (payload.senderId === "removed") delete payload.senderId;
+    await api.dataManager.updateCampaign(c.id, payload);
+    setEditing(false);
+  });
 
   if (!c) return <Modal title="Campaign" onClose={onClose}>{error ? <div className="side-note" style={{ color: "var(--danger)" }}>{error}</div> : "Loading…"}</Modal>;
 
@@ -298,6 +439,7 @@ function CampaignDetailModal({ campaignId, version, onClose, onStart, onPause, o
       {editing ? (
         <div className="agw-card" style={{ marginBottom: 14 }}>
           <div className="field"><label>Campaign name</label><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
+          <SenderSelect value={form.senderId} onChange={(v) => setForm({ ...form, senderId: v })} data={senderData} onManage={() => setShowSenders(true)} removedEmail={c.senderId === null ? c.senderEmail : null} />
           <div className="field"><label>Subject</label><input value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} /></div>
           <div className="field"><label>Email body</label><textarea rows={8} value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} /></div>
           <PlaceholderHelp />
@@ -307,7 +449,7 @@ function CampaignDetailModal({ campaignId, version, onClose, onStart, onPause, o
             <div className="field"><label>Max emails per day</label><input type="number" min={1} value={form.dailyLimit} onChange={(e) => setForm({ ...form, dailyLimit: Number(e.target.value) })} /></div>
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <TestEmailButton subject={form.subject} body={form.body} />
+            <TestEmailButton subject={form.subject} body={form.body} senderId={form.senderId} />
             <div style={{ display: "flex", gap: 8 }}>
               <button className="btn btn-sm" onClick={() => setEditing(false)}>Cancel</button>
               <button className="btn btn-sm btn-primary" disabled={busy} onClick={saveEdit}>Save changes</button>
@@ -318,7 +460,7 @@ function CampaignDetailModal({ campaignId, version, onClose, onStart, onPause, o
         <div className="agw-card" style={{ marginBottom: 14 }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "baseline" }}>
             <strong style={{ fontSize: 13 }}><Eye size={13} style={{ verticalAlign: -2, marginRight: 5 }} />Preview — as {sample ? sample.email : "a recipient"} would see it</strong>
-            <span style={{ fontSize: 11.5, color: "var(--ink-soft)" }}>Waits {c.minIntervalSeconds}–{c.maxIntervalSeconds}s between emails · up to {c.dailyLimit}/day</span>
+            <span style={{ fontSize: 11.5, color: "var(--ink-soft)" }}>From {fromLabelOf(c)} · waits {c.minIntervalSeconds}–{c.maxIntervalSeconds}s between emails · up to {c.dailyLimit}/day</span>
           </div>
           <div style={{ fontSize: 13.5, fontWeight: 500, marginTop: 8 }}>{fillPreview(c.subject, vars)}</div>
           <div style={{ fontSize: 13, color: "var(--ink-soft)", whiteSpace: "pre-wrap", marginTop: 6, lineHeight: 1.55 }}>{fillPreview(c.body, vars)}</div>
@@ -357,6 +499,7 @@ function CampaignDetailModal({ campaignId, version, onClose, onStart, onPause, o
         )}
         <PaginationBar {...pg} />
       </div>
+      {showSenders && <SendersModal data={senderData} onChanged={reloadSenders} onClose={() => setShowSenders(false)} />}
     </Modal>
   );
 }
@@ -371,7 +514,18 @@ export function EmailCampaignsTab() {
   const [confirmStart, setConfirmStart] = useState(null);
   const [removing, setRemoving] = useState(null);
   const [busyId, setBusyId] = useState(null);
+  const [showSenders, setShowSenders] = useState(false);
+  const [senderData, reloadSenders] = useSenderData();
   const runningRef = useRef(false);
+
+  // "Name <address>" for whichever mailbox a campaign sends from — a deleted mailbox is flagged so a
+  // stalled campaign's cause is obvious.
+  const fromLabelOf = (c) => {
+    const s = c.senderId && senderData.senders.find((x) => x.id === c.senderId);
+    if (s) return senderLabel(s);
+    if (c.senderEmail) return c.senderId ? c.senderEmail : `${c.senderEmail} (removed)`;
+    return senderData.defaultSender ? senderLabel(senderData.defaultSender) : "the default mailbox";
+  };
 
   const load = useCallback(async () => {
     try { setCampaigns(await api.dataManager.campaigns()); setError(""); } catch (err) { setError(errMsg(err, "Couldn't load campaigns")); setCampaigns((c) => c || []); }
@@ -403,9 +557,12 @@ export function EmailCampaignsTab() {
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
         <div className="side-note" style={{ margin: 0, flex: 1, minWidth: 260 }}>
-          <Mail size={13} style={{ verticalAlign: -2, marginRight: 4 }} />Upload a list of names and emails and the server sends them one at a time from the company mail account, waiting a random interval between each. It keeps going even if you close this page.
+          <Mail size={13} style={{ verticalAlign: -2, marginRight: 4 }} />Upload a list of names and emails and the server sends them one at a time from the mailbox you choose, waiting a random interval between each. It keeps going even if you close this page.
         </div>
-        <button className="btn btn-primary" onClick={() => { setNotice(""); setShowNew(true); }}><Plus size={15} /> New campaign</button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="btn" onClick={() => setShowSenders(true)}><AtSign size={15} /> Sender mailboxes</button>
+          <button className="btn btn-primary" onClick={() => { setNotice(""); setShowNew(true); }}><Plus size={15} /> New campaign</button>
+        </div>
       </div>
 
       {notice && <div className="side-note" style={{ marginTop: 0, color: "var(--success)" }}>{notice}</div>}
@@ -424,7 +581,10 @@ export function EmailCampaignsTab() {
                     return (
                       <tr key={c.id} style={{ cursor: "pointer" }} onClick={() => setOpenId(c.id)}>
                         <td className="mono" style={{ fontSize: 12, color: "var(--ink-soft)" }}>{i + 1}</td>
-                        <td>{c.name}<div style={{ fontSize: 11.5, color: "var(--ink-soft)", maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.subject}</div></td>
+                        <td>{c.name}
+                          <div style={{ fontSize: 11.5, color: "var(--ink-soft)", maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.subject}</div>
+                          <div style={{ fontSize: 11.5, color: "var(--ink-soft)", maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>From: {fromLabelOf(c)}</div>
+                        </td>
                         <td>
                           <Stamp tone={STATUS_TONE[c.status]}>{c.status}</Stamp>
                           {info && <div style={{ fontSize: 11.5, color: "var(--ink-soft)", marginTop: 3 }}>{info}</div>}
@@ -450,9 +610,10 @@ export function EmailCampaignsTab() {
           )}
       </div>
 
-      {showNew && <NewCampaignModal onClose={() => setShowNew(false)} onCreated={created} />}
-      {openId && <CampaignDetailModal campaignId={openId} version={(() => { const o = campaigns?.find((x) => x.id === openId); return o ? `${o.status}:${o.sent}:${o.failed}:${o.pending}` : ""; })()} onClose={() => setOpenId(null)} onStart={setConfirmStart} onPause={pause} onChanged={load} />}
-      {confirmStart && <StartConfirmModal campaign={confirmStart} onConfirm={() => start(confirmStart)} onClose={() => setConfirmStart(null)} />}
+      {showNew && <NewCampaignModal senderData={senderData} reloadSenders={reloadSenders} onClose={() => setShowNew(false)} onCreated={created} />}
+      {openId && <CampaignDetailModal campaignId={openId} version={(() => { const o = campaigns?.find((x) => x.id === openId); return o ? `${o.status}:${o.sent}:${o.failed}:${o.pending}:${o.senderId}` : ""; })()} senderData={senderData} reloadSenders={reloadSenders} fromLabelOf={fromLabelOf} onClose={() => setOpenId(null)} onStart={setConfirmStart} onPause={pause} onChanged={load} />}
+      {showSenders && <SendersModal data={senderData} onChanged={async () => { await reloadSenders(); await load(); }} onClose={() => setShowSenders(false)} />}
+      {confirmStart && <StartConfirmModal campaign={confirmStart} fromLabel={fromLabelOf(confirmStart)} onConfirm={() => start(confirmStart)} onClose={() => setConfirmStart(null)} />}
       {removing && <ConfirmModal title={`Delete "${removing.name}"?`} body={`This removes the campaign and its whole recipient list, including the record of who was already emailed (${removing.sent} sent). This can't be undone.`} confirmLabel="Delete campaign" onConfirm={() => remove(removing)} onClose={() => setRemoving(null)} />}
     </div>
   );

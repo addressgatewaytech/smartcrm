@@ -6,10 +6,11 @@
 // touches the database only when it actually sends — zero queries while nothing is running. Each
 // campaign row's next_send_at is the durable copy, so a restart/deploy resumes exactly where it was
 // (see resumeRunningCampaigns). Only one campaign runs at a time (enforced by the start route),
-// which keeps the per-day limit meaningful for the single shared mailbox.
+// which keeps the per-day limit meaningful for the mailbox being sent from.
 const { query } = require("../config/db");
 // Held as the module object (not destructured) so a test can swap sendMail without real SMTP.
 const mailer = require("../utils/mailer");
+const { resolveCampaignSender } = require("../utils/bulkSenders");
 
 const timers = new Map();          // campaignId -> pending Timeout
 const failureStreak = new Map();   // campaignId -> consecutive server-side send failures
@@ -77,8 +78,11 @@ async function processCampaign(id) {
   const [c] = await query("SELECT * FROM email_campaigns WHERE id = ?", [id]);
   if (!c || c.status !== "Running") return;
 
-  if (!mailer.isSmtpConfigured()) {
-    await pause(id, "Email sending isn't set up on the server (SMTP settings are missing).");
+  // Which mailbox this campaign sends from — re-resolved every tick, so a mailbox deleted or given a
+  // new password mid-campaign is picked up (or the campaign paused) rather than sending from the wrong account.
+  const from = await resolveCampaignSender(c);
+  if (from.error) {
+    await pause(id, from.error);
     return;
   }
 
@@ -94,7 +98,7 @@ async function processCampaign(id) {
   if (!claim.affectedRows) { arm(id, 2000); return; }
 
   const vars = { name: (next.name || "").trim() || FALLBACK_NAME, email: next.email };
-  const result = await mailer.sendMail({ to: next.email, subject: fillTemplate(c.subject, vars), text: fillTemplate(c.body, vars), critical: true });
+  const result = await mailer.sendMail({ to: next.email, subject: fillTemplate(c.subject, vars), text: fillTemplate(c.body, vars), critical: true, sender: from.sender });
   // Only a real transport response counts as sent — sendMail also returns { simulated } (no SMTP),
   // { skipped } and { failed }, none of which may ever be recorded as delivered.
   const sent = !!result && !result.failed && !result.simulated && !result.skipped && !isRecipientSpecificFailure(result);

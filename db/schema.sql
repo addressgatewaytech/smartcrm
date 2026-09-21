@@ -877,9 +877,28 @@ CREATE TABLE IF NOT EXISTS bulk_email_template (
   updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
+-- Mailboxes a campaign can send from (Data Manager > Bulk Email > Sender mailboxes). A campaign with
+-- no sender uses the server's default SMTP account. password_enc is AES-256-GCM (utils/bulkSenders.js)
+-- — the login has to be kept so the worker can send unattended — and is never returned by the API.
+-- smtp_host/smtp_port NULL = use the server's SMTP_HOST/SMTP_PORT.
+CREATE TABLE IF NOT EXISTS bulk_email_senders (
+  id            INT AUTO_INCREMENT PRIMARY KEY,
+  name          VARCHAR(100) NOT NULL DEFAULT '',   -- display name recipients see, e.g. "Address Gateway Sales"
+  email         VARCHAR(255) NOT NULL UNIQUE,       -- the mailbox address; also its SMTP login
+  smtp_host     VARCHAR(255) NULL,
+  smtp_port     INT NULL,
+  password_enc  TEXT NOT NULL,
+  created_by    VARCHAR(20),
+  created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
 -- subject/body are copied onto the campaign when it's created (so later edits to the saved
 -- template never change a campaign already sent). next_send_at is set in SQL (NOW() + random
 -- interval) so it never depends on the app server's clock/timezone agreeing with MySQL's.
+-- sender_id NULL = the default account. sender_email is a snapshot kept when a mailbox is deleted, so
+-- a finished campaign still shows what it was sent from — and so a Paused campaign whose mailbox was
+-- removed is never quietly switched to the default account (sender_id NULL + sender_email set).
 CREATE TABLE IF NOT EXISTS email_campaigns (
   id                    VARCHAR(20) PRIMARY KEY,
   name                  VARCHAR(200) NOT NULL,
@@ -894,7 +913,10 @@ CREATE TABLE IF NOT EXISTS email_campaigns (
   created_by            VARCHAR(20),
   created_at            TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   started_at            DATETIME NULL,
-  completed_at          DATETIME NULL
+  completed_at          DATETIME NULL,
+  sender_id             INT NULL,
+  sender_email          VARCHAR(255) NULL,
+  FOREIGN KEY (sender_id) REFERENCES bulk_email_senders(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS email_campaign_recipients (
