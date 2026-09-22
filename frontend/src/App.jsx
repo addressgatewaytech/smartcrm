@@ -585,12 +585,22 @@ const jobCategoryColor = (service, services) => {
   return JOB_CATEGORY_COLORS[hash % JOB_CATEGORY_COLORS.length];
 };
 
+// Matches a job card (or anything else with {customerId, customer}) to a subscription's customer.
+// Prefers the linked customer_id — immune to the customer name being retyped, renamed, or just
+// carrying stray whitespace (real data has both: e.g. the customers row "Stanford International "
+// with a trailing space, vs. a subscription's own `customer` snapshot taken without it, which made
+// every name match silently fail) — and only falls back to an exact name match for older records
+// created before job_cards.customer_id / customer_subscriptions.customer_id existed.
+const sameSubCustomer = (x, sub) => (x.customerId && sub.customerId) ? x.customerId === sub.customerId : x.customer === sub.customer;
+
 // A job card's own service can be anything (PRO Services, Bank Account Opening, ...) even when its
 // customer is separately enrolled in the Growth Partner Program subscription — this flags that
 // enrollment regardless of what this particular job is for, same "still paying for the plan" rule
-// subTransactionsUsed/subStatusOf already use elsewhere.
-const isGrowthPartnerCustomer = (state, customerName) =>
-  state.subscriptions.some(s => s.customer === customerName && s.plan === "Growth Partner Program" && !["Cancelled","Expired"].includes(subStatusOf(s)));
+// subTransactionsUsed/subStatusOf already use elsewhere. `job` is {customer, customerId} — pass the
+// job card itself (or an equivalent shape) rather than a bare name, so the match survives a renamed
+// or whitespace-mismatched customer — see sameSubCustomer.
+const isGrowthPartnerCustomer = (state, job) =>
+  state.subscriptions.some(s => sameSubCustomer(job, s) && s.plan === "Growth Partner Program" && !["Cancelled","Expired"].includes(subStatusOf(s)));
 
 const JOB_AGE_BUCKETS = [
   { key: "0-3", label: "0–3 days old", test: (d) => d <= 3 },
@@ -5435,7 +5445,7 @@ const subStatusTone = (s) => s === "Active" ? "success" : s === "Expiring Soon" 
 // Cancelled job cards don't consume the allowance.
 function subTransactionsUsed(sub, state) {
   return state.jobCards.filter(j => {
-    if (j.customer !== sub.customer) return false;
+    if (!sameSubCustomer(j, sub)) return false;
     if (j.status === "Cancelled" || j.status === "Pending Approval") return false;
     // Excludes the plan's own service (e.g. Growth Partner Program) — that job card is what
     // creates or renews the subscription itself, not a client transaction spent under it.
@@ -5863,13 +5873,15 @@ function SubscriptionDetailModal({ subscription: sub, state, dispatch, isAdmin, 
   const txOver = tier && txUsed > tier.transactionsIncluded;
   // Same exclusion as subTransactionsUsed — kept in sync since this list's length is what the
   // "N job cards linked" caption below reports right next to that same meter.
-  const linkedJobs = state.jobCards.filter(j => j.customer === sub.customer && j.status !== "Cancelled" && j.service !== sub.plan && (j.statusLog?.[0]?.at || sub.startDate) >= sub.startDate);
+  const linkedJobs = state.jobCards.filter(j => sameSubCustomer(j, sub) && j.status !== "Cancelled" && j.service !== sub.plan && (j.statusLog?.[0]?.at || sub.startDate) >= sub.startDate);
   // Office Space Assistance (and any future plan without transaction/training/etc. allowances)
   // has no meaningful "usage" to meter — its tier row is all nulls apart from the fee. Showing
   // the Job Card meter there just reads as a permanently-stuck "0/—" with no real signal.
   const hasUsageMeters = tier && tier.transactionsIncluded != null;
 
-  const customer = state.customers.find(c => c.name === sub.customer);
+  // Prefer the linked customer_id — a name match alone missed this customer entirely whenever the
+  // stored name differed by so much as trailing whitespace (see sameSubCustomer above).
+  const customer = state.customers.find(c => sub.customerId ? c.id === sub.customerId : c.name === sub.customer);
   const daysToRenewal = daysBetween(daysFromNow(0), sub.expiryDate);
   const kycDocs = customer?.docs || [];
   // Both open the reviewer's own email/WhatsApp app with the message pre-filled, mirroring the
@@ -7284,7 +7296,7 @@ function JobsPage({ state, dispatch, role, userId, highlightId, onHighlightHandl
                   <td className="mono" style={{fontSize:12, whiteSpace:"nowrap"}}>{daysSince(j.createdAt)}d<div style={{fontSize:11,color:"var(--ink-soft)"}}>{fmtDate(j.createdAt)}</div></td>
                   <td style={{ display:"flex", alignItems:"center", gap:6, maxWidth:200 }}>
                     <span style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }} title={j.customer}>{j.customer}</span>
-                    {isGrowthPartnerCustomer(state, j.customer) && <span className="pill" style={{ background:"var(--gold-tint)", color:"var(--gold-dark)", fontSize:10, padding:"3px 8px 3px 6px", flexShrink:0, display:"inline-flex", alignItems:"center", gap:4 }} title="Growth Partner Program customer"><Award size={16} fill="var(--gold)" fillOpacity={0.35} strokeWidth={2.25}/>{j.service==="Growth Partner Program" && j.packageTier ? j.packageTier : ""}</span>}
+                    {isGrowthPartnerCustomer(state, j) && <span className="pill" style={{ background:"var(--gold-tint)", color:"var(--gold-dark)", fontSize:10, padding:"3px 8px 3px 6px", flexShrink:0, display:"inline-flex", alignItems:"center", gap:4 }} title="Growth Partner Program customer"><Award size={16} fill="var(--gold)" fillOpacity={0.35} strokeWidth={2.25}/>{j.service==="Growth Partner Program" && j.packageTier ? j.packageTier : ""}</span>}
                   </td>
                   <td style={{maxWidth:220, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}} title={`${j.service}${j.description && j.description.trim().toLowerCase() !== j.service.trim().toLowerCase() ? ` — ${j.description}` : ""}`}>
                     <span style={{ display:"inline-block", width:8, height:8, borderRadius:"50%", background:jobCategoryColor(j.service, state.services), marginRight:6, border:"1px solid var(--hair)" }} />
@@ -7345,7 +7357,7 @@ function JobsPage({ state, dispatch, role, userId, highlightId, onHighlightHandl
                 style={cardStyle} title="Click for full details">
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:6 }}>
                   <h5 style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{j.customer}</h5>
-                  {isGrowthPartnerCustomer(state, j.customer) && <span className="pill" style={{ background:"var(--gold-tint)", color:"var(--gold-dark)", fontSize:10, padding:"3px 8px 3px 6px", flexShrink:0, display:"inline-flex", alignItems:"center", gap:4 }} title="Growth Partner Program customer"><Award size={16} fill="var(--gold)" fillOpacity={0.35} strokeWidth={2.25}/>{j.service==="Growth Partner Program" && j.packageTier ? j.packageTier : ""}</span>}
+                  {isGrowthPartnerCustomer(state, j) && <span className="pill" style={{ background:"var(--gold-tint)", color:"var(--gold-dark)", fontSize:10, padding:"3px 8px 3px 6px", flexShrink:0, display:"inline-flex", alignItems:"center", gap:4 }} title="Growth Partner Program customer"><Award size={16} fill="var(--gold)" fillOpacity={0.35} strokeWidth={2.25}/>{j.service==="Growth Partner Program" && j.packageTier ? j.packageTier : ""}</span>}
                 </div>
                 <div className="mono" style={{ fontSize:11, color:"var(--ink-soft)", marginTop:-4, marginBottom:4, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
                   {j.id} · {j.service}
@@ -7449,7 +7461,7 @@ function AssignModal({ job, dispatch, employees, onClose }) {
 }
 
 function JobDetailModal({ job, state, dispatch, role, userId, employees, approvalTypes=[], onClose, onReassign, initialShowCancel=false }) {
-  const isGP = !!state && isGrowthPartnerCustomer(state, job.customer);
+  const isGP = !!state && isGrowthPartnerCustomer(state, job);
   const [cancelReason, setCancelReason] = useState("");
   const [showCancel, setShowCancel] = useState(initialShowCancel);
   const [showReject, setShowReject] = useState(false);
