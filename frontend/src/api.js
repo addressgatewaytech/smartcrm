@@ -228,6 +228,7 @@ export const api = {
     assign: (id, assignees) => post(`/job-cards/${id}/assign`, { assignees }),
     setStatus: (id, status, reason) => post(`/job-cards/${id}/status`, { status, reason }),
     update: (id, payload) => patch(`/job-cards/${id}`, payload),
+    changeCustomer: (id, customerId) => patch(`/job-cards/${id}/customer`, { customerId }),
     toggleChecklistItem: (id, itemId) => post(`/job-cards/${id}/checklist`, { itemId }),
     removeChecklistItem: (id, itemId) => post(`/job-cards/${id}/checklist`, { itemId, remove: true }),
     addChecklistItem: (id, label) => post(`/job-cards/${id}/checklist`, { label }),

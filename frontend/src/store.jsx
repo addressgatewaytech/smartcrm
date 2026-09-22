@@ -258,6 +258,7 @@ export function useApiStore(enabled) {
       case "REMOVE_JOB_CHECKLIST_ITEM": await api.jobCards.removeChecklistItem(action.jobId, action.itemId); return refresh(["jobCards"]);
       case "ADD_JOB_COMMENT": await api.jobCards.addComment(action.id, action.note); return refresh(["jobCards"]);
       case "UPDATE_JOB_CARD": await api.jobCards.update(action.id, action.payload); return refresh(["jobCards"]);
+      case "CHANGE_JOB_CUSTOMER": await api.jobCards.changeCustomer(action.id, action.customerId); return refresh(["jobCards"]);
       case "SET_JOB_STATUS": await api.jobCards.setStatus(action.id, action.status, action.reason); return refresh(["jobCards", "notifications"]);
       case "DELETE_JOB_CARD": await api.jobCards.remove(action.id); return refresh(["jobCards"]);
 

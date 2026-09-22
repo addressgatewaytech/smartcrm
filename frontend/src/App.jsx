@@ -7460,6 +7460,27 @@ function JobDetailModal({ job, state, dispatch, role, userId, employees, approva
   const [downloading, setDownloading] = useState(false);
   const confirm = useConfirm();
   const isAdmin = ADMIN_LIKE.includes(role);
+  const [customerQuery, setCustomerQuery] = useState(job.customer);
+  const [customerBusy, setCustomerBusy] = useState(false);
+  const [customerError, setCustomerError] = useState("");
+  const matchedCustomer = state?.customers.find(c => c.name === customerQuery);
+  const changeCustomer = async () => {
+    if (!matchedCustomer) return;
+    if (!(await confirm({
+      title: `Move ${job.id} to ${matchedCustomer.name}?`,
+      body: `This corrects which customer this job card belongs to. It does not move anything already created for "${job.customer}" under the old customer — such as invoices, subscriptions or KYC documents — those stay where they are and would need fixing separately.`,
+      confirmLabel: "Change customer",
+    }))) return;
+    setCustomerBusy(true);
+    setCustomerError("");
+    try {
+      await dispatch({ type: "CHANGE_JOB_CUSTOMER", id: job.id, customerId: matchedCustomer.id });
+    } catch (err) {
+      setCustomerError(err instanceof ApiError ? err.message : "Couldn't change the customer — please try again.");
+    } finally {
+      setCustomerBusy(false);
+    }
+  };
   // Admin-only override: the normal action row below disappears once a job card is Completed or
   // Cancelled (those are meant to be terminal for everyone else), but Admin needs to be able to
   // correct a wrong status regardless — including reopening a Cancelled or Completed job card.
@@ -7638,6 +7659,24 @@ function JobDetailModal({ job, state, dispatch, role, userId, employees, approva
             </button>
           </div>
           {adminStatusError && <div className="side-note" style={{ color:"var(--danger)", marginTop:8, marginBottom:0 }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{adminStatusError}</div>}
+        </div>
+      )}
+
+      {isAdmin && !pendingApproval && (
+        <div className="agw-card" style={{ marginTop: 14 }}>
+          <strong style={{ fontSize:13 }}>Admin: change customer</strong>
+          <p className="modal-sub" style={{ marginTop:4, marginBottom:8 }}>For mistake correction — moves this job card to a different existing customer, at any status including Completed. It only repoints this job card; anything already created under the old customer (invoices, subscriptions, documents) stays as is.</p>
+          <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"center" }}>
+            <input style={{ flex:1, minWidth:200, border:"1px solid var(--hair)", borderRadius:8, padding:"7px 10px", fontSize:13 }}
+              list="job-customer-options" placeholder="Type or pick the correct customer"
+              value={customerQuery} onChange={e=>{ setCustomerQuery(e.target.value); setCustomerError(""); }} />
+            <datalist id="job-customer-options">{state?.customers.map(c=><option key={c.id} value={c.name} />)}</datalist>
+            <button className="btn btn-primary" disabled={customerBusy || !matchedCustomer || matchedCustomer.id === job.customerId} onClick={changeCustomer}>
+              {customerBusy ? "Changing…" : "Change customer"}
+            </button>
+          </div>
+          {customerQuery && !matchedCustomer && <div className="side-note" style={{ marginTop:8, marginBottom:0 }}>No customer matches that name exactly — pick one from the list.</div>}
+          {customerError && <div className="side-note" style={{ color:"var(--danger)", marginTop:8, marginBottom:0 }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{customerError}</div>}
         </div>
       )}
 

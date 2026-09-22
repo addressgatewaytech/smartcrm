@@ -194,6 +194,28 @@ router.patch("/:id", async (req, res) => {
   res.json({ ok: true });
 });
 
+// Admin-only mistake correction — the job card was created/completed under the wrong customer
+// (typo, wrong record picked, duplicate later merged, etc). Works at any status, including
+// Completed/Cancelled, unlike the normal edit routes above which lock once a job is done.
+// Only repoints THIS job card's own customer/customer_id — it does not move anything that already
+// happened under the old customer (e.g. a Growth Partner subscription auto-created on completion,
+// see handleGrowthPartnerCompletion above), so the log entry says so and the UI should too.
+router.patch("/:id/customer", requireRole(["admin_like"]), async (req, res) => {
+  const { customerId } = req.body;
+  if (!customerId) return res.status(400).json({ error: "Choose the customer to move this job card to" });
+  const [job] = await query("SELECT customer, customer_id FROM job_cards WHERE id = ?", [req.params.id]);
+  if (!job) return res.status(404).json({ error: "Not found" });
+  const [customer] = await query("SELECT id, name FROM customers WHERE id = ?", [customerId]);
+  if (!customer) return res.status(400).json({ error: "That customer no longer exists" });
+  if (customer.id === job.customer_id) return res.status(400).json({ error: "This job card is already linked to that customer" });
+  await query("UPDATE job_cards SET customer = ?, customer_id = ? WHERE id = ?", [customer.name, customer.id, req.params.id]);
+  await query(
+    "INSERT INTO job_card_status_log (job_card_id, status, by_user, note) VALUES (?, 'Updated', ?, ?)",
+    [req.params.id, req.user.id, `Customer corrected from "${job.customer}" to "${customer.name}" (admin). Any invoices, subscriptions or documents already created under the old customer are not moved automatically.`]
+  );
+  res.json({ ok: true });
+});
+
 router.post("/:id/checklist", async (req, res) => {
   const [job] = await query("SELECT checklist FROM job_cards WHERE id = ?", [req.params.id]);
   const checklist = job.checklist || [];
