@@ -9881,6 +9881,10 @@ function salesReportTotals(periodInvoices, allInvoicesInScope, range) {
 
 function SalesReport({ state, range, periodLabel, salesFilter = [] }) {
   const [downloading, setDownloading] = useState(null); // null | "all" | an owner id
+  // "" = the current scope (all, or whatever the People picker above has filtered to); an owner id
+  // downloads that one person's own report directly — a plain sales_exec never sees this (they
+  // only ever have themselves in allOwners), so it's effectively Admin/Sales Manager only.
+  const [personPick, setPersonPick] = useState("");
 
   const allOwners = state.employees.filter(e => e.roles.includes("sales_exec") || e.roles.includes("sales_manager"));
   const owners = salesFilter.length ? allOwners.filter(o => salesFilter.includes(o.id)) : allOwners;
@@ -9909,7 +9913,10 @@ function SalesReport({ state, range, periodLabel, salesFilter = [] }) {
   const noService = scopedPeriodInvoices.filter(inv => !inv.service);
   if (noService.length) notes.push(`${noService.length} invoice${noService.length===1?" has":"s have"} no service set: ${noService.slice(0,12).map(i=>i.id).join(", ")}${noService.length>12?", …":""}.`);
 
-  const detailInvoices = [...scopedPeriodInvoices, ...unassigned].sort((a,b) => new Date(a.createdAt) - new Date(b.createdAt));
+  // scopedPeriodInvoices already includes the unassigned ones whenever unscoped (they're only ever
+  // excluded by the scoped branch's salesperson-name filter) — concatenating `unassigned` again
+  // here would just list each of them twice.
+  const detailInvoices = [...scopedPeriodInvoices].sort((a,b) => new Date(a.createdAt) - new Date(b.createdAt));
 
   const invoiceRows = (invs) => invs.map(inv => {
     const paid = inv.payments.reduce((a,p)=>a+p.amount,0);
@@ -9936,15 +9943,23 @@ function SalesReport({ state, range, periodLabel, salesFilter = [] }) {
     bySalesPerson: bySalesPerson.length > 1 ? bySalesPerson.map(r => ({ name: r.owner.name, invoices: r.invoices, totalSales: r.totalSales, profFee: r.profFee, collected: r.collected, balance: r.balance, collectedPct: r.collectedPct })) : undefined,
     notes, invoices: invoiceRows(detailInvoices), showSalesPersonColumn: !scoped || owners.length > 1,
   });
-  // One salesperson's own report — a fresh, single-person scope regardless of what the on-screen
-  // People filter currently shows, so this button always works no matter who else is selected.
-  const downloadPerson = (r) => {
-    const invs = periodInvoices.filter(inv => inv.salesPerson === r.owner.name);
-    download(r.owner.id, `Sales-Report-${r.owner.name.replace(/[^a-z0-9]+/gi,"-")}.pdf`, {
-      title: "Sales Report", subtitle: `${periodLabel} — ${r.owner.name}`, summary: r,
+  // One salesperson's own report — computed fresh for any owner, regardless of what the on-screen
+  // People filter currently shows, so this works for someone the filter has scoped out too.
+  const downloadPerson = (owner) => {
+    const invs = periodInvoices.filter(inv => inv.salesPerson === owner.name);
+    const totals = salesReportTotals(invs, feeInvoices.filter(inv => inv.salesPerson === owner.name), range);
+    download(owner.id, `Sales-Report-${owner.name.replace(/[^a-z0-9]+/gi,"-")}.pdf`, {
+      title: "Sales Report", subtitle: `${periodLabel} — ${owner.name}`, summary: totals,
       notes: [], invoices: invoiceRows(invs), showSalesPersonColumn: false,
     });
   };
+  // Admin/Sales Manager only (a scoped sales_exec's allOwners is always just themselves) — lets
+  // them jump straight to any one person's report from the button up top, not only via that
+  // person's own row further down the page.
+  const pickedOwner = allOwners.find(o => o.id === personPick);
+  const topDownload = () => pickedOwner ? downloadPerson(pickedOwner) : downloadCurrent();
+  const topBusy = downloading === (pickedOwner ? pickedOwner.id : "all");
+  const topLabel = pickedOwner ? pickedOwner.name : scopeLabel;
 
   return (
     <div>
@@ -9955,9 +9970,15 @@ function SalesReport({ state, range, periodLabel, salesFilter = [] }) {
         { label:"Collected", value: money(summary.collected) },
       ]} />
 
-      <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:12 }}>
-        <button className="btn btn-primary" disabled={downloading==="all"} onClick={downloadCurrent}>
-          <Download size={14}/> {downloading==="all" ? "Preparing…" : `Download Sales Report — ${scopeLabel}`}
+      <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginBottom:12, flexWrap:"wrap" }}>
+        {allOwners.length > 1 && (
+          <select value={personPick} onChange={e=>setPersonPick(e.target.value)} style={{ maxWidth:230 }}>
+            <option value="">{scopeLabel === "All salespeople" ? "All salespeople" : `Current filter — ${scopeLabel}`}</option>
+            {allOwners.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+          </select>
+        )}
+        <button className="btn btn-primary" disabled={topBusy} onClick={topDownload}>
+          <Download size={14}/> {topBusy ? "Preparing…" : `Download Sales Report — ${topLabel}`}
         </button>
       </div>
 
@@ -9988,7 +10009,7 @@ function SalesReport({ state, range, periodLabel, salesFilter = [] }) {
                 <td className="mono" style={{ color: r.balance>0 ? "var(--danger)" : "var(--success)" }}>{money(r.balance)}</td>
                 <td>{r.collectedPct==null ? "—" : `${r.collectedPct}%`}</td>
                 <td style={{ textAlign:"right" }}>
-                  <button className="btn btn-sm btn-ghost" disabled={downloading===r.owner.id || r.invoices===0} onClick={()=>downloadPerson(r)} title={`Download ${r.owner.name}'s report`}>
+                  <button className="btn btn-sm btn-ghost" disabled={downloading===r.owner.id || r.invoices===0} onClick={()=>downloadPerson(r.owner)} title={`Download ${r.owner.name}'s report`}>
                     <Download size={13}/> {downloading===r.owner.id ? "…" : "PDF"}
                   </button>
                 </td>
