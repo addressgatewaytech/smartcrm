@@ -9885,6 +9885,10 @@ function SalesReport({ state, range, periodLabel, salesFilter = [] }) {
   // downloads that one person's own report directly — a plain sales_exec never sees this (they
   // only ever have themselves in allOwners), so it's effectively Admin/Sales Manager only.
   const [personPick, setPersonPick] = useState("");
+  // The period picker's own label ("This Month", "Custom", ...) says which preset is active but
+  // not what it actually covers — put the real bounds in the report header too, e.g.
+  // "This Month (01 Sep 2026 – 23 Sep 2026)". No bounds at all only for "All Time".
+  const periodDetail = range[0] ? `${periodLabel} (${fmtDate(range[0])} – ${fmtDate(range[1])})` : periodLabel;
 
   const feeInvoices = state.invoices.filter(inv => inv.feeType !== "Government Fee");
   const periodInvoices = feeInvoices.filter(inv => inRange(inv.createdAt, range));
@@ -9948,7 +9952,7 @@ function SalesReport({ state, range, periodLabel, salesFilter = [] }) {
   };
   // Exactly what's on screen right now, so "download" never disagrees with what was just looked at.
   const downloadCurrent = () => download("all", `Sales-Report-${scopeLabel.replace(/[^a-z0-9]+/gi,"-")}.pdf`, {
-    title: "Sales Report", subtitle: `${periodLabel} — ${scopeLabel}`, summary,
+    title: "Sales Report", subtitle: `${periodDetail} — ${scopeLabel}`, summary,
     bySalesPerson: bySalesPerson.length > 1 ? bySalesPerson.map(r => ({ name: r.owner.name, invoices: r.invoices, totalSales: r.totalSales, profFee: r.profFee, collected: r.collected, balance: r.balance, collectedPct: r.collectedPct })) : undefined,
     notes, invoices: invoiceRows(detailInvoices), showSalesPersonColumn: !scoped || owners.length > 1,
   });
@@ -9958,7 +9962,7 @@ function SalesReport({ state, range, periodLabel, salesFilter = [] }) {
     const invs = periodInvoices.filter(inv => inv.salesPerson === owner.name);
     const totals = salesReportTotals(invs, feeInvoices.filter(inv => inv.salesPerson === owner.name), range);
     download(owner.id, `Sales-Report-${owner.name.replace(/[^a-z0-9]+/gi,"-")}.pdf`, {
-      title: "Sales Report", subtitle: `${periodLabel} — ${owner.name}`, summary: totals,
+      title: "Sales Report", subtitle: `${periodDetail} — ${owner.name}`, summary: totals,
       notes: [], invoices: invoiceRows(invs), showSalesPersonColumn: false,
     });
   };

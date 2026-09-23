@@ -12,6 +12,20 @@ const money = (n) => `QAR ${money2(n)}`;
 const money0 = (n) => `QAR ${Math.round(Number(n || 0)).toLocaleString("en-US")}`;
 const pct = (n) => (n == null ? "—" : `${n}%`);
 
+// Tries each size in order (largest first) and returns the first that actually fits maxWidth in
+// Inter-Bold, measured for real rather than guessed from character count — a character-count
+// heuristic ("QAR 86,720" and "QAR 69,300" are both 10 characters) missed that the *bigger* font
+// size on the "big" tile made that one specific value overflow while its same-length neighbors,
+// drawn smaller, still fit. Falls back to the smallest size (the caller still has ellipsis as the
+// last line of defence for a truly oversized number).
+function fitFontSize(doc, text, maxWidth, sizes) {
+  for (const s of sizes) {
+    doc.font("Inter-Bold").fontSize(s);
+    if (doc.widthOfString(text) <= maxWidth) return s;
+  }
+  return sizes[sizes.length - 1];
+}
+
 /** Draws one row of bordered KPI boxes (title above, value below), evenly split across the width. */
 function drawKpiBand(doc, items, y, right) {
   const gap = 8;
@@ -19,12 +33,12 @@ function drawKpiBand(doc, items, y, right) {
   const h = 46;
   items.forEach((it, i) => {
     const x = MARGIN + i * (w + gap);
+    const innerW = w - 16;
     doc.roundedRect(x, y, w, h, 4).fillAndStroke(LIGHT_BG, HAIR);
-    // Fixed one-line label (never wraps into the value below it) + a smaller font when the value
-    // itself is long, so QAR amounts never spill past the box edge.
-    doc.font("Inter").fontSize(7).fillColor(GRAY).text(it.label, x + 8, y + 8, { width: w - 16, height: 9, ellipsis: true, lineBreak: false });
-    const valueSize = it.value.length > 10 ? 9.5 : it.big ? 12 : 10.5;
-    doc.font("Inter-Bold").fontSize(valueSize).fillColor(INK).text(it.value, x + 8, y + 23, { width: w - 16, height: 16, ellipsis: true, lineBreak: false });
+    // Fixed one-line label (never wraps into the value below it).
+    doc.font("Inter").fontSize(7).fillColor(GRAY).text(it.label, x + 8, y + 8, { width: innerW, height: 9, ellipsis: true, lineBreak: false });
+    const valueSize = fitFontSize(doc, it.value, innerW, it.big ? [13, 12, 11, 10, 9.5, 8.5] : [11, 10, 9.5, 8.5]);
+    doc.font("Inter-Bold").fontSize(valueSize).fillColor(INK).text(it.value, x + 8, y + 23, { width: innerW, height: 16, ellipsis: true, lineBreak: false });
   });
   return y + h + 18;
 }
@@ -113,8 +127,11 @@ function generateSalesReportPdf(r, res) {
   const right = doc.page.width - MARGIN;
   const top = MARGIN;
   doc.font("Inter-Bold").fontSize(20).fillColor(INK).text(r.title, MARGIN, top, { lineBreak: false });
-  doc.font("Inter").fontSize(9).fillColor(GRAY).text(r.subtitle || "", MARGIN, top + 26, { width: right - 170, lineBreak: false });
-  doc.text("Source: Smart CRM invoices. All amounts in QAR.", MARGIN, top + 40, { width: right - 170, lineBreak: false });
+  // ellipsis+height guards against a long subtitle (a Custom range spells out real dates now, e.g.
+  // "Custom (01 Aug 2026 - 23 Sep 2026) - All salespeople") overlapping the logo instead of just
+  // being clipped — same one-line-never-wrap treatment as every other cell in this document.
+  doc.font("Inter").fontSize(9).fillColor(GRAY).text(r.subtitle || "", MARGIN, top + 26, { width: right - 170, height: 11, ellipsis: true, lineBreak: false });
+  doc.text("Source: Smart CRM invoices. All amounts in QAR.", MARGIN, top + 40, { width: right - 170, height: 11, ellipsis: true, lineBreak: false });
   const brandBottomY = drawBrandHeader(doc, right, top);
   let y = Math.max(top + 58, brandBottomY) + 14;
 
