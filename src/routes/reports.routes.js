@@ -3,6 +3,7 @@ const { query } = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
 const { quoteTotal } = require("../utils/helpers");
 const { generateTablePdf } = require("../utils/reportPdf");
+const { generateSalesReportPdf } = require("../utils/salesReportPdf");
 
 const router = express.Router();
 router.use(requireAuth);
@@ -15,6 +16,16 @@ router.post("/pdf", (req, res) => {
   const { title, subtitle, columns, rows } = req.body;
   if (!title || !Array.isArray(columns) || !Array.isArray(rows)) return res.status(400).json({ error: "title, columns, and rows are required" });
   generateTablePdf({ title, subtitle, columns, rows }, res);
+});
+
+// Same "computed client-side, just rendered here" trust model as /pdf above — the Sales Report
+// tab already scopes its own data to "my own" for any role without full Reports access (see
+// FULL_REPORT_ACCESS_ROLES / reportState in App.jsx), so whatever this receives is only ever data
+// the requesting user's own browser already had.
+router.post("/sales-report-pdf", (req, res) => {
+  const { title, subtitle, summary, bySalesPerson, notes, invoices, showSalesPersonColumn } = req.body;
+  if (!title || !summary || !Array.isArray(invoices)) return res.status(400).json({ error: "title, summary, and invoices are required" });
+  generateSalesReportPdf({ title, subtitle, summary, bySalesPerson, notes, invoices, showSalesPersonColumn }, res);
 });
 
 // The whole Reports module is read-only and open to every role — every department gets company

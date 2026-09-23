@@ -9611,6 +9611,7 @@ function SettingsPage({ state, dispatch, setPage }) {
 /* ---------------------------------------------------------------------- */
 
 const REPORT_TABS = [
+  { key:"salesReport", label:"Sales Report" },
   { key:"volume", label:"Business Volume" },
   { key:"salespeople", label:"Sales by Person" },
   { key:"collections", label:"Collections" },
@@ -9636,7 +9637,7 @@ const FULL_REPORT_ACCESS_ROLES = [...ADMIN_LIKE, "sales_manager", "accounts", "v
 // Multi-select "salespeople" filter — shown only on reports with a salesperson dimension
 // (Business Volume, Sales by Person, Sales Daily Tasks, Lead Performance). Empty selection means
 // "everyone", matching how the underlying reports behaved before this filter existed.
-const SALES_FILTER_TABS = ["volume", "salespeople", "salesDailyTasks", "leadPerformance"];
+const SALES_FILTER_TABS = ["salesReport", "volume", "salespeople", "salesDailyTasks", "leadPerformance"];
 function SalesPeopleFilter({ people, selected, setSelected }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -9724,6 +9725,7 @@ function ReportsPage({ state, role, userId }) {
         </div>
       </div>
 
+      {tab === "salesReport" && <SalesReport state={reportState} range={range} periodLabel={PERIODS.find(p=>p.key===period)?.label} salesFilter={salesFilter} />}
       {tab === "volume" && <VolumeReport state={reportState} range={range} salesFilter={salesFilter} />}
       {tab === "salespeople" && <SalesPersonReport state={reportState} range={range} salesFilter={salesFilter} />}
       {tab === "collections" && <CollectionsReport state={reportState} range={range} />}
@@ -9854,6 +9856,172 @@ function VolumeReport({ state, range, salesFilter = [] }) {
                 <td className="mono" style={{fontSize:12}}>{fmtDate(q.createdAt)}</td>
               </tr>
             ))}
+          </tbody>
+        </table>
+      </ReportTableCard>
+    </div>
+  );
+}
+
+// "Sales Report" — a downloadable PDF version of the summary+breakdown+invoice-list report
+// management already hand-built in Excel: a KPI band, a By-salesperson table, and the full
+// invoice list for the period, all in one document. Figures use the same Professional-Fee-only
+// definitions already established elsewhere in Reports: "Total sales" is the full invoice amount
+// (incl. any Government Fee lines mixed into it), "Collected" is payments received in this period
+// on ANY of the scoped invoices — not only ones raised in this period — matching Dashboard/
+// CollectionsReport's own "collected in period", and "Balance" is what's still owed on this
+// period's own invoices as of right now (also matching CollectionsReport's "outstanding").
+function salesReportTotals(periodInvoices, allInvoicesInScope, range) {
+  const totalSales = periodInvoices.reduce((a,inv)=>a+inv.amount,0);
+  const profFee = periodInvoices.reduce((a,inv)=>a+inv.professionalFeeAmount,0);
+  const collected = allInvoicesInScope.reduce((a,inv)=>a+inv.payments.filter(p=>inRange(p.date, range)).reduce((x,p)=>x+p.amount,0),0);
+  const balance = periodInvoices.reduce((a,inv)=>a+Math.max(0, inv.professionalFeeAmount - inv.payments.reduce((x,p)=>x+p.amount,0)),0);
+  return { invoices: periodInvoices.length, totalSales, profFee, collected, balance, collectedPct: profFee > 0 ? Math.round((collected/profFee)*100) : null };
+}
+
+function SalesReport({ state, range, periodLabel, salesFilter = [] }) {
+  const [downloading, setDownloading] = useState(null); // null | "all" | an owner id
+
+  const allOwners = state.employees.filter(e => e.roles.includes("sales_exec") || e.roles.includes("sales_manager"));
+  const owners = salesFilter.length ? allOwners.filter(o => salesFilter.includes(o.id)) : allOwners;
+  // Filtered to a subset via the People picker above — a specific salesperson's own report should
+  // never include another person's (or nobody's) invoices alongside theirs.
+  const scoped = salesFilter.length > 0;
+  const scopedNames = new Set(owners.map(o => o.name));
+
+  const feeInvoices = state.invoices.filter(inv => inv.feeType !== "Government Fee");
+  const periodInvoices = feeInvoices.filter(inv => inRange(inv.createdAt, range));
+  // Only ever surfaced in the unfiltered, company-wide report — a specific salesperson's report
+  // has nothing to say about work nobody has been credited with yet.
+  const unassigned = scoped ? [] : periodInvoices.filter(inv => !inv.salesPerson);
+
+  const bySalesPerson = owners.map(o => salesReportTotals(
+    periodInvoices.filter(inv => inv.salesPerson === o.name),
+    feeInvoices.filter(inv => inv.salesPerson === o.name),
+    range
+  )).map((totals, i) => ({ owner: owners[i], ...totals })).sort((a,b) => b.totalSales - a.totalSales);
+
+  const scopedPeriodInvoices = scoped ? periodInvoices.filter(inv => scopedNames.has(inv.salesPerson)) : periodInvoices;
+  const summary = salesReportTotals(scopedPeriodInvoices, scoped ? feeInvoices.filter(inv => scopedNames.has(inv.salesPerson)) : feeInvoices, range);
+
+  const notes = [];
+  if (unassigned.length) notes.push(`${unassigned.length} invoice${unassigned.length===1?" has":"s have"} no sales person recorded: ${unassigned.slice(0,12).map(i=>i.id).join(", ")}${unassigned.length>12?", …":""}.`);
+  const noService = scopedPeriodInvoices.filter(inv => !inv.service);
+  if (noService.length) notes.push(`${noService.length} invoice${noService.length===1?" has":"s have"} no service set: ${noService.slice(0,12).map(i=>i.id).join(", ")}${noService.length>12?", …":""}.`);
+
+  const detailInvoices = [...scopedPeriodInvoices, ...unassigned].sort((a,b) => new Date(a.createdAt) - new Date(b.createdAt));
+
+  const invoiceRows = (invs) => invs.map(inv => {
+    const paid = inv.payments.reduce((a,p)=>a+p.amount,0);
+    return { id: inv.id, date: inv.createdAt, customer: inv.customer, salesPerson: inv.salesPerson, service: inv.service,
+      total: inv.amount, profFee: inv.professionalFeeAmount, paid, balance: Math.max(0, inv.professionalFeeAmount - paid) };
+  });
+
+  const scopeLabel = scoped ? (owners.length === 1 ? owners[0].name : `${owners.length} salespeople`) : "All salespeople";
+
+  const download = async (key, filename, payload) => {
+    setDownloading(key);
+    try {
+      const blob = await api.reports.downloadSalesReportPdf(payload);
+      downloadBlob(filename, blob);
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : "Couldn't generate the PDF — please try again.");
+    } finally {
+      setDownloading(null);
+    }
+  };
+  // Exactly what's on screen right now, so "download" never disagrees with what was just looked at.
+  const downloadCurrent = () => download("all", `Sales-Report-${scopeLabel.replace(/[^a-z0-9]+/gi,"-")}.pdf`, {
+    title: "Sales Report", subtitle: `${periodLabel} — ${scopeLabel}`, summary,
+    bySalesPerson: bySalesPerson.length > 1 ? bySalesPerson.map(r => ({ name: r.owner.name, invoices: r.invoices, totalSales: r.totalSales, profFee: r.profFee, collected: r.collected, balance: r.balance, collectedPct: r.collectedPct })) : undefined,
+    notes, invoices: invoiceRows(detailInvoices), showSalesPersonColumn: !scoped || owners.length > 1,
+  });
+  // One salesperson's own report — a fresh, single-person scope regardless of what the on-screen
+  // People filter currently shows, so this button always works no matter who else is selected.
+  const downloadPerson = (r) => {
+    const invs = periodInvoices.filter(inv => inv.salesPerson === r.owner.name);
+    download(r.owner.id, `Sales-Report-${r.owner.name.replace(/[^a-z0-9]+/gi,"-")}.pdf`, {
+      title: "Sales Report", subtitle: `${periodLabel} — ${r.owner.name}`, summary: r,
+      notes: [], invoices: invoiceRows(invs), showSalesPersonColumn: false,
+    });
+  };
+
+  return (
+    <div>
+      <ReportKpis items={[
+        { label:"Invoices", value: summary.invoices },
+        { label:"Total sales", value: money(summary.totalSales) },
+        { label:"Professional fee", value: money(summary.profFee) },
+        { label:"Collected", value: money(summary.collected) },
+      ]} />
+
+      <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:12 }}>
+        <button className="btn btn-primary" disabled={downloading==="all"} onClick={downloadCurrent}>
+          <Download size={14}/> {downloading==="all" ? "Preparing…" : `Download Sales Report — ${scopeLabel}`}
+        </button>
+      </div>
+
+      {notes.length > 0 && (
+        <div className="side-note" style={{ marginTop:0 }}>
+          <AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>
+          {notes.map((n,i) => <div key={i} style={{ marginTop: i ? 4 : 0 }}>{n}</div>)}
+        </div>
+      )}
+
+      <ReportTableCard title="By salesperson" empty={bySalesPerson.length===0 ? "No sales roles configured yet." : null} emptyIcon={Users}
+        onExport={bySalesPerson.length ? ()=>exportCSV("sales-by-person-report.csv",
+          ["Salesperson","Invoices","Total sales","Professional fee","Collected","Balance","Collected %"],
+          bySalesPerson.map(r=>[r.owner.name, r.invoices, r.totalSales, r.profFee, r.collected, r.balance, r.collectedPct ?? ""])) : null}
+        onExportExcel={bySalesPerson.length ? ()=>exportExcel("sales-by-person-report.xlsx",
+          ["Salesperson","Invoices","Total sales","Professional fee","Collected","Balance","Collected %"],
+          bySalesPerson.map(r=>[r.owner.name, r.invoices, r.totalSales, r.profFee, r.collected, r.balance, r.collectedPct ?? ""])) : null}>
+        <table className="agw-table">
+          <thead><tr><th>Salesperson</th><th>Invoices</th><th>Total sales</th><th>Professional fee</th><th>Collected</th><th>Balance</th><th>Collected %</th><th></th></tr></thead>
+          <tbody>
+            {bySalesPerson.map(r => (
+              <tr key={r.owner.id}>
+                <td style={{display:"flex",alignItems:"center",gap:8}}><span className="avatar">{r.owner.initials}</span>{r.owner.name}</td>
+                <td>{r.invoices}</td>
+                <td className="mono">{money(r.totalSales)}</td>
+                <td className="mono">{money(r.profFee)}</td>
+                <td className="mono">{money(r.collected)}</td>
+                <td className="mono" style={{ color: r.balance>0 ? "var(--danger)" : "var(--success)" }}>{money(r.balance)}</td>
+                <td>{r.collectedPct==null ? "—" : `${r.collectedPct}%`}</td>
+                <td style={{ textAlign:"right" }}>
+                  <button className="btn btn-sm btn-ghost" disabled={downloading===r.owner.id || r.invoices===0} onClick={()=>downloadPerson(r)} title={`Download ${r.owner.name}'s report`}>
+                    <Download size={13}/> {downloading===r.owner.id ? "…" : "PDF"}
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </ReportTableCard>
+
+      <ReportTableCard title="Invoice detail" empty={detailInvoices.length===0 ? "No Professional Fee invoices in this period." : null}
+        onExport={detailInvoices.length ? ()=>exportCSV("sales-report-invoices.csv",
+          ["Invoice","Date","Customer","Sales person","Service","Total","Professional fee","Paid","Balance"],
+          invoiceRows(detailInvoices).map(r=>[r.id, r.date, r.customer, r.salesPerson||"", r.service||"", r.total, r.profFee, r.paid, r.balance])) : null}>
+        <table className="agw-table">
+          <thead><tr><th>Invoice</th><th>Date</th><th>Customer</th><th>Sales person</th><th>Service</th><th>Total</th><th>Prof. fee</th><th>Paid</th><th>Balance</th></tr></thead>
+          <tbody>
+            {detailInvoices.map(inv => {
+              const paid = inv.payments.reduce((a,p)=>a+p.amount,0);
+              const balance = Math.max(0, inv.professionalFeeAmount - paid);
+              return (
+                <tr key={inv.id}>
+                  <td className="mono">{inv.id}</td>
+                  <td className="mono" style={{fontSize:12}}>{fmtDate(inv.createdAt)}</td>
+                  <td>{inv.customer}</td>
+                  <td style={{fontSize:12.5}}>{inv.salesPerson || "—"}</td>
+                  <td style={{fontSize:12.5}}>{inv.service || "—"}</td>
+                  <td className="mono">{money(inv.amount)}</td>
+                  <td className="mono">{money(inv.professionalFeeAmount)}</td>
+                  <td className="mono">{money(paid)}</td>
+                  <td className="mono" style={{ color: balance>0 ? "var(--danger)" : "var(--success)" }}>{money(balance)}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </ReportTableCard>

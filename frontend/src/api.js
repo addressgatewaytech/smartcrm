@@ -376,6 +376,15 @@ export const api = {
       if (!res.ok) throw new ApiError("Failed to generate PDF", res.status);
       return res.blob();
     },
+    // Multi-section Sales Report (KPI band + By salesperson table + notes + invoice detail) —
+    // same trust-the-client-payload pattern as downloadPdf above, see reports.routes.js.
+    downloadSalesReportPdf: async (payload) => {
+      const headers = { "Content-Type": "application/json" };
+      if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
+      const res = await fetch(`/api/reports/sales-report-pdf`, { method: "POST", headers, cache: "no-store", body: JSON.stringify(payload) });
+      if (!res.ok) throw new ApiError("Failed to generate PDF", res.status);
+      return res.blob();
+    },
   },
   dataManager: {
     list: () => get("/data-manager"),
