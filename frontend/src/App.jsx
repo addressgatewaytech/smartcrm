@@ -9886,15 +9886,24 @@ function SalesReport({ state, range, periodLabel, salesFilter = [] }) {
   // only ever have themselves in allOwners), so it's effectively Admin/Sales Manager only.
   const [personPick, setPersonPick] = useState("");
 
-  const allOwners = state.employees.filter(e => e.roles.includes("sales_exec") || e.roles.includes("sales_manager"));
+  const feeInvoices = state.invoices.filter(inv => inv.feeType !== "Government Fee");
+  const periodInvoices = feeInvoices.filter(inv => inRange(inv.createdAt, range));
+
+  // Two sources, unioned: the standard sales+admin roster (sales_exec, sales_manager, or any
+  // admin-tier role — same eligibility as the quotation's own "Sales person" picker, see e995dc6)
+  // so a team member with zero sales still shows at 0, PLUS anyone who has ever actually been
+  // credited with a Professional Fee invoice, regardless of role — a quotation's Sales person can
+  // be reassigned to literally anyone (Ops/PRO staff included), so restricting this list to a
+  // fixed set of roles silently dropped real salespeople out of their own report.
+  const roleRoster = state.employees.filter(e => e.roles.some(r => r === "sales_exec" || r === "sales_manager" || ADMIN_LIKE.includes(r)));
+  const creditedNames = new Set(feeInvoices.map(inv => inv.salesPerson).filter(Boolean));
+  const creditedOwners = state.employees.filter(e => creditedNames.has(e.name) && !roleRoster.some(r => r.id === e.id));
+  const allOwners = [...roleRoster, ...creditedOwners];
   const owners = salesFilter.length ? allOwners.filter(o => salesFilter.includes(o.id)) : allOwners;
   // Filtered to a subset via the People picker above — a specific salesperson's own report should
   // never include another person's (or nobody's) invoices alongside theirs.
   const scoped = salesFilter.length > 0;
   const scopedNames = new Set(owners.map(o => o.name));
-
-  const feeInvoices = state.invoices.filter(inv => inv.feeType !== "Government Fee");
-  const periodInvoices = feeInvoices.filter(inv => inRange(inv.createdAt, range));
   // Only ever surfaced in the unfiltered, company-wide report — a specific salesperson's report
   // has nothing to say about work nobody has been credited with yet.
   const unassigned = scoped ? [] : periodInvoices.filter(inv => !inv.salesPerson);
