@@ -602,6 +602,27 @@ const sameSubCustomer = (x, sub) => (x.customerId && sub.customerId) ? x.custome
 const isGrowthPartnerCustomer = (state, job) =>
   state.subscriptions.some(s => sameSubCustomer(job, s) && s.plan === "Growth Partner Program" && !["Cancelled","Expired"].includes(subStatusOf(s)));
 
+// A Growth Partner customer's routine, included services are created directly (no sales order —
+// see job_cards.routes.js POST /direct) and are what the plan's own transaction allowance meters.
+// A job card that instead went through its own quotation -> sales order -> invoice is a separate,
+// out-of-scope deal the customer paid for on top of the flat subscription fee — it shouldn't eat
+// into that allowance, and the Job Cards screens flag it as "Extra Job" so nobody mistakes it for
+// one of the plan's included transactions. Excludes the plan's own onboarding job (its service is
+// literally "Growth Partner Program") even if that one was itself sold through a sales order.
+const isExtraJobForGrowthPartner = (state, job) =>
+  !!job.salesOrderId && job.service !== "Growth Partner Program" && isGrowthPartnerCustomer(state, job);
+
+function ExtraJobBadge({ big }) {
+  return (
+    <span className="pill" style={big
+        ? { background:"var(--info-tint)", color:"var(--info)", fontSize:12, padding:"4px 10px 4px 8px", display:"inline-flex", alignItems:"center", gap:5 }
+        : { background:"var(--info-tint)", color:"var(--info)", fontSize:10, padding:"3px 8px 3px 6px", flexShrink:0, display:"inline-flex", alignItems:"center", gap:4 }}
+      title="Billed separately through its own quotation, sales order and invoice — doesn't count toward this customer's Growth Partner transaction allowance">
+      <Briefcase size={big ? 15 : 13} strokeWidth={2.25}/>Extra Job
+    </span>
+  );
+}
+
 const JOB_AGE_BUCKETS = [
   { key: "0-3", label: "0–3 days old", test: (d) => d <= 3 },
   { key: "4-7", label: "4–7 days old", test: (d) => d >= 4 && d <= 7 },
@@ -5450,6 +5471,10 @@ function subTransactionsUsed(sub, state) {
     // Excludes the plan's own service (e.g. Growth Partner Program) — that job card is what
     // creates or renews the subscription itself, not a client transaction spent under it.
     if (j.service === sub.plan) return false;
+    // A job billed through its own quotation -> sales order -> invoice is a separately paid,
+    // out-of-scope deal ("Extra Job" — see isExtraJobForGrowthPartner), not one of the plan's
+    // included transactions, so it doesn't count against the allowance either.
+    if (j.salesOrderId) return false;
     const createdAt = j.statusLog?.[0]?.at || sub.startDate;
     return createdAt >= sub.startDate;
   }).length;
@@ -5871,9 +5896,10 @@ function SubscriptionDetailModal({ subscription: sub, state, dispatch, isAdmin, 
   const confirm = useConfirm();
   const txUsed = subTransactionsUsed(sub, state);
   const txOver = tier && txUsed > tier.transactionsIncluded;
-  // Same exclusion as subTransactionsUsed — kept in sync since this list's length is what the
+  // Same exclusions as subTransactionsUsed (including Extra Jobs — a sales-order-billed job isn't
+  // one of the plan's included transactions) — kept in sync since this list's length is what the
   // "N job cards linked" caption below reports right next to that same meter.
-  const linkedJobs = state.jobCards.filter(j => sameSubCustomer(j, sub) && j.status !== "Cancelled" && j.service !== sub.plan && (j.statusLog?.[0]?.at || sub.startDate) >= sub.startDate);
+  const linkedJobs = state.jobCards.filter(j => sameSubCustomer(j, sub) && j.status !== "Cancelled" && j.service !== sub.plan && !j.salesOrderId && (j.statusLog?.[0]?.at || sub.startDate) >= sub.startDate);
   // Office Space Assistance (and any future plan without transaction/training/etc. allowances)
   // has no meaningful "usage" to meter — its tier row is all nulls apart from the fee. Showing
   // the Job Card meter there just reads as a permanently-stuck "0/—" with no real signal.
@@ -7297,6 +7323,7 @@ function JobsPage({ state, dispatch, role, userId, highlightId, onHighlightHandl
                   <td style={{ display:"flex", alignItems:"center", gap:6, maxWidth:200 }}>
                     <span style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }} title={j.customer}>{j.customer}</span>
                     {isGrowthPartnerCustomer(state, j) && <span className="pill" style={{ background:"var(--gold-tint)", color:"var(--gold-dark)", fontSize:10, padding:"3px 8px 3px 6px", flexShrink:0, display:"inline-flex", alignItems:"center", gap:4 }} title="Growth Partner Program customer"><Award size={16} fill="var(--gold)" fillOpacity={0.35} strokeWidth={2.25}/>{j.service==="Growth Partner Program" && j.packageTier ? j.packageTier : ""}</span>}
+                    {isExtraJobForGrowthPartner(state, j) && <ExtraJobBadge/>}
                   </td>
                   <td style={{maxWidth:220, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}} title={`${j.service}${j.description && j.description.trim().toLowerCase() !== j.service.trim().toLowerCase() ? ` — ${j.description}` : ""}`}>
                     <span style={{ display:"inline-block", width:8, height:8, borderRadius:"50%", background:jobCategoryColor(j.service, state.services), marginRight:6, border:"1px solid var(--hair)" }} />
@@ -7358,6 +7385,7 @@ function JobsPage({ state, dispatch, role, userId, highlightId, onHighlightHandl
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:6 }}>
                   <h5 style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{j.customer}</h5>
                   {isGrowthPartnerCustomer(state, j) && <span className="pill" style={{ background:"var(--gold-tint)", color:"var(--gold-dark)", fontSize:10, padding:"3px 8px 3px 6px", flexShrink:0, display:"inline-flex", alignItems:"center", gap:4 }} title="Growth Partner Program customer"><Award size={16} fill="var(--gold)" fillOpacity={0.35} strokeWidth={2.25}/>{j.service==="Growth Partner Program" && j.packageTier ? j.packageTier : ""}</span>}
+                  {isExtraJobForGrowthPartner(state, j) && <ExtraJobBadge/>}
                 </div>
                 <div className="mono" style={{ fontSize:11, color:"var(--ink-soft)", marginTop:-4, marginBottom:4, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
                   {j.id} · {j.service}
@@ -7462,6 +7490,7 @@ function AssignModal({ job, dispatch, employees, onClose }) {
 
 function JobDetailModal({ job, state, dispatch, role, userId, employees, approvalTypes=[], onClose, onReassign, initialShowCancel=false }) {
   const isGP = !!state && isGrowthPartnerCustomer(state, job);
+  const isExtra = !!state && isExtraJobForGrowthPartner(state, job);
   const [cancelReason, setCancelReason] = useState("");
   const [showCancel, setShowCancel] = useState(initialShowCancel);
   const [showReject, setShowReject] = useState(false);
@@ -7545,6 +7574,7 @@ function JobDetailModal({ job, state, dispatch, role, userId, employees, approva
         {isGP && <span className="pill" style={{ background:"var(--gold-tint)", color:"var(--gold-dark)", fontSize:12, padding:"4px 10px 4px 8px", display:"inline-flex", alignItems:"center", gap:5 }} title="Growth Partner Program customer">
           <Award size={18} fill="var(--gold)" fillOpacity={0.35} strokeWidth={2.25}/>Growth Partner{job.packageTier ? ` · ${job.packageTier}` : ""}
         </span>}
+        {isExtra && <ExtraJobBadge big/>}
       </span>} sub={`${job.customer} — ${job.service}${job.packageTier ? ` (${job.packageTier})` : ""}${job.description && job.description.trim().toLowerCase() !== job.service.trim().toLowerCase() ? " — "+job.description : ""}`} onClose={onClose} width={640}>
       <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop:-6, marginBottom:6 }}>
         <button className="btn btn-sm" disabled={downloading} onClick={async ()=>{
