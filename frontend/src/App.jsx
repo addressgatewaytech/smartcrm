@@ -1323,6 +1323,11 @@ export default function App() {
   const bottomExtra = flatNav.filter(i => i.key !== "dashboard" && i.key !== "notifications").slice(0, 2);
 
   const ctx = { state, dispatch, role, userId, unreadCount };
+  // Jumps to a quotation on the Quotations page and, when openPdf is set, opens it straight up
+  // instead of just scrolling to it — passed to every screen that can create a quotation (Deals,
+  // Leads, a Customer's own "Create quotation") so a freshly built one is never left to be found
+  // by hand. Previously only Deals had this wired up.
+  const onViewQuotation = (id, openPdf) => { setHighlightQuotationId(id); setAutoOpenQuotationPdf(!!openPdf); };
 
   const titles = {
     dashboard: ["Dashboard", "Company-wide snapshot"],
@@ -1462,14 +1467,14 @@ export default function App() {
           </div>
           <div className="agw-content">
             {page === "dashboard" && <Dashboard {...ctx} setPage={setPage} onOpenExpiredCustomers={()=>setCustomersExpiryFilterRequest("expired")} />}
-            {page === "leads" && <LeadsPage {...ctx} setPage={setPage} />}
-            {page === "deals" && <DealsPage {...ctx} setPage={setPage} onViewQuotation={(id, openPdf)=>{ setHighlightQuotationId(id); setAutoOpenQuotationPdf(!!openPdf); }} />}
+            {page === "leads" && <LeadsPage {...ctx} setPage={setPage} onViewQuotation={onViewQuotation} />}
+            {page === "deals" && <DealsPage {...ctx} setPage={setPage} onViewQuotation={onViewQuotation} />}
             {page === "quotations" && <QuotationsPage {...ctx} highlightId={highlightQuotationId} autoOpenPdf={autoOpenQuotationPdf} onHighlightHandled={()=>{ setHighlightQuotationId(null); setAutoOpenQuotationPdf(false); }}
-              setPage={setPage} onSalesOrderCreated={setHighlightSalesOrderId} />}
+              setPage={setPage} onViewQuotation={onViewQuotation} onSalesOrderCreated={setHighlightSalesOrderId} />}
             {page === "quotationTemplates" && <QuotationTemplatesPage {...ctx} />}
-            {page === "customersAddressGateway" && <CustomersPage {...ctx} initialCategoryFilter="Address Gateway Customers" expiryFilterRequest={customersExpiryFilterRequest} onExpiryFilterRequestHandled={()=>setCustomersExpiryFilterRequest(null)} />}
-            {page === "customersOthers" && <CustomersPage {...ctx} initialCategoryFilter="Others" expiryFilterRequest={customersExpiryFilterRequest} onExpiryFilterRequestHandled={()=>setCustomersExpiryFilterRequest(null)} />}
-            {page === "customersAll" && <CustomersPage {...ctx} initialCategoryFilter="" expiryFilterRequest={customersExpiryFilterRequest} onExpiryFilterRequestHandled={()=>setCustomersExpiryFilterRequest(null)} />}
+            {page === "customersAddressGateway" && <CustomersPage {...ctx} setPage={setPage} onViewQuotation={onViewQuotation} initialCategoryFilter="Address Gateway Customers" expiryFilterRequest={customersExpiryFilterRequest} onExpiryFilterRequestHandled={()=>setCustomersExpiryFilterRequest(null)} />}
+            {page === "customersOthers" && <CustomersPage {...ctx} setPage={setPage} onViewQuotation={onViewQuotation} initialCategoryFilter="Others" expiryFilterRequest={customersExpiryFilterRequest} onExpiryFilterRequestHandled={()=>setCustomersExpiryFilterRequest(null)} />}
+            {page === "customersAll" && <CustomersPage {...ctx} setPage={setPage} onViewQuotation={onViewQuotation} initialCategoryFilter="" expiryFilterRequest={customersExpiryFilterRequest} onExpiryFilterRequestHandled={()=>setCustomersExpiryFilterRequest(null)} />}
             {page === "dataManager" && <DataManagerPage {...ctx} />}
             {page === "subscriptions" && <SubscriptionsPage {...ctx} />}
             {page === "orders" && <OrdersPage {...ctx} setPage={setPage} highlightId={highlightSalesOrderId} onHighlightHandled={()=>setHighlightSalesOrderId(null)}
@@ -2396,7 +2401,7 @@ function LeadFormModal({ state, dispatch, userId, editLead, onClose }) {
   );
 }
 
-function LeadsPage({ state, dispatch, userId, role }) {
+function LeadsPage({ state, dispatch, userId, role, setPage, onViewQuotation }) {
   const [view, setView] = useState("kanban");
   const [draggedLeadId, setDraggedLeadId] = useState(null);
   const [dragOverStatus, setDragOverStatus] = useState(null);
@@ -2706,7 +2711,8 @@ function LeadsPage({ state, dispatch, userId, role }) {
           </div>
         </Modal>
       )}
-      {quoteFor && <QuoteBuilderModal dealId={quoteFor.id} customerName={quoteFor.customer} defaultService={quoteFor.service} services={state.services} itemCatalog={state.itemCatalog} dispatch={dispatch} templates={state.quotationTemplates} subscriptionPlans={state.subscriptionPlans} subscriptions={state.subscriptions} role={role} employees={state.employees} defaultOwner={quoteFor.owner} onClose={()=>setQuoteFor(null)} />}
+      {quoteFor && <QuoteBuilderModal dealId={quoteFor.id} customerName={quoteFor.customer} defaultService={quoteFor.service} services={state.services} itemCatalog={state.itemCatalog} dispatch={dispatch} templates={state.quotationTemplates} subscriptionPlans={state.subscriptionPlans} subscriptions={state.subscriptions} role={role} employees={state.employees} defaultOwner={quoteFor.owner} onClose={()=>setQuoteFor(null)}
+        onCreated={(id)=>{ onViewQuotation(id, true); setPage("quotations"); }} />}
     </div>
   );
 }
@@ -3361,7 +3367,7 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
 /* QUOTATIONS                                                              */
 /* ---------------------------------------------------------------------- */
 
-function QuotationsPage({ state, dispatch, role, userId, highlightId, autoOpenPdf=false, onHighlightHandled, setPage, onSalesOrderCreated }) {
+function QuotationsPage({ state, dispatch, role, userId, highlightId, autoOpenPdf=false, onHighlightHandled, setPage, onViewQuotation, onSalesOrderCreated }) {
   const [openId, setOpenId] = useState(null);
   // Set alongside openId when opened via the Edit action, so the modal jumps straight into Visual
   // edit — Draft/Pending Manager Approval quotations are editable regardless of role, but that was
@@ -3476,12 +3482,12 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, autoOpenPd
         <PaginationBar {...pg} />
       </div>
       {open && <QuoteDetailModal quotation={open} state={state} dispatch={dispatch} role={role} userId={userId} customerOptions={customerOptions} templates={state.quotationTemplates} startInEdit={openInEdit} onClose={()=>{ setOpenId(null); setOpenInEdit(false); }}
-        setPage={setPage} onSalesOrderCreated={onSalesOrderCreated} />}
+        setPage={setPage} onViewQuotation={onViewQuotation} onSalesOrderCreated={onSalesOrderCreated} />}
       {cloneFor && <CloneQuoteModal quotation={cloneFor} customerOptions={customerOptions} dispatch={dispatch} onClose={()=>setCloneFor(null)} />}
       {removeQuote && <ConfirmModal title={`Remove ${removeQuote.id}?`} body={`${removeQuote.customer} — ${removeQuote.status}. This can't be undone. Blocked if it already has a Sales Order.`}
         onConfirm={async ()=>{ try { await dispatch({type:"DELETE_QUOTATION", id:removeQuote.id}); } catch (err) { alert(err instanceof ApiError ? err.message : "Couldn't delete — please try again."); } }}
         onClose={()=>setRemoveQuote(null)} />}
-      {viewingCustomer && <CustomerDetailModal customer={viewingCustomer} state={state} dispatch={dispatch} role={role} userId={userId} onClose={()=>setViewingCustomer(null)} />}
+      {viewingCustomer && <CustomerDetailModal customer={viewingCustomer} state={state} dispatch={dispatch} role={role} userId={userId} setPage={setPage} onViewQuotation={onViewQuotation} onClose={()=>setViewingCustomer(null)} />}
     </div>
   );
 }
@@ -3514,7 +3520,7 @@ function CloneQuoteModal({ quotation: q, customerOptions, dispatch, onClose, onC
   );
 }
 
-function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, customerOptions=[], templates={}, onClose, startInEdit=false, setPage, onSalesOrderCreated }) {
+function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, customerOptions=[], templates={}, onClose, startInEdit=false, setPage, onViewQuotation, onSalesOrderCreated }) {
   const [cloning, setCloning] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [emailing, setEmailing] = useState(false);
@@ -4061,7 +4067,7 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
         </div>
         );
       })()}
-      {viewingCustomer && <CustomerDetailModal customer={viewingCustomer} state={state} dispatch={dispatch} role={role} userId={userId} onClose={()=>setViewingCustomer(null)} />}
+      {viewingCustomer && <CustomerDetailModal customer={viewingCustomer} state={state} dispatch={dispatch} role={role} userId={userId} setPage={setPage} onViewQuotation={onViewQuotation} onClose={()=>setViewingCustomer(null)} />}
     </Modal>
   );
 }
@@ -4625,7 +4631,7 @@ function matchesExpiryFilter(customer, filterKey) {
   });
 }
 
-function CustomersPage({ state, dispatch, role, userId, expiryFilterRequest, onExpiryFilterRequestHandled, initialCategoryFilter }) {
+function CustomersPage({ state, dispatch, role, userId, expiryFilterRequest, onExpiryFilterRequestHandled, initialCategoryFilter, setPage, onViewQuotation }) {
   const [view, setView] = useState("table");
   const [openId, setOpenId] = useState(null);
   // Derived, not a frozen snapshot — see the identical fix on JobsPage/QuotationsPage: in-modal
@@ -4837,7 +4843,7 @@ function CustomersPage({ state, dispatch, role, userId, expiryFilterRequest, onE
         {visibleCustomers.length===0 && <Empty icon={UserCheck} text="No customers yet — add one directly, or they'll appear once a quotation converts to a sales order." />}
       </div>
       )}
-      {open && <CustomerDetailModal customer={open} state={state} dispatch={dispatch} role={role} userId={userId} onClose={()=>setOpenId(null)} />}
+      {open && <CustomerDetailModal customer={open} state={state} dispatch={dispatch} role={role} userId={userId} setPage={setPage} onViewQuotation={onViewQuotation} onClose={()=>setOpenId(null)} />}
       {editCustomer && <NewCustomerModal customer={editCustomer} dispatch={dispatch} onClose={()=>setEditCustomer(null)} />}
       {removeCustomer && <ConfirmModal title={`Remove ${removeCustomer.name}?`} body="This deletes the customer profile, their KYC documents, and any employee records on file. This can't be undone." onConfirm={()=>dispatch({type:"DELETE_CUSTOMER", id:removeCustomer.id})} onClose={()=>setRemoveCustomer(null)} />}
       {/* A brand-new customer has no Sales Order/Invoice/Job Card yet, so it computes as "Others" —
@@ -4917,7 +4923,7 @@ function NewCustomerModal({ dispatch, onClose, onCreated, customer=null }) {
   );
 }
 
-function CustomerDetailModal({ customer: c, state, dispatch, role, userId, onClose }) {
+function CustomerDetailModal({ customer: c, state, dispatch, role, userId, setPage, onViewQuotation, onClose }) {
   const isAdmin = ADMIN_LIKE.includes(role);
   const [tab, setTab] = useState("profile");
   const [creatingDeal, setCreatingDeal] = useState(false);
@@ -4995,7 +5001,8 @@ function CustomerDetailModal({ customer: c, state, dispatch, role, userId, onClo
       {merging && <MergeCustomersModal customer={c} state={state} dispatch={dispatch} onClose={()=>setMerging(false)} onMerged={onClose} />}
 
       {creatingDeal && <NewDealModal state={state} dispatch={dispatch} userId={userId} initialCustomer={c.name} onClose={()=>setCreatingDeal(false)} onCreated={(deal)=>setQuoteFor(deal)} />}
-      {quoteFor && <QuoteBuilderModal dealId={quoteFor.id} customerName={quoteFor.customer} defaultService={quoteFor.service} services={state.services} itemCatalog={state.itemCatalog} dispatch={dispatch} templates={state.quotationTemplates} subscriptionPlans={state.subscriptionPlans} subscriptions={state.subscriptions} role={role} employees={state.employees} defaultOwner={quoteFor.owner} onClose={()=>setQuoteFor(null)} />}
+      {quoteFor && <QuoteBuilderModal dealId={quoteFor.id} customerName={quoteFor.customer} defaultService={quoteFor.service} services={state.services} itemCatalog={state.itemCatalog} dispatch={dispatch} templates={state.quotationTemplates} subscriptionPlans={state.subscriptionPlans} subscriptions={state.subscriptions} role={role} employees={state.employees} defaultOwner={quoteFor.owner} onClose={()=>setQuoteFor(null)}
+        onCreated={(id)=>{ onViewQuotation?.(id, true); setPage?.("quotations"); }} />}
 
       {emailingCustomer && (() => {
         const tpl = emailTemplateFor(state, "customer_email", { contactName: c.contact || c.name },
