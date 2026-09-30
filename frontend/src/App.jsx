@@ -5,7 +5,7 @@ import { useApiStore } from "./store";
 import {
   LayoutDashboard, Users, Handshake, FileText, UserCheck, ShoppingCart,
   Receipt, ClipboardList, Bell, Coins, UserCog, ListChecks, Building2,
-  Plus, X, Check, ChevronRight, ChevronUp, ChevronDown, AlertTriangle, CircleDollarSign, RefreshCw,
+  Plus, X, Check, ChevronRight, ChevronDown, AlertTriangle, CircleDollarSign, RefreshCw,
   UserPlus, ShieldCheck, Ban, Clock, ArrowRight, Search, Mail, Phone,
   BadgeCheck, CalendarClock, Briefcase, Copy, Files, Link2, Pencil, Trash2, Repeat, BarChart3, Download, MoreHorizontal, ChevronsLeft, ChevronsRight, Camera, Star,
   Database, Upload, MessageCircle, ArchiveX, Settings as SettingsIcon,
@@ -504,39 +504,6 @@ const quoteTotals = (items, orderDiscount, orderDiscountType) => {
   const pct = Math.min(100, Math.max(0, orderDiscount || 0));
   const discountAmount = orderDiscountType === "percent" ? subtotal * (pct / 100) : (orderDiscount || 0);
   return { grossSubtotal, subtotal, itemDiscountTotal, discountAmount, total: Math.max(0, subtotal - discountAmount) };
-};
-
-// Amount/percent toggle for the order-level "overall discount" field — reused everywhere a
-// quotation's whole-document discount is entered (builder, current-view edit, PDF-preview edit,
-// per-service template).
-function OrderDiscountField({ value, type, onValueChange, onTypeChange, label = "Overall discount" }) {
-  return (
-    <div className="field">
-      <label>{label} (optional — shown as its own line)</label>
-      <div style={{ display:"flex", gap:6 }}>
-        <input type="number" min={0} max={type==="percent" ? 100 : undefined} value={value}
-          onChange={e=>onValueChange(e.target.value === "" ? "" : Number(e.target.value))} style={{ flex:1 }} />
-        <div style={{ display:"flex", border:"1px solid var(--hair)", borderRadius:8, overflow:"hidden", flexShrink:0 }}>
-          <button type="button" onClick={()=>onTypeChange("amount")}
-            style={{ padding:"0 12px", fontSize:12.5, border:"none", cursor:"pointer",
-              background: type!=="percent" ? "var(--brand)" : "var(--surface)", color: type!=="percent" ? "#fff" : "var(--ink)" }}>QAR</button>
-          <button type="button" onClick={()=>onTypeChange("percent")}
-            style={{ padding:"0 12px", fontSize:12.5, border:"none", cursor:"pointer",
-              background: type==="percent" ? "var(--brand)" : "var(--surface)", color: type==="percent" ? "#fff" : "var(--ink)" }}>%</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Moves array element `i` up (dir=-1) or down (dir=1) by one position — used for the per-line
-// "move item" controls in the quotation builder and templates editor.
-const moveArrayItem = (arr, i, dir) => {
-  const j = i + dir;
-  if (j < 0 || j >= arr.length) return arr;
-  const next = arr.slice();
-  [next[i], next[j]] = [next[j], next[i]];
-  return next;
 };
 
 // Where a record originally came from. "Assigned" = the Lead Manager handed this lead to its owner
@@ -3090,104 +3057,6 @@ function AddActivityControl({ onAdd }) {
   );
 }
 
-// One fee-type section (Government Fee or Professional Fee) within QuoteItemsEditor — its own
-// light-tinted block, its own item rows, its own "add item" control. Adding here always sets
-// the new item's feeType to this section's, so there's no more relying on category text or a
-// per-item dropdown to classify a line correctly.
-function ItemSection({ title, bg, feeType, items, setItems, service, readOnly }) {
-  const update = (i, field, val) => setItems(items.map((it,idx) => idx===i ? { ...it, [field]: val } : it));
-  const updateMulti = (i, patch) => setItems(items.map((it,idx) => idx===i ? { ...it, ...patch } : it));
-  const addActivity = (i, name) => {
-    const it = items[i];
-    const n = splitNoteLines(it.note).length + 1;
-    const newNote = (it.note && it.note.trim() ? it.note.trim() + "\n" : "") + `${n} - ${name}`;
-    updateMulti(i, { note: newNote, qty: (Number(it.qty) || 0) + 1 });
-  };
-  const remove = (i) => setItems(items.filter((_,idx) => idx!==i));
-  const move = (i, dir) => setItems(moveArrayItem(items, i, dir));
-  const addEntry = ({ description, note, price }) => {
-    const lastCategory = items.length ? items[items.length-1].category || "" : "";
-    setItems([...items, { category: lastCategory, service, description, note, qty: 1, price, discountPct: 0, feeType }]);
-  };
-  const subtotal = items.reduce((a,it)=>a+it.qty*it.price*(1-(it.discountPct||0)/100), 0);
-  if (readOnly && items.length === 0) return null;
-  // A service that never needs this fee type (e.g. Office Space Assistance has no Government Fee
-  // line) shouldn't have to look at a permanently-empty colored band with "No ... items yet." —
-  // collapse down to just the add control until an item actually exists, then show the normal
-  // section in full.
-  if (!readOnly && items.length === 0) {
-    return <div style={{ marginBottom:16 }}><AddItemControl onAdd={addEntry} label={`Add ${title.toLowerCase()} item`} /></div>;
-  }
-
-  return (
-    <div style={{ marginBottom: 16 }}>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", background:bg, borderRadius:8, padding:"8px 12px", marginBottom:8 }}>
-        <strong style={{ fontSize:13 }}>{title}</strong>
-        <span className="mono" style={{ fontSize:12.5, color:"var(--ink-soft)" }}>{money(subtotal)}</span>
-      </div>
-      {items.map((it, i) => readOnly ? (
-        <div key={i} style={{ background:bg, borderRadius:8, padding:"8px 12px", marginBottom:6, display:"flex", justifyContent:"space-between", gap:12 }}>
-          <div>
-            {it.category && <div style={{ fontSize:11, color:"var(--ink-soft)" }}>{it.category}</div>}
-            <div style={{ fontSize:13 }}>{it.description || it.service}</div>
-            <NoteLines note={it.note} style={{ fontSize:11.5, color:"var(--ink-soft)" }} bullet={feeType==="Professional Fee"} />
-          </div>
-          <div style={{ textAlign:"right", flexShrink:0 }}>
-            <div className="mono" style={{ fontSize:13 }}>{money(it.qty*it.price*(1-(it.discountPct||0)/100))}</div>
-            <div style={{ fontSize:11, color:"var(--ink-soft)" }}>{it.qty} × {money(it.price)}{it.discountPct > 0 ? ` (-${it.discountPct}%)` : ""}</div>
-          </div>
-        </div>
-      ) : (
-        <div key={i} style={{ background:bg, borderRadius:8, padding:"10px 12px", marginBottom:8 }}>
-          <div className="row2">
-            <div className="field"><label>Category / stage (optional)</label>
-              <input value={it.category || ""} onChange={e=>update(i,"category",e.target.value)} placeholder="e.g. STAGE - 1" />
-            </div>
-            <div className="field"><label>Item & description</label>
-              <input value={it.description || ""} onChange={e=>update(i,"description",e.target.value)} placeholder="e.g. Issue New CR" />
-            </div>
-          </div>
-          <div className="field"><label>Note (optional)</label>
-            <textarea rows={2} value={it.note || ""} onChange={e=>update(i,"note",e.target.value)} placeholder={"e.g. 50 QAR per partner, or a numbered list —\n1 - first point\n2 - second point"} />
-            {isActivityFeeItem(it) && <AddActivityControl onAdd={(name)=>addActivity(i,name)} />}
-          </div>
-          <div className="row2">
-            <div className="field"><label>Qty</label><input type="number" min={1} value={it.qty} onChange={e=>update(i,"qty",(e.target.value === "" ? "" : Number(e.target.value)))} /></div>
-            <div className="field"><label>Rate (QAR)</label><input type="number" value={it.price} onChange={e=>update(i,"price",(e.target.value === "" ? "" : Number(e.target.value)))} /></div>
-          </div>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-            <span className="mono" style={{ fontSize:12, color:"var(--ink-soft)" }}>{money(it.qty*it.price*(1-(it.discountPct||0)/100))}</span>
-            <div style={{ display:"flex", gap:2 }}>
-              <button type="button" className="btn btn-sm btn-ghost" title="Move up" disabled={i===0} onClick={()=>move(i,-1)}><ChevronUp size={13}/></button>
-              <button type="button" className="btn btn-sm btn-ghost" title="Move down" disabled={i===items.length-1} onClick={()=>move(i,1)}><ChevronDown size={13}/></button>
-              <button type="button" className="btn btn-sm btn-ghost" style={{color:"var(--danger)"}} title="Remove" onClick={()=>remove(i)}><X size={13}/></button>
-            </div>
-          </div>
-        </div>
-      ))}
-      {!readOnly && <AddItemControl onAdd={addEntry} label={`Add ${title.toLowerCase()} item`} />}
-    </div>
-  );
-}
-
-// Two fixed sections — Government Fee, then Professional Fee — replacing the old single list of
-// per-item cards that repeated a Fee Type + Service Type dropdown on every row. `items` is still
-// one flat array in storage (professionalFeeAmount/govProfSplit/isGovFeeLine/quotationPdf.js all
-// keep working unchanged) — this only splits it for editing and re-concatenates gov+prof on save.
-// `readOnly` renders a plain summary (no inputs/add/remove) — used for Current View before "Edit
-// items" is clicked, where items are still shown but not being edited.
-function QuoteItemsEditor({ items, onChange, service, quotationFeeType, readOnly = false }) {
-  const govItems = items.filter(it => isGovFeeLine(it, quotationFeeType));
-  const profItems = items.filter(it => !isGovFeeLine(it, quotationFeeType));
-  return (
-    <div>
-      <ItemSection title="Government Fee" bg={GOV_FEE_BG} feeType="Government Fee" items={govItems} service={service} readOnly={readOnly}
-        setItems={(next)=>onChange([...next, ...profItems])} />
-      <ItemSection title="Professional Fee" bg={PROF_FEE_BG} feeType="Professional Fee" items={profItems} service={service} readOnly={readOnly}
-        setItems={(next)=>onChange([...govItems, ...next])} />
-    </div>
-  );
-}
 
 function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVICES[0], editableCustomer=false, customerOptions=[], services=SERVICES, itemCatalog=[], dispatch, templates, subscriptionPlans={}, subscriptions=[], role=null, employees=[], defaultOwner="", onClose, onCreated }) {
   const [showNewService, setShowNewService] = useState(false);
@@ -4253,6 +4122,57 @@ function QuotationTemplateEditor({ state, dispatch, isAdmin }) {
     setServiceCost(state.serviceCosts[s] ?? 0);
   };
 
+  // --- Document rendering below mirrors QuoteDetailModal's doc-paper exactly (same grouping,
+  // same grid, same inline dashed-underline editing) — a template is now edited as exactly what
+  // it will produce, not a differently-shaped plain form someone has to mentally translate back
+  // into a PDF. Always in "editing" mode: unlike a real quotation, a template has no locked/sent
+  // state to protect — it's only ever a working draft for the next quotation built from it.
+  const themeColors = QUOTE_THEMES.charcoal; // templates carry no theme of their own — every new
+  // quotation built from one starts on the standard theme, same as the Quote Builder's own default.
+  const inputStyle = { border:"none", borderBottom:"1px dashed var(--hair)", background:"var(--gold-tint)", font:"inherit", color:"inherit", padding:"1px 2px", width:"100%" };
+
+  let lastCategory = null;
+  let runningNumber = 0;
+  const blocks = [];
+  items.forEach((it, i) => {
+    const isGov = isGovFeeLine(it, "Professional Fee");
+    const bg = isGov ? GOV_FEE_BG : PROF_FEE_BG;
+    if (!blocks.length || blocks[blocks.length - 1].isGov !== isGov) {
+      blocks.push({ feeType: isGov ? "Government Fee" : "Professional Fee", isGov, items: [] });
+      lastCategory = null;
+    }
+    const block = blocks[blocks.length - 1];
+    if ((it.category || "") !== lastCategory && it.category) {
+      block.items.push({ kind: "category", label: it.category, key: "cat-"+i, bg });
+      lastCategory = it.category;
+    }
+    runningNumber++;
+    block.items.push({ kind: "item", it, number: runningNumber, idx: i, key: "item-"+i, bg });
+  });
+  const hasGovItems = blocks.some(b => b.isGov);
+  const hasProfItems = blocks.some(b => !b.isGov);
+  const gridCols = "30px 1fr 50px 90px 90px 26px";
+  const { subtotal, itemDiscountTotal, total } = quoteTotals(items, orderDiscount, orderDiscountType);
+  const split = govProfSplit(items, "Professional Fee");
+
+  const updateItemField = (idx, field, val) => setItems(items.map((it,i) => i===idx ? { ...it, [field]: val } : it));
+  const updateItemFields = (idx, patch) => setItems(items.map((it,i) => i===idx ? { ...it, ...patch } : it));
+  const addActivityToItem = (idx, name) => {
+    const it = items[idx];
+    const n = splitNoteLines(it.note).length + 1;
+    const newNote = (it.note && it.note.trim() ? it.note.trim() + "\n" : "") + `${n} - ${name}`;
+    updateItemFields(idx, { note: newNote, qty: (Number(it.qty) || 0) + 1 });
+  };
+  const removeItemAt = (idx) => setItems(items.filter((_,i) => i!==idx));
+  const addItem = (feeType) => ({ description, note, price }) => {
+    const isGov = feeType === "Government Fee";
+    const newItem = { category:"", service, description, note, qty:1, price, discountPct:0, feeType };
+    let lastMatchIdx = -1;
+    items.forEach((it, i) => { if (isGovFeeLine(it, "Professional Fee") === isGov) lastMatchIdx = i; });
+    const insertAt = lastMatchIdx !== -1 ? lastMatchIdx + 1 : (isGov ? 0 : items.length);
+    setItems([...items.slice(0, insertAt), newItem, ...items.slice(insertAt)]);
+  };
+
   return (
     <div className="agw-grid" style={{ gridTemplateColumns: "220px 1fr" }}>
       <div className="agw-card" style={{ padding: 8 }}>
@@ -4274,31 +4194,28 @@ function QuotationTemplateEditor({ state, dispatch, isAdmin }) {
           <button className="agw-nav-item" style={{ color:"var(--brand)" }} onClick={()=>setShowNewService(true)}><Plus size={14}/> Add service</button>
         )}
       </div>
-      <div className="agw-card">
-        <strong style={{ fontSize: 14 }}>{service}</strong>
-        <p className="modal-sub">This becomes the starting point whenever someone builds a quotation for this service — one template with both Professional Fee and Government Fee lines, tagged per item.</p>
 
-        <div className="field"><label>Subject</label><input value={subject} onChange={e=>setSubject(e.target.value)} placeholder="e.g. 100% FOREIGN OWNERSHIP COMPANY FORMATION - Professional fees" /></div>
-
-        <QuoteItemsEditor items={items} onChange={setItems} service={service} />
-
-        <div className="row2" style={{ marginTop: 14 }}>
-          <div className="field"><label>Notes (shown as-is on the quotation)</label><textarea rows={4} value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Looking forward for your business..." /></div>
-          <div className="field"><label>Terms & Conditions (one per line — numbered automatically)</label><textarea rows={4} value={terms} onChange={e=>setTerms(e.target.value)} placeholder="100% of the Professional Fee to be paid in advance..." /></div>
-        </div>
-
-        <div className="row2">
-          <OrderDiscountField label="Default overall discount" value={orderDiscount} type={orderDiscountType} onValueChange={setOrderDiscount} onTypeChange={setOrderDiscountType} />
-          <div className="field"><label>Bank details override (optional — defaults to the standard account)</label><textarea rows={2} value={bank} onChange={e=>setBank(e.target.value)} placeholder="Leave blank to use the standard Address Gateway bank details" /></div>
-        </div>
-
-        <div className="field">
-          <label>Service cost (internal — what it costs Address Gateway to deliver this service, e.g. Office Space Assistance = 2,000 QAR. Not shown to the client — subtracted once per transaction from the Professional Fee to get Business Volume.)</label>
-          <div style={{ display:"flex", gap:8, maxWidth: 280 }}>
-            <input type="number" min="0" step="0.01" value={serviceCost} onChange={e=>setServiceCost(e.target.value)} />
-            <button className="btn btn-sm" onClick={()=>setSavingServiceCost(true)}>Save</button>
+      <div>
+        <div className="agw-card" style={{ marginBottom: 14 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8, flexWrap:"wrap" }}>
+            <div>
+              <strong style={{ fontSize: 14 }}>{service}</strong>
+              <p className="modal-sub" style={{ marginBottom:0 }}>This is exactly what a new quotation for this service starts from — edit it directly below, the same way you'd edit an actual quotation.</p>
+            </div>
+            <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+              <button className="btn btn-sm btn-primary" onClick={()=>setSavingTemplate(true)}><Check size={13}/> Save template</button>
+              {hasTemplate && <button className="btn btn-sm btn-ghost" style={{color:"var(--danger)"}} onClick={()=>setRemovingTemplate(true)}><Trash2 size={13}/> Delete template</button>}
+            </div>
+          </div>
+          <div className="field" style={{ maxWidth: 320, marginTop:12, marginBottom:0 }}>
+            <label>Service cost (internal — what it costs Address Gateway to deliver this service, e.g. Office Space Assistance = 2,000 QAR. Not shown to the client — subtracted once per transaction from the Professional Fee to get Business Volume.)</label>
+            <div style={{ display:"flex", gap:8 }}>
+              <input type="number" min="0" step="0.01" value={serviceCost} onChange={e=>setServiceCost(e.target.value)} />
+              <button className="btn btn-sm" onClick={()=>setSavingServiceCost(true)}>Save</button>
+            </div>
           </div>
         </div>
+
         {savingServiceCost && (
           <ConfirmModal
             title={`Update the service cost for ${service}?`}
@@ -4308,12 +4225,6 @@ function QuotationTemplateEditor({ state, dispatch, isAdmin }) {
             onClose={()=>setSavingServiceCost(false)}
           />
         )}
-        <div className="field"><label>Footer note (optional — shown at the bottom of every page)</label><textarea rows={2} value={footerNote} onChange={e=>setFooterNote(e.target.value)} placeholder={DEFAULT_FOOTER_NOTE} /></div>
-
-        <div style={{ display:"flex", gap:8, marginTop: 8 }}>
-          <button className="btn btn-primary" onClick={()=>setSavingTemplate(true)}>Save template</button>
-          {hasTemplate && <button className="btn btn-ghost" style={{color:"var(--danger)"}} onClick={()=>setRemovingTemplate(true)}><Trash2 size={13}/> Delete template</button>}
-        </div>
         {savingTemplate && (
           <ConfirmModal
             title={`Save the template for ${service}?`}
@@ -4351,6 +4262,165 @@ function QuotationTemplateEditor({ state, dispatch, isAdmin }) {
             onClose={()=>setRemovingService(null)}
           />
         )}
+
+        <div className="doc-paper">
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:24 }}>
+            <div>
+              <div className="disp" style={{ fontSize:30, fontWeight:500, letterSpacing:"-.01em" }}>QUOTE</div>
+              <div className="mono" style={{ fontSize:12, color:"var(--ink-soft)", marginTop:4 }}>Template preview — {service}</div>
+            </div>
+            <div style={{ textAlign:"right" }}>
+              <div style={{ display:"inline-block", textAlign:"right" }}><BrandLogo scale={1} /></div>
+              <div style={{ fontSize:11.5, color:"var(--ink-soft)", marginTop:8, lineHeight:1.6 }}>
+                Address Gateway Building<br/>D Ring Road, Doha, Qatar<br/>Call: 44434912, Email : startup@addressgateway.com<br/>www.addressgateway.com
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:20 }}>
+            <div>
+              <div style={{ fontSize:12, color:"var(--ink-soft)" }}>Quote Date :</div>
+              <div style={{ fontSize:13, marginTop:2, color:"var(--ink-soft)" }}>Set automatically when used</div>
+            </div>
+            <div style={{ textAlign:"right" }}>
+              <div style={{ fontSize:12, color:"var(--ink-soft)" }}>Bill To</div>
+              <div style={{ fontSize:13.5, fontWeight:500, marginTop:2, color:"var(--ink-soft)", fontStyle:"italic" }}>Customer name</div>
+            </div>
+          </div>
+
+          <div style={{ fontSize:12, color:"var(--ink-soft)", marginBottom:2 }}>Subject :</div>
+          <input style={{ ...inputStyle, fontSize:13.5, marginBottom:12 }} value={subject} onChange={e=>setSubject(e.target.value)} placeholder="e.g. 100% FOREIGN OWNERSHIP COMPANY FORMATION" />
+
+          <div style={{ fontSize:12.5, marginBottom:16 }}>
+            <div style={{ display:"grid", gridTemplateColumns:gridCols, background:themeColors.headerBg }}>
+              <div style={{ color:"#fff", padding:"9px 10px", fontWeight:500 }}>#</div>
+              <div style={{ color:"#fff", padding:"9px 10px", fontWeight:500 }}>Item & Description</div>
+              <div style={{ color:"#fff", padding:"9px 10px", fontWeight:500, textAlign:"right" }}>Qty</div>
+              <div style={{ color:"#fff", padding:"9px 10px", fontWeight:500, textAlign:"right" }}>Rate</div>
+              <div style={{ color:"#fff", padding:"9px 10px", fontWeight:500, textAlign:"right" }}>Amount</div>
+              <div />
+            </div>
+
+            {!hasGovItems && (
+              <div style={{ margin:"10px 0" }}><AddItemControl label="Add government fee item" onAdd={addItem("Government Fee")} /></div>
+            )}
+
+            {blocks.map((block, bi) => (
+              <div key={bi}>
+                <div style={{ borderRadius:10, overflow:"hidden", marginTop: bi === 0 ? 0 : 4 }}>
+                  {block.items.map((r, ri) => {
+                    const rowBorder = ri < block.items.length - 1 ? "1px solid var(--hair)" : "none";
+                    return r.kind === "category" ? (
+                      <div key={r.key} style={{ background:r.bg, fontWeight:600, fontSize:12, padding:"9px 10px", borderBottom:rowBorder }}>
+                        {r.label}
+                      </div>
+                    ) : (
+                      <div key={r.key} style={{ display:"grid", gridTemplateColumns:gridCols, alignItems:"start", background:r.bg, borderBottom:rowBorder }}>
+                        <div style={{ padding:"9px 10px" }}>{r.number}</div>
+                        <div style={{ padding:"9px 10px" }}>
+                          <input style={inputStyle} value={r.it.description || ""} onChange={e=>updateItemField(r.idx,"description",e.target.value)} placeholder="Item description" />
+                          {!(r.it.description || "").trim() && <span style={{ fontSize:10, color:"var(--danger)", display:"block", marginTop:2 }}>Required</span>}
+                          <textarea rows={2} style={{ ...inputStyle, fontSize:11, color:"var(--ink-soft)", marginTop:3, resize:"vertical" }} value={r.it.note || ""} onChange={e=>updateItemField(r.idx,"note",e.target.value)} placeholder={"Note (optional) — a numbered list gets its own line per number, e.g. 1 - ... 2 - ..."} />
+                          {isActivityFeeItem(r.it) && <AddActivityControl onAdd={(name)=>addActivityToItem(r.idx,name)} />}
+                        </div>
+                        <div style={{ padding:"9px 10px", textAlign:"right" }}>
+                          <input type="number" min={1} style={{ ...inputStyle, textAlign:"right" }} value={r.it.qty} onChange={e=>updateItemField(r.idx,"qty",(e.target.value === "" ? "" : Number(e.target.value)))} />
+                        </div>
+                        <div className="mono" style={{ padding:"9px 10px", textAlign:"right" }}>
+                          <input type="number" style={{ ...inputStyle, textAlign:"right" }} value={r.it.price} onChange={e=>updateItemField(r.idx,"price",(e.target.value === "" ? "" : Number(e.target.value)))} />
+                        </div>
+                        <div className="mono" style={{ padding:"9px 10px", textAlign:"right" }}>{(r.it.qty*r.it.price*(1-(r.it.discountPct||0)/100)).toFixed(2)}</div>
+                        <div style={{ padding:"9px 10px", textAlign:"center" }}>
+                          <button type="button" className="btn btn-sm btn-ghost" style={{color:"var(--danger)", padding:2}} title="Remove" onClick={()=>removeItemAt(r.idx)}><X size={13}/></button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div style={{ margin:"8px 0" }}>
+                  <AddItemControl label={block.feeType === "Government Fee" ? "Add government fee item" : "Add professional fee item"} onAdd={addItem(block.feeType)} />
+                </div>
+              </div>
+            ))}
+
+            {!hasProfItems && (
+              <div style={{ margin:"10px 0" }}><AddItemControl label="Add professional fee item" onAdd={addItem("Professional Fee")} /></div>
+            )}
+          </div>
+
+          <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:24 }}>
+            <table style={{ fontSize:13 }}>
+              <tbody>
+                {split.govTotal > 0 && split.profTotal > 0 && (split.govFirst ? (
+                  <>
+                    <tr><td style={{ padding:"4px 16px 4px 0", color:"var(--ink-soft)" }}>Government Fee Total</td><td className="mono" style={{ padding:"4px 0", textAlign:"right" }}>{split.govTotal.toFixed(2)}</td></tr>
+                    <tr><td style={{ padding:"4px 16px 4px 0", color:"var(--ink-soft)" }}>Professional Fee Total</td><td className="mono" style={{ padding:"4px 0", textAlign:"right" }}>{split.profTotal.toFixed(2)}</td></tr>
+                  </>
+                ) : (
+                  <>
+                    <tr><td style={{ padding:"4px 16px 4px 0", color:"var(--ink-soft)" }}>Professional Fee Total</td><td className="mono" style={{ padding:"4px 0", textAlign:"right" }}>{split.profTotal.toFixed(2)}</td></tr>
+                    <tr><td style={{ padding:"4px 16px 4px 0", color:"var(--ink-soft)" }}>Government Fee Total</td><td className="mono" style={{ padding:"4px 0", textAlign:"right" }}>{split.govTotal.toFixed(2)}</td></tr>
+                  </>
+                ))}
+                {itemDiscountTotal > 0 && (
+                  <tr><td style={{ padding:"4px 16px 4px 0", color:"var(--ink-soft)" }}>Item Discount</td><td className="mono" style={{ padding:"4px 0", textAlign:"right" }}>(-) {itemDiscountTotal.toFixed(2)}</td></tr>
+                )}
+                <tr><td style={{ padding:"4px 16px 4px 0", color:"var(--ink-soft)" }}>Sub Total</td><td className="mono" style={{ padding:"4px 0", textAlign:"right" }}>{subtotal.toFixed(2)}</td></tr>
+                <tr><td style={{ padding:"4px 16px 4px 0", color:"var(--ink-soft)" }}>Discount</td>
+                  <td className="mono" style={{ padding:"4px 0", textAlign:"right" }}>
+                    <span style={{ display:"inline-flex", alignItems:"center", gap:4 }}>
+                      (-) <input type="number" min={0} max={orderDiscountType==="percent" ? 100 : undefined}
+                        style={{ ...inputStyle, width:60, textAlign:"right", display:"inline-block" }} value={orderDiscount||0}
+                        onChange={e=>setOrderDiscount(e.target.value === "" ? "" : Number(e.target.value))} />
+                      <select value={orderDiscountType||"amount"} onChange={e=>setOrderDiscountType(e.target.value)}
+                        style={{ fontSize:11, border:"1px solid var(--hair)", borderRadius:4, padding:"1px 3px", background:"var(--gold-tint)" }}>
+                        <option value="amount">QAR</option>
+                        <option value="percent">%</option>
+                      </select>
+                    </span>
+                  </td>
+                </tr>
+                <tr style={{ background:themeColors.totalBg }}><td style={{ padding:"7px 16px 7px 0", fontWeight:600, color:themeColors.totalText }}>Total</td><td className="mono" style={{ padding:"7px 0", textAlign:"right", fontWeight:600, color:themeColors.totalText }}>QAR {total.toFixed(2)}</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div style={{ marginBottom:22, paddingTop:16, borderTop:"1px solid var(--hair)" }}>
+            <div style={{ fontSize:12, color:"var(--ink-soft)", marginBottom:6 }}>Notes</div>
+            <textarea rows={4} style={{ ...inputStyle, borderBottom:"1px solid var(--hair)", fontSize:12 }} value={notes} onChange={e=>setNotes(e.target.value)} placeholder="One line per note — e.g. Looking forward for your business..." />
+          </div>
+
+          <div style={{ fontSize:10.5, color:"var(--ink-soft)", borderTop:"1px solid var(--hair)", paddingTop:10 }}>
+            <textarea rows={2} style={{ ...inputStyle, borderBottom:"1px solid var(--hair)", fontSize:10.5 }} value={footerNote} onChange={e=>setFooterNote(e.target.value)} placeholder={DEFAULT_FOOTER_NOTE} />
+          </div>
+        </div>
+
+        <div className="doc-paper" style={{ marginTop:16 }}>
+          <div style={{ marginBottom:24 }}>
+            <div className="disp" style={{ fontSize:14, fontWeight:500, marginBottom:10, color:themeColors.heading }}>Terms & Conditions</div>
+            <textarea rows={5} style={{ ...inputStyle, borderBottom:"1px solid var(--hair)", fontSize:12 }} value={terms} onChange={e=>setTerms(e.target.value)} placeholder="One term per line — numbered automatically, e.g. 100% of the Professional Fee to be paid in advance..." />
+          </div>
+
+          <div style={{ marginBottom:24 }}>
+            <div className="disp" style={{ fontSize:14, fontWeight:500, marginBottom:8, color:themeColors.heading }}>Bank Account Details</div>
+            <textarea rows={4} style={{ ...inputStyle, borderBottom:"1px solid var(--hair)", fontSize:12 }} value={bank} onChange={e=>setBank(e.target.value)} placeholder={DEFAULT_BANK} />
+          </div>
+
+          <div style={{ fontSize:11, color:"var(--ink-soft)", lineHeight:1.7, marginBottom:28 }}>
+            Disclaimer: Based on actuals. Rates might change anytime. If everything is clear and satisfactory, please feel free to sign the acceptance part below so we can immediately start the process. We look forward to assisting you with utmost professionalism as we envision a long-term working relationship with you and your company.
+            <br/><br/>
+            Ministry fees are subject to change and may vary depending on the time of submission and the applicable government rules and regulations in effect at that time. Approval timelines, including company formation and visa approval, are also dependent on the decisions and processing timeframes of the relevant government authorities.
+          </div>
+
+          <div className="disp" style={{ fontSize:13, fontWeight:500, marginBottom:10, color:themeColors.heading }}>ACCEPTANCE FORM:</div>
+          <div style={{ fontSize:12, marginBottom:20 }}>I hereby, accept the above offer and I will endeavor to complete/submit all the required documents along with the agreed payment terms.</div>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"24px 40px", fontSize:12.5 }}>
+            <div>Name: <span style={{ display:"inline-block", borderBottom:"1px solid var(--hair)", width:"75%" }}>&nbsp;</span></div>
+            <div>Date: <span style={{ display:"inline-block", borderBottom:"1px solid var(--hair)", width:"75%" }}>&nbsp;</span></div>
+            <div>Signature: <span style={{ display:"inline-block", borderBottom:"1px solid var(--hair)", width:"70%" }}>&nbsp;</span></div>
+            <div>Mobile No.: <span style={{ display:"inline-block", borderBottom:"1px solid var(--hair)", width:"65%" }}>&nbsp;</span></div>
+          </div>
+        </div>
       </div>
     </div>
   );
