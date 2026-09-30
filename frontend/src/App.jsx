@@ -3495,14 +3495,10 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
 function QuotationsPage({ state, dispatch, role, userId, highlightId, autoOpenPdf=false, onHighlightHandled, setPage, onSalesOrderCreated }) {
   const [openId, setOpenId] = useState(null);
   // Set alongside openId when opened via the Edit action, so the modal jumps straight into Visual
-  // edit instead of landing on Current view first — Draft/Pending Manager Approval quotations are
-  // editable regardless of role, but that was only reachable by opening the row, switching to the
-  // PDF preview tab, then clicking Visual edit, which wasn't an obvious path for most users.
+  // edit — Draft/Pending Manager Approval quotations are editable regardless of role, but that was
+  // only reachable by opening the row then clicking Visual edit, which wasn't an obvious path for
+  // most users.
   const [openInEdit, setOpenInEdit] = useState(false);
-  // Set instead of openInEdit right after a quotation is freshly created (see autoOpenPdf below) —
-  // lands straight on the PDF preview tab, read-only, so the salesperson sees the actual document
-  // immediately instead of a highlighted row they still have to click into.
-  const [openInPdf, setOpenInPdf] = useState(false);
   // Derived, not a frozen snapshot — so in-modal actions (favorite toggle, etc.) that refresh
   // state.quotations are reflected immediately instead of only after closing and reopening.
   const open = openId ? state.quotations.find(q => q.id === openId) : null;
@@ -3529,13 +3525,12 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, autoOpenPd
   const isAdmin = ADMIN_LIKE.includes(role);
 
   // "View quotation" (from Deals) either scrolls the row into view (existing quotation), or — right
-  // after Build quotation creates a new one — opens it straight into the PDF preview tab, so the
-  // salesperson sees the actual document immediately instead of a highlighted row to click into.
+  // after Build quotation creates a new one — opens it straight up, so the salesperson sees the
+  // actual document immediately instead of a highlighted row they still have to click into.
   useEffect(() => {
     if (!highlightId) return;
     if (autoOpenPdf) {
       setOpenId(highlightId);
-      setOpenInPdf(true);
       onHighlightHandled?.();
       return;
     }
@@ -3611,7 +3606,7 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, autoOpenPd
         </table>)}
         <PaginationBar {...pg} />
       </div>
-      {open && <QuoteDetailModal quotation={open} state={state} dispatch={dispatch} role={role} userId={userId} customerOptions={customerOptions} templates={state.quotationTemplates} startInEdit={openInEdit} startInPdf={openInPdf} onClose={()=>{ setOpenId(null); setOpenInEdit(false); setOpenInPdf(false); }}
+      {open && <QuoteDetailModal quotation={open} state={state} dispatch={dispatch} role={role} userId={userId} customerOptions={customerOptions} templates={state.quotationTemplates} startInEdit={openInEdit} onClose={()=>{ setOpenId(null); setOpenInEdit(false); }}
         setPage={setPage} onSalesOrderCreated={onSalesOrderCreated} />}
       {cloneFor && <CloneQuoteModal quotation={cloneFor} customerOptions={customerOptions} dispatch={dispatch} onClose={()=>setCloneFor(null)} />}
       {removeQuote && <ConfirmModal title={`Remove ${removeQuote.id}?`} body={`${removeQuote.customer} — ${removeQuote.status}. This can't be undone. Blocked if it already has a Sales Order.`}
@@ -3650,8 +3645,7 @@ function CloneQuoteModal({ quotation: q, customerOptions, dispatch, onClose, onC
   );
 }
 
-function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, customerOptions=[], templates={}, onClose, startInEdit=false, startInPdf=false, setPage, onSalesOrderCreated }) {
-  const [view, setView] = useState(startInEdit || startInPdf ? "pdf" : "details");
+function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, customerOptions=[], templates={}, onClose, startInEdit=false, setPage, onSalesOrderCreated }) {
   const [cloning, setCloning] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [emailing, setEmailing] = useState(false);
@@ -3670,7 +3664,7 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
   const linkedSalesOrder = state?.salesOrders.find(so => so.quotationId === q.id);
 
   // "content" holds the committed (saved) text/items shown everywhere in this modal.
-  // "draft" is the working copy while Visual edit is active in the PDF tab.
+  // "draft" is the working copy while Visual edit is active.
   const [content, setContent] = useState(() => ({
     subject: q.subject || "", items: q.items.map(it => ({...it})), notes: q.notes || "",
     terms: q.terms || "", orderDiscount: q.orderDiscount || 0, orderDiscountType: q.orderDiscountType || "amount",
@@ -3701,14 +3695,12 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
     }
   };
 
-  // "Current view" and "PDF preview" share one edit session — entering edit mode from either
-  // tab, editing a field, then switching tabs keeps the same staged draft rather than each tab
-  // having its own separate editable copy.
+  // `content` is the committed (saved) copy; `draft` is the staged working copy while Visual edit
+  // is active — `src` is whichever of the two is currently on screen.
   const src = visualEdit && draft ? draft : content;
   const editingNow = visualEdit && !!draft;
   const cq = { ...q, ...src };
-  const { subtotal, itemDiscountTotal, discountAmount, total } = quoteTotals(cq.items, cq.orderDiscount, cq.orderDiscountType || "amount");
-  const govProfSplitCq = govProfSplit(cq.items, q.feeType);
+  const { total } = quoteTotals(cq.items, cq.orderDiscount, cq.orderDiscountType || "amount");
   const hasDiscount = cq.items.some(it=>it.discountPct>0) || (cq.orderDiscount||0) > 0;
   const myDesignation = state?.employees.find(e=>e.id===userId)?.designation;
   const assignedApproverDesignations = (state?.approvalTypes||[]).find(t=>t.key==="quotation_approval")?.approverDesignations || [];
@@ -3745,10 +3737,19 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
 
   return (
     <Modal title={q.id} sub={<CustomerNameLink name={q.customer} state={state} onOpen={setViewingCustomer} />} onClose={onClose} width={960}>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-        <div className="tabbar" style={{ marginBottom:0, borderBottom:"none" }}>
-          <button className={`tab ${view==="details"?"active":""}`} onClick={()=>setView("details")}>Current view</button>
-          <button className={`tab ${view==="pdf"?"active":""}`} onClick={()=>setView("pdf")}>PDF preview</button>
+      {/* Identity row: who's selling this, plus the two always-available icon actions. */}
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:8 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:6, fontSize:12.5, color:"var(--ink-soft)" }}>
+          <span>Sales person:</span>
+          {isAdmin ? (
+            <select value={q.owner || ""} onChange={e=>dispatch({type:"SET_QUOTATION_OWNER", id:q.id, owner:e.target.value})}
+              style={{ fontSize:12.5, border:"1px solid var(--hair)", borderRadius:6, padding:"3px 8px", background:"var(--surface)", color:"var(--ink)" }}>
+              {!q.owner && <option value="">—</option>}
+              {salesPeopleOptions.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}
+            </select>
+          ) : (
+            <strong style={{ color:"var(--ink)", fontWeight:500 }}>{state?.employees.find(e=>e.id===q.owner)?.name || "—"}</strong>
+          )}
         </div>
         <div style={{ display:"flex", alignItems:"center", gap:4 }}>
           <button className="btn btn-sm btn-ghost" title={q.favorite ? "Remove from favorites" : "Mark as favorite"}
@@ -3758,176 +3759,156 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
           <RowActions onRemove={isAdmin ? ()=>setRemoving(true) : null} />
         </div>
       </div>
-      <div style={{ borderBottom:"1px solid var(--hair)", marginBottom:18 }} />
 
-      {view === "details" && (
-        <>
-          <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:10, fontSize:12.5, color:"var(--ink-soft)" }}>
-            <span>Sales person:</span>
-            {isAdmin ? (
-              <select value={q.owner || ""} onChange={e=>dispatch({type:"SET_QUOTATION_OWNER", id:q.id, owner:e.target.value})}
-                style={{ fontSize:12.5, border:"1px solid var(--hair)", borderRadius:6, padding:"3px 8px", background:"var(--surface)", color:"var(--ink)" }}>
-                {!q.owner && <option value="">—</option>}
-                {salesPeopleOptions.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}
-              </select>
-            ) : (
-              <strong style={{ color:"var(--ink)", fontWeight:500 }}>{state?.employees.find(e=>e.id===q.owner)?.name || "—"}</strong>
-            )}
-          </div>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
-            <Rail steps={["Draft","Pending Manager Approval","Sent",quotationStatusLabel("Client Accepted", role),"Approved"]}
-              current={q.status === "Rejected" || q.status === "Expired" ? "Sent" : quotationStatusLabel(q.status, role)} />
-            <div style={{ display:"flex", gap:6 }}>
-              {q.packageTier && <Stamp tone="neutral">{q.packageTier}</Stamp>}
-              <Stamp tone={quotationFeeTypeTone(q)}>{quotationFeeTypeLabel(q)}</Stamp>
-            </div>
-          </div>
-          {q.feeType === "Government Fee" && (
-            <div className="side-note" style={{marginBottom:10}}>
-              <AlertTriangle size={13} style={{verticalAlign:-2, marginRight:4}}/>Government Fee quotations are for viewing and sharing as PDF only — excluded from business volume and incentive calculations, and they don't create a Sales Order, Invoice, or Job Card.
-            </div>
-          )}
-          {q.feeType !== "Government Fee" && q.items.some(it=>it.feeType==="Government Fee") && (
-            <div className="side-note" style={{marginBottom:10}}>
-              <AlertTriangle size={13} style={{verticalAlign:-2, marginRight:4}}/>Includes Government Fee line items — those are pass-through charges, excluded from business volume and incentive calculations.
-            </div>
-          )}
-
-          {editable && (
-            <div className="side-note" style={{marginBottom:10}}>Use Visual edit under the PDF preview tab to make changes.</div>
-          )}
-          <QuoteItemsEditor items={cq.items} onChange={(next)=>updDraft("items", next)} service={cq.items[0]?.service} quotationFeeType={q.feeType} readOnly />
-          {editingNow && (
-            <div style={{ maxWidth:320, marginLeft:"auto", marginTop:10 }}>
-              <OrderDiscountField value={cq.orderDiscount||0} type={cq.orderDiscountType||"amount"}
-                onValueChange={(v)=>updDraft("orderDiscount", v)} onTypeChange={(t)=>updDraft("orderDiscountType", t)} />
-            </div>
-          )}
-          {govProfSplitCq.govTotal > 0 && govProfSplitCq.profTotal > 0 && (govProfSplitCq.govFirst ? (
-            <>
-              <div style={{ textAlign:"right", marginTop: 10, fontSize:13, color:"var(--ink-soft)" }}>Government Fee Total: <span className="mono">{money(govProfSplitCq.govTotal)}</span></div>
-              <div style={{ textAlign:"right", marginTop: 2, fontSize:13, color:"var(--ink-soft)" }}>Professional Fee Total: <span className="mono">{money(govProfSplitCq.profTotal)}</span></div>
-            </>
-          ) : (
-            <>
-              <div style={{ textAlign:"right", marginTop: 10, fontSize:13, color:"var(--ink-soft)" }}>Professional Fee Total: <span className="mono">{money(govProfSplitCq.profTotal)}</span></div>
-              <div style={{ textAlign:"right", marginTop: 2, fontSize:13, color:"var(--ink-soft)" }}>Government Fee Total: <span className="mono">{money(govProfSplitCq.govTotal)}</span></div>
-            </>
-          ))}
-          {itemDiscountTotal > 0 && <div style={{ textAlign:"right", marginTop: (govProfSplitCq.govTotal > 0 && govProfSplitCq.profTotal > 0) ? 2 : 10, fontSize:13, color:"var(--ink-soft)" }}>Item Discount: <span className="mono">(-) {money(itemDiscountTotal)}</span></div>}
-          <div style={{ textAlign:"right", marginTop: (itemDiscountTotal > 0 || (govProfSplitCq.govTotal > 0 && govProfSplitCq.profTotal > 0)) ? 2 : 10, fontSize:13, color:"var(--ink-soft)" }}>Sub Total: <span className="mono">{money(subtotal)}</span></div>
-          {discountAmount > 0 && <div style={{ textAlign:"right", marginTop: 2, fontSize:13, color:"var(--ink-soft)" }}>Discount{cq.orderDiscountType === "percent" ? ` (${cq.orderDiscount}%)` : ""}: <span className="mono">(-) {money(discountAmount)}</span></div>}
-          <div style={{ textAlign:"right", marginTop: 4, fontSize: 15 }}><strong>Total: <span className="mono">{money(total)}</span></strong></div>
-          {cq.terms && <div className="side-note">{cq.terms}</div>}
-
-          <div style={{ display:"flex", gap:8, marginTop: 14, flexWrap:"wrap" }}>
-            <button className="btn btn-sm" onClick={()=>setCloning(true)}><Copy size={13}/> Clone as new draft</button>
-            <button className="btn btn-sm" onClick={()=>setEmailing(true)}>
-              {q.emailedToClient ? <><BadgeCheck size={13}/> Emailed {fmtDate(q.emailedAt)}</> : <><Mail size={13}/> Email to customer</>}
-            </button>
-            {/* Locked until the quotation has actually been approved & sent — downloading a Draft
-                risks it going out before pricing/discount sign-off is final. */}
-            <button className="btn btn-sm" disabled={downloading || q.status === "Draft"} title={q.status === "Draft" ? "Approve & send (or submit for approval) first" : undefined} onClick={async ()=>{
-              setDownloading(true);
-              try {
-                const blob = await api.quotations.downloadPdf(q.id);
-                downloadBlob(`Quotation-${q.id}.pdf`, blob);
-              } finally {
-                setDownloading(false);
-              }
-            }}><Download size={13}/> {downloading ? "Generating…" : "Download PDF"}</button>
-          </div>
-          {cloning && <CloneQuoteModal quotation={q} customerOptions={customerOptions} dispatch={dispatch} onClose={()=>setCloning(false)} onCloned={onClose} />}
-          {removing && <ConfirmModal title={`Remove ${q.id}?`} body={`${q.customer} — ${q.status}. This can't be undone. Blocked if it already has a Sales Order.`}
-            onConfirm={async ()=>{
-              try { await dispatch({type:"DELETE_QUOTATION", id:q.id}); onClose(); }
-              catch (err) { alert(err instanceof ApiError ? err.message : "Couldn't delete — please try again."); }
-            }}
-            onClose={()=>setRemoving(false)} />}
-          {emailing && (() => {
-            const tpl = emailTemplateFor(state, "quotation_email", {
-              quotationId: q.id, subjectLine: cq.subject || cq.items[0]?.service || "Address Gateway",
-              customer: q.customer, amount: money(total), validTill: fmtDate(q.validTill),
-            }, {
-              subject: `Quotation ${q.id} — ${cq.subject || cq.items[0]?.service || "Address Gateway"}`,
-              body: `Dear ${q.customer},\n\nPlease find attached your quotation ${q.id} for ${money(total)}.\n\nValid until ${fmtDate(q.validTill)}.\n\nKind regards,\nAddress Gateway Business Services`,
-            });
-            return (
-              <EmailCustomerModal
-                customerName={q.customer} customerEmail={customerEmail} employees={state?.employees || []}
-                defaultSubject={tpl.subject} defaultBody={tpl.body}
-                dispatch={dispatch} onClose={()=>setEmailing(false)}
-                onSend={({ccNames})=>dispatch({type:"MARK_EMAILED", entity:"quotation", id:q.id, customer:q.customer, cc:ccNames})}
-              />
-            );
-          })()}
-
-          {editingNow && (
-            <div className="side-note" style={{ marginTop:12, marginBottom:0 }}>Finish editing — save or cancel above — before changing this quotation's status.</div>
-          )}
-          {!editingNow && actionError && <div className="side-note" style={{ color:"var(--danger)", marginTop:12, marginBottom:0 }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{actionError}</div>}
-          {!editingNow && (
-          <div style={{ display:"flex", gap:8, marginTop: 12, flexWrap:"wrap" }}>
-            {q.status === "Draft" && (hasDiscount || !canApprove) &&
-              <button className="btn btn-primary" disabled={actionBusy} onClick={()=>runAction({type:"SUBMIT_QUOTATION_FOR_APPROVAL", id:q.id})}>Submit for approval</button>}
-            {q.status === "Draft" && !hasDiscount && canApprove &&
-              <button className="btn btn-primary" disabled={actionBusy} onClick={()=>runAction({type:"SEND_QUOTATION", id:q.id})}><Check size={14}/> Approve & send</button>}
-            {q.status === "Pending Manager Approval" && canApprove &&
-              <button className="btn btn-primary" disabled={actionBusy} onClick={()=>runAction({type:"APPROVE_QUOTATION_DISCOUNT", id:q.id, by:"Sales Manager"})}><Check size={14}/> Approve & send</button>}
-            {q.status === "Pending Manager Approval" && !canApprove &&
-              <div className="side-note" style={{marginTop:0}}>Waiting on approval before this can be sent to the client.</div>}
-            {q.status === "Sent" && <>
-              <button className="btn" disabled={actionBusy} onClick={()=>runAction({type:"SET_QUOTATION_STATUS", id:q.id, status:"Under Negotiation"}, { keepOpen: true })}>Mark under negotiation</button>
-              {q.feeType === "Government Fee" ? (
-                <button className="btn btn-primary" disabled={actionBusy} onClick={()=>runAction({type:"SET_QUOTATION_STATUS", id:q.id, status:"Approved"})}>Client accepted — mark approved</button>
-              ) : (
-                <button className="btn btn-primary" disabled={actionBusy} onClick={()=>runAction({type:"SET_QUOTATION_STATUS", id:q.id, status:"Client Accepted"}, { keepOpen: true })}>Client accepted</button>
-              )}
-              <button className="btn" style={{color:"var(--danger)"}} disabled={actionBusy} onClick={async ()=>{
-                if (await confirm({ title:`Mark ${q.id} rejected?`, body:"The client turned this down. The linked deal moves to Lost — this can't be undone from here.", confirmLabel:"Mark rejected" }))
-                  runAction({type:"SET_QUOTATION_STATUS", id:q.id, status:"Rejected"});
-              }}>Mark rejected</button>
-            </>}
-            {q.status === "Under Negotiation" && (
-              q.feeType === "Government Fee" ? (
-                <button className="btn btn-primary" disabled={actionBusy} onClick={()=>runAction({type:"SET_QUOTATION_STATUS", id:q.id, status:"Approved"})}>Client accepted — mark approved</button>
-              ) : (
-                <button className="btn btn-primary" disabled={actionBusy} onClick={()=>runAction({type:"SET_QUOTATION_STATUS", id:q.id, status:"Client Accepted"}, { keepOpen: true })}>Client accepted</button>
-              )
-            )}
-            {q.status === "Client Accepted" && (
-              isAccountsOrAdmin(role) ? (
-                <button className="btn btn-primary" disabled={actionBusy} onClick={async ()=>{
-                  if (await confirm({ title:`Convert ${q.id} to a Sales Order?`, body:"This creates a real Sales Order from this quotation and moves the linked deal to Won. Make sure the terms are final first.", confirmLabel:"Convert" })) {
-                    const r = await runAction({type:"CONVERT_TO_SALES_ORDER", quotationId:q.id});
-                    // salesOrderId is null for Government Fee quotations — those don't create a
-                    // real Sales Order, so there's nothing to navigate to or highlight.
-                    if (r?.salesOrderId) { onSalesOrderCreated?.(r.salesOrderId); setPage?.("orders"); }
-                  }
-                }}>{actionBusy ? "Creating…" : "Convert Sales Order"}</button>
-              ) : (
-                <div className="side-note" style={{marginTop:0}}>Client accepted — now under payment process. Accounts will convert this into a sales order.</div>
-              )
-            )}
-            {revisable && isAdmin &&
-              <button className="btn" disabled={actionBusy} onClick={()=>setRevising(true)}><Pencil size={13}/> Revise quotation</button>}
-          </div>
-          )}
-          {revising && (
-            <ConfirmModal
-              title={`Revise ${q.id}?`}
-              body={linkedSalesOrder
-                ? `This moves it back to Draft so it can be edited and resubmitted for approval. Sales order ${linkedSalesOrder.id} (already created from this quotation) is not affected — remove or replace it separately if the terms have genuinely changed.`
-                : "This moves it back to Draft so it can be edited and resubmitted for approval."}
-              confirmLabel="Revise"
-              onConfirm={()=>{ setRevising(false); runAction({type:"REVISE_QUOTATION", id:q.id}, { keepOpen: true }); }}
-              onClose={()=>setRevising(false)}
-            />
-          )}
-        </>
+      {/* Status row: where this quotation sits in the pipeline. */}
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginTop:10, marginBottom:10, flexWrap:"wrap", gap:10 }}>
+        <Rail steps={["Draft","Pending Manager Approval","Sent",quotationStatusLabel("Client Accepted", role),"Approved"]}
+          current={q.status === "Rejected" || q.status === "Expired" ? "Sent" : quotationStatusLabel(q.status, role)} />
+        <div style={{ display:"flex", gap:6 }}>
+          {q.packageTier && <Stamp tone="neutral">{q.packageTier}</Stamp>}
+          <Stamp tone={quotationFeeTypeTone(q)}>{quotationFeeTypeLabel(q)}</Stamp>
+        </div>
+      </div>
+      {q.feeType === "Government Fee" && (
+        <div className="side-note" style={{marginBottom:10}}>
+          <AlertTriangle size={13} style={{verticalAlign:-2, marginRight:4}}/>Government Fee quotations are for viewing and sharing as PDF only — excluded from business volume and incentive calculations, and they don't create a Sales Order, Invoice, or Job Card.
+        </div>
+      )}
+      {q.feeType !== "Government Fee" && q.items.some(it=>it.feeType==="Government Fee") && (
+        <div className="side-note" style={{marginBottom:10}}>
+          <AlertTriangle size={13} style={{verticalAlign:-2, marginRight:4}}/>Includes Government Fee line items — those are pass-through charges, excluded from business volume and incentive calculations.
+        </div>
       )}
 
-      {view === "pdf" && (() => {
+      {/* Document actions: everything that works on the quotation as a whole, all in one place
+          now that there's only the one (PDF) view of it — no more hunting a tab for the button
+          you want. */}
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:8, flexWrap:"wrap", marginTop:4 }}>
+        <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+          {editable && (editingNow ? (
+            <>
+              <button className="btn btn-sm" disabled={savingVisual} onClick={cancelVisualEdit}>Cancel</button>
+              <button className="btn btn-sm btn-primary" disabled={savingVisual} onClick={saveVisualEdit}><Check size={13}/> {savingVisual ? "Saving…" : "Save changes"}</button>
+            </>
+          ) : (
+            <button className="btn btn-sm" onClick={startVisualEdit}><Pencil size={13}/> Visual edit</button>
+          ))}
+          <button className="btn btn-sm" disabled={editingNow} onClick={()=>setCloning(true)}><Copy size={13}/> Clone as new draft</button>
+          <button className="btn btn-sm" disabled={editingNow} onClick={()=>setEmailing(true)}>
+            {q.emailedToClient ? <><BadgeCheck size={13}/> Emailed {fmtDate(q.emailedAt)}</> : <><Mail size={13}/> Email to customer</>}
+          </button>
+        </div>
+        {/* Locked until the quotation has actually been approved & sent — downloading a Draft
+            risks it going out before pricing/discount sign-off is final — and while a Visual
+            edit is staged but unsaved, so the file always matches what's actually on record. */}
+        <button className="btn btn-sm" disabled={editingNow || downloading || q.status === "Draft"}
+          title={editingNow ? "Save or cancel your changes first" : q.status === "Draft" ? "Approve & send (or submit for approval) first" : undefined}
+          onClick={async ()=>{
+            setDownloading(true);
+            try {
+              const blob = await api.quotations.downloadPdf(q.id);
+              downloadBlob(`Quotation-${q.id}.pdf`, blob);
+            } finally {
+              setDownloading(false);
+            }
+          }}><Download size={13}/> {downloading ? "Generating…" : "Download PDF"}</button>
+      </div>
+      {visualSaveError && <div className="side-note" style={{ color:"var(--danger)", marginTop:10, marginBottom:0 }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{visualSaveError}</div>}
+      {cloning && <CloneQuoteModal quotation={q} customerOptions={customerOptions} dispatch={dispatch} onClose={()=>setCloning(false)} onCloned={onClose} />}
+      {removing && <ConfirmModal title={`Remove ${q.id}?`} body={`${q.customer} — ${q.status}. This can't be undone. Blocked if it already has a Sales Order.`}
+        onConfirm={async ()=>{
+          try { await dispatch({type:"DELETE_QUOTATION", id:q.id}); onClose(); }
+          catch (err) { alert(err instanceof ApiError ? err.message : "Couldn't delete — please try again."); }
+        }}
+        onClose={()=>setRemoving(false)} />}
+      {emailing && (() => {
+        const tpl = emailTemplateFor(state, "quotation_email", {
+          quotationId: q.id, subjectLine: cq.subject || cq.items[0]?.service || "Address Gateway",
+          customer: q.customer, amount: money(total), validTill: fmtDate(q.validTill),
+        }, {
+          subject: `Quotation ${q.id} — ${cq.subject || cq.items[0]?.service || "Address Gateway"}`,
+          body: `Dear ${q.customer},\n\nPlease find attached your quotation ${q.id} for ${money(total)}.\n\nValid until ${fmtDate(q.validTill)}.\n\nKind regards,\nAddress Gateway Business Services`,
+        });
+        return (
+          <EmailCustomerModal
+            customerName={q.customer} customerEmail={customerEmail} employees={state?.employees || []}
+            defaultSubject={tpl.subject} defaultBody={tpl.body}
+            dispatch={dispatch} onClose={()=>setEmailing(false)}
+            onSend={({ccNames})=>dispatch({type:"MARK_EMAILED", entity:"quotation", id:q.id, customer:q.customer, cc:ccNames})}
+          />
+        );
+      })()}
+
+      {/* Workflow actions: moves this quotation's status forward. Hidden while a Visual edit is
+          staged, so a status change can never race an unsaved content change. */}
+      {editingNow && (
+        <div className="side-note" style={{ marginTop:10, marginBottom:0 }}>Finish editing — save or cancel above — before changing this quotation's status.</div>
+      )}
+      {!editingNow && actionError && <div className="side-note" style={{ color:"var(--danger)", marginTop:10, marginBottom:0 }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{actionError}</div>}
+      {!editingNow && (
+      <div style={{ display:"flex", gap:8, marginTop: 10, flexWrap:"wrap" }}>
+        {q.status === "Draft" && (hasDiscount || !canApprove) &&
+          <button className="btn btn-primary" disabled={actionBusy} onClick={()=>runAction({type:"SUBMIT_QUOTATION_FOR_APPROVAL", id:q.id})}>Submit for approval</button>}
+        {q.status === "Draft" && !hasDiscount && canApprove &&
+          <button className="btn btn-primary" disabled={actionBusy} onClick={()=>runAction({type:"SEND_QUOTATION", id:q.id})}><Check size={14}/> Approve & send</button>}
+        {q.status === "Pending Manager Approval" && canApprove &&
+          <button className="btn btn-primary" disabled={actionBusy} onClick={()=>runAction({type:"APPROVE_QUOTATION_DISCOUNT", id:q.id, by:"Sales Manager"})}><Check size={14}/> Approve & send</button>}
+        {q.status === "Pending Manager Approval" && !canApprove &&
+          <div className="side-note" style={{marginTop:0}}>Waiting on approval before this can be sent to the client.</div>}
+        {q.status === "Sent" && <>
+          <button className="btn" disabled={actionBusy} onClick={()=>runAction({type:"SET_QUOTATION_STATUS", id:q.id, status:"Under Negotiation"}, { keepOpen: true })}>Mark under negotiation</button>
+          {q.feeType === "Government Fee" ? (
+            <button className="btn btn-primary" disabled={actionBusy} onClick={()=>runAction({type:"SET_QUOTATION_STATUS", id:q.id, status:"Approved"})}>Client accepted — mark approved</button>
+          ) : (
+            <button className="btn btn-primary" disabled={actionBusy} onClick={()=>runAction({type:"SET_QUOTATION_STATUS", id:q.id, status:"Client Accepted"}, { keepOpen: true })}>Client accepted</button>
+          )}
+          <button className="btn" style={{color:"var(--danger)"}} disabled={actionBusy} onClick={async ()=>{
+            if (await confirm({ title:`Mark ${q.id} rejected?`, body:"The client turned this down. The linked deal moves to Lost — this can't be undone from here.", confirmLabel:"Mark rejected" }))
+              runAction({type:"SET_QUOTATION_STATUS", id:q.id, status:"Rejected"});
+          }}>Mark rejected</button>
+        </>}
+        {q.status === "Under Negotiation" && (
+          q.feeType === "Government Fee" ? (
+            <button className="btn btn-primary" disabled={actionBusy} onClick={()=>runAction({type:"SET_QUOTATION_STATUS", id:q.id, status:"Approved"})}>Client accepted — mark approved</button>
+          ) : (
+            <button className="btn btn-primary" disabled={actionBusy} onClick={()=>runAction({type:"SET_QUOTATION_STATUS", id:q.id, status:"Client Accepted"}, { keepOpen: true })}>Client accepted</button>
+          )
+        )}
+        {q.status === "Client Accepted" && (
+          isAccountsOrAdmin(role) ? (
+            <button className="btn btn-primary" disabled={actionBusy} onClick={async ()=>{
+              if (await confirm({ title:`Convert ${q.id} to a Sales Order?`, body:"This creates a real Sales Order from this quotation and moves the linked deal to Won. Make sure the terms are final first.", confirmLabel:"Convert" })) {
+                const r = await runAction({type:"CONVERT_TO_SALES_ORDER", quotationId:q.id});
+                // salesOrderId is null for Government Fee quotations — those don't create a
+                // real Sales Order, so there's nothing to navigate to or highlight.
+                if (r?.salesOrderId) { onSalesOrderCreated?.(r.salesOrderId); setPage?.("orders"); }
+              }
+            }}>{actionBusy ? "Creating…" : "Convert Sales Order"}</button>
+          ) : (
+            <div className="side-note" style={{marginTop:0}}>Client accepted — now under payment process. Accounts will convert this into a sales order.</div>
+          )
+        )}
+        {revisable && isAdmin &&
+          <button className="btn" disabled={actionBusy} onClick={()=>setRevising(true)}><Pencil size={13}/> Revise quotation</button>}
+      </div>
+      )}
+      {revising && (
+        <ConfirmModal
+          title={`Revise ${q.id}?`}
+          body={linkedSalesOrder
+            ? `This moves it back to Draft so it can be edited and resubmitted for approval. Sales order ${linkedSalesOrder.id} (already created from this quotation) is not affected — remove or replace it separately if the terms have genuinely changed.`
+            : "This moves it back to Draft so it can be edited and resubmitted for approval."}
+          confirmLabel="Revise"
+          onConfirm={()=>{ setRevising(false); runAction({type:"REVISE_QUOTATION", id:q.id}, { keepOpen: true }); }}
+          onClose={()=>setRevising(false)}
+        />
+      )}
+
+      <div style={{ borderBottom:"1px solid var(--hair)", margin:"16px 0" }} />
+
+      {/* The document itself — exactly what the client receives, with Visual edit above turning
+          it directly into an editable form in place (no separate "current view" any more). */}
+      {(() => {
         const themeColors = QUOTE_THEMES[src.theme] || QUOTE_THEMES.charcoal;
         const inputStyle = { border:"none", borderBottom:"1px dashed var(--hair)", background:"var(--gold-tint)", font:"inherit", color:"inherit", padding:"1px 2px", width:"100%" };
 
@@ -3993,31 +3974,7 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
 
         return (
         <div>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
-            <span style={{ fontSize:12, color:"var(--ink-soft)" }}>{editingNow ? "Editing — changes are staged until you save." : "This is exactly what the client receives."}</span>
-            <span style={{ display:"flex", gap:8 }}>
-              {editable && (editingNow ? (
-                <>
-                  <button className="btn btn-sm" disabled={savingVisual} onClick={cancelVisualEdit}>Cancel</button>
-                  <button className="btn btn-sm btn-primary" disabled={savingVisual} onClick={saveVisualEdit}><Check size={13}/> {savingVisual ? "Saving…" : "Save changes"}</button>
-                </>
-              ) : (
-                <button className="btn btn-sm" onClick={startVisualEdit}><Pencil size={13}/> Visual edit</button>
-              ))}
-              {!editingNow && (
-                <button className="btn btn-sm" disabled={downloading || q.status === "Draft"} title={q.status === "Draft" ? "Approve & send (or submit for approval) first" : undefined} onClick={async ()=>{
-                  setDownloading(true);
-                  try {
-                    const blob = await api.quotations.downloadPdf(q.id);
-                    downloadBlob(`Quotation-${q.id}.pdf`, blob);
-                  } finally {
-                    setDownloading(false);
-                  }
-                }}><Download size={13}/> {downloading ? "Generating…" : "Download PDF"}</button>
-              )}
-            </span>
-          </div>
-          {visualSaveError && <div className="side-note" style={{ color:"var(--danger)", marginBottom:12 }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{visualSaveError}</div>}
+          <div style={{ fontSize:12, color:"var(--ink-soft)", marginBottom:12 }}>{editingNow ? "Editing — changes are staged until you save." : "This is exactly what the client receives."}</div>
           {editingNow && (
             <div style={{ marginBottom:12 }}>
               <div style={{ fontSize:11, color:"var(--ink-soft)", marginBottom:6 }}>Template theme</div>
@@ -4231,18 +4188,6 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
               <div>Signature: <span style={{ display:"inline-block", borderBottom:"1px solid var(--hair)", width:"70%" }}>&nbsp;</span></div>
               <div>Mobile No.: <span style={{ display:"inline-block", borderBottom:"1px solid var(--hair)", width:"65%" }}>&nbsp;</span></div>
             </div>
-          </div>
-
-          <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop: 14 }}>
-            <button className="btn btn-sm" disabled={editingNow || downloading || q.status === "Draft"} title={q.status === "Draft" ? "Approve & send (or submit for approval) first" : undefined} onClick={async ()=>{
-              setDownloading(true);
-              try {
-                const blob = await api.quotations.downloadPdf(q.id);
-                downloadBlob(`Quotation-${q.id}.pdf`, blob);
-              } finally {
-                setDownloading(false);
-              }
-            }}><Download size={13}/> {downloading ? "Generating…" : "Download quotation"}</button>
           </div>
         </div>
         );
