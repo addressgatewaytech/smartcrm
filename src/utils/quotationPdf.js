@@ -114,15 +114,33 @@ function drawBillTo(doc, quotation, rightX, y) {
   return y;
 }
 
+// Visual language shared by the table header, each fee-type block and the totals summary below —
+// a bordered, rounded "card" (PDFKit has no CSS border-radius/overflow:hidden, so a rounded clip
+// region stands in for the fill and a plain roundedRect().stroke() draws the border on top) —
+// matching the on-screen doc-paper preview's QuoteItemsCard/QuoteTotalsCard (frontend/src/App.jsx)
+// so the real downloaded PDF never looks flatter than what staff see while editing.
+const CARD_RADIUS = 8;
+const CARD_GAP = 10;
+const HEADER_H = 22;
+
+function drawCardBorder(doc, x, top, w, h) {
+  doc.roundedRect(x, top, w, h, CARD_RADIUS).lineWidth(0.8).strokeColor(HAIR).stroke();
+}
+
 function drawTableHeader(doc, y, colX, tableRight, headerBg) {
-  doc.rect(MARGIN, y, tableRight - MARGIN, 22).fill(headerBg || DARK_BG);
+  const w = tableRight - MARGIN;
+  doc.save();
+  doc.roundedRect(MARGIN, y, w, HEADER_H, CARD_RADIUS).clip();
+  doc.rect(MARGIN, y, w, HEADER_H).fill(headerBg || DARK_BG);
+  doc.restore();
+  drawCardBorder(doc, MARGIN, y, w, HEADER_H);
   doc.font("Inter-SemiBold").fontSize(9).fillColor("#FFFFFF");
   doc.text("#", colX.idx + 5, y + 7, { width: colX.desc - colX.idx - 10 });
   doc.text("Item & Description", colX.desc, y + 7, { width: colX.rate - colX.desc - 5 });
   doc.text("Rate", colX.rate, y + 7, { width: colX.amount - colX.rate - 5, align: "right" });
   doc.text("Amount", colX.amount, y + 7, { width: tableRight - colX.amount - 5, align: "right" });
   doc.fillColor(INK);
-  return y + 22;
+  return y + HEADER_H;
 }
 
 /** Streams a real A4 PDF for `quotation` (already parsed: items is an array) directly to `res`. */
@@ -163,20 +181,15 @@ function generateQuotationPdf(quotation, res) {
   doc.font("Inter").fontSize(10).fillColor(INK).text(quotation.subject || items[0]?.service || "Quotation", MARGIN, y, { width: tableRight - MARGIN });
   y = doc.y + 14;
 
-  // --- Line items table (grouped by category, matching the on-screen PDF preview) --------------
-  // Table-only page breaks re-draw the dark column header; every section after the table just
-  // needs a plain page break (this distinction is what page 2 was missing — the acceptance form
-  // was re-triggering the item table header because it reused the table's break helper).
+  // --- Line items table, grouped into bordered rounded "cards" by contiguous fee-type run -------
+  // (normally exactly two: Government Fee, then Professional Fee) — mirrors the on-screen
+  // doc-paper preview's QuoteItemsCard so the real PDF and what staff see while editing can never
+  // visually diverge. Every section after the table just needs a plain page break (no header
+  // redraw) — see ensureRoom below.
   const ensureRoom = (needed) => {
     if (y + needed > doc.page.height - MARGIN - 40) {
       doc.addPage();
       y = MARGIN;
-    }
-  };
-  const ensureTableRoom = (needed) => {
-    if (y + needed > doc.page.height - MARGIN - 40) {
-      doc.addPage();
-      y = drawTableHeader(doc, MARGIN, colX, tableRight, theme.headerBg);
     }
   };
 
@@ -192,83 +205,161 @@ function generateQuotationPdf(quotation, res) {
     if (cat.includes("professional")) return false;
     return (quotation.fee_type || quotation.feeType || "Professional Fee") === "Government Fee";
   };
-  const bandColor = (it) => (isGovFeeItem(it) ? GOV_FEE_BG : PROF_FEE_BG);
 
-  y = drawTableHeader(doc, y, colX, tableRight, theme.headerBg);
-  let lastCategory = null;
-  let rowNumber = 0;
-  items.forEach((it) => {
-    if ((it.category || "") && it.category !== lastCategory) {
-      ensureTableRoom(20);
-      const headerTop = y;
-      doc.font("Inter-SemiBold").fontSize(9.5).fillColor(INK).text(it.category, MARGIN, y + 6, { width: tableRight - MARGIN });
-      y = doc.y + 4;
-      doc.rect(MARGIN, headerTop, tableRight - MARGIN, y - headerTop).fill(bandColor(it));
-      doc.font("Inter-SemiBold").fontSize(9.5).fillColor(INK).text(it.category, MARGIN, headerTop + 6, { width: tableRight - MARGIN });
-      doc.moveTo(MARGIN, y).lineTo(tableRight, y).strokeColor(HAIR).stroke();
-      y += 4;
-      lastCategory = it.category;
-    }
-    rowNumber++;
+  const descWidth = colX.rate - colX.desc - 5;
+  const measureItemHeight = (it) => {
     const descText = it.description || it.service || "";
-    const descWidth = colX.rate - colX.desc - 5;
     const descHeight = doc.font("Inter").fontSize(9.5).heightOfString(descText, { width: descWidth });
     const noteHeight = it.note ? doc.font("Inter").fontSize(8).heightOfString(it.note, { width: descWidth }) + 3 : 0;
-    const rowHeight = Math.max(18, descHeight + noteHeight + 8);
+    return Math.max(18, descHeight + noteHeight + 8);
+  };
+  const measureCategoryHeight = (label) => doc.font("Inter-SemiBold").fontSize(9.5).heightOfString(label, { width: tableRight - MARGIN }) + 10;
 
-    ensureTableRoom(rowHeight);
-    doc.rect(MARGIN, y, tableRight - MARGIN, rowHeight).fill(bandColor(it));
-    doc.font("Inter").fontSize(9.5).fillColor(INK).text(String(rowNumber), colX.idx + 5, y + 6, { width: colX.desc - colX.idx - 10 });
-    doc.text(descText, colX.desc, y + 6, { width: descWidth });
+  let rowNumber = 0;
+  const renderRowBody = (r, ry) => {
+    if (r.kind === "category") {
+      doc.font("Inter-SemiBold").fontSize(9.5).fillColor(INK).text(r.label, MARGIN, ry + 6, { width: tableRight - MARGIN });
+      return;
+    }
+    rowNumber++;
+    const it = r.it;
+    const descText = it.description || it.service || "";
+    doc.font("Inter").fontSize(9.5).fillColor(INK).text(String(rowNumber), colX.idx + 5, ry + 6, { width: colX.desc - colX.idx - 10 });
+    doc.text(descText, colX.desc, ry + 6, { width: descWidth });
     if (it.note) {
       doc.font("Inter").fontSize(8).fillColor(GRAY).text(it.note, colX.desc, doc.y + 1, { width: descWidth });
     }
-    doc.font("Inter").fontSize(9.5).fillColor(INK).text(money2(it.price), colX.rate, y + 6, { width: colX.amount - colX.rate - 5, align: "right" });
+    doc.font("Inter").fontSize(9.5).fillColor(INK).text(money2(it.price), colX.rate, ry + 6, { width: colX.amount - colX.rate - 5, align: "right" });
     const lineAmount = (Number(it.qty) || 0) * (Number(it.price) || 0) * (1 - (Number(it.discountPct) || 0) / 100);
-    doc.text(money2(lineAmount), colX.amount, y + 6, { width: tableRight - colX.amount - 5, align: "right" });
-    y += rowHeight;
-    doc.moveTo(MARGIN, y).lineTo(tableRight, y).strokeColor(HAIR).stroke();
-  });
-  y += 12;
+    doc.text(money2(lineAmount), colX.amount, ry + 6, { width: tableRight - colX.amount - 5, align: "right" });
+  };
 
-  // --- Government Fee Total / Professional Fee Total / Sub Total / Discount / Total -------------
-  // Pre-discount split, ordered to match whichever classification actually appears first among
-  // the items — so reordering the line items also reorders the two totals underneath them.
+  // Build one block per contiguous run of same fee-type, each row pre-measured so its card's
+  // total height is known before anything is drawn.
+  const blocks = [];
+  let lastCategory = null;
+  items.forEach((it) => {
+    const isGov = isGovFeeItem(it);
+    if (!blocks.length || blocks[blocks.length - 1].isGov !== isGov) {
+      blocks.push({ isGov, rows: [] });
+      lastCategory = null;
+    }
+    const block = blocks[blocks.length - 1];
+    if ((it.category || "") && it.category !== lastCategory) {
+      block.rows.push({ kind: "category", label: it.category, height: measureCategoryHeight(it.category) });
+      lastCategory = it.category;
+    }
+    block.rows.push({ kind: "item", it, height: measureItemHeight(it) });
+  });
+
+  y = drawTableHeader(doc, y, colX, tableRight, theme.headerBg) + CARD_GAP;
+  const maxCardHeight = doc.page.height - MARGIN * 2 - 40 - HEADER_H - CARD_GAP;
+
+  blocks.forEach((block) => {
+    const blockHeight = block.rows.reduce((a, r) => a + r.height, 0);
+    const bg = block.isGov ? GOV_FEE_BG : PROF_FEE_BG;
+
+    if (blockHeight <= maxCardHeight) {
+      // The whole card fits on one page — break first (redrawing the column header) so the card
+      // itself is never sliced in half by a page boundary.
+      if (y + blockHeight > doc.page.height - MARGIN - 40) {
+        doc.addPage();
+        y = drawTableHeader(doc, MARGIN, colX, tableRight, theme.headerBg) + CARD_GAP;
+      }
+      const cardTop = y;
+      doc.save();
+      doc.roundedRect(MARGIN, cardTop, tableRight - MARGIN, blockHeight, CARD_RADIUS).clip();
+      let ry = cardTop;
+      block.rows.forEach((r) => {
+        doc.rect(MARGIN, ry, tableRight - MARGIN, r.height).fill(bg);
+        if (ry > cardTop) doc.moveTo(MARGIN, ry).lineTo(tableRight, ry).strokeColor(HAIR).stroke();
+        renderRowBody(r, ry);
+        ry += r.height;
+      });
+      doc.restore();
+      drawCardBorder(doc, MARGIN, cardTop, tableRight - MARGIN, blockHeight);
+      y = cardTop + blockHeight + CARD_GAP;
+    } else {
+      // Rare: a single fee-type block too tall for any one page — fall back to plain flat rows
+      // rather than draw a card border that would have to be sliced across a page break.
+      block.rows.forEach((r) => {
+        if (y + r.height > doc.page.height - MARGIN - 40) {
+          doc.addPage();
+          y = drawTableHeader(doc, MARGIN, colX, tableRight, theme.headerBg) + CARD_GAP;
+        }
+        doc.rect(MARGIN, y, tableRight - MARGIN, r.height).fill(bg);
+        renderRowBody(r, y);
+        y += r.height;
+        doc.moveTo(MARGIN, y).lineTo(tableRight, y).strokeColor(HAIR).stroke();
+      });
+      y += CARD_GAP;
+    }
+  });
+  y += 6;
+
+  // --- Government Fee Total / Professional Fee Total / Sub Total / Discount / Total, as one
+  // bordered rounded card (mirrors QuoteTotalsCard) with the Total row as a full-width colored
+  // strip clipped to the card's own rounded bottom corners. Pre-discount split is ordered to
+  // match whichever classification actually appears first among the items — so reordering the
+  // line items also reorders the two totals underneath them. -------------------------------------
   const govFeeTotal = items.filter(isGovFeeItem).reduce((a, it) => a + (Number(it.qty) || 0) * (Number(it.price) || 0) * (1 - (Number(it.discountPct) || 0) / 100), 0);
   const profFeeTotal = subtotal - govFeeTotal;
   const firstGovIdx = items.findIndex(isGovFeeItem);
   const firstProfIdx = items.findIndex((it) => !isGovFeeItem(it));
   const govFirst = firstGovIdx !== -1 && (firstProfIdx === -1 || firstGovIdx < firstProfIdx);
-  ensureRoom(118); // +16 over the old fixed estimate to cover the new "Item Discount" line
-  const totalsWidth = 220;
+
+  const totalsWidth = 240;
   const totalsX = tableRight - totalsWidth;
+  const LINE_H = 16;
+  const STRIP_H = 24;
+  const PAD_V = 6;
+  const PAD_H = 8;
+  const labelWidth = 118; // fits "Government Fee Total" / "Professional Fee Total" on one line at 9.5pt
+  const valueX = totalsX + PAD_H + labelWidth;
+  const valueWidth = totalsWidth - PAD_H * 2 - labelWidth;
+  let totalsLineCount = 1; // Sub Total is always shown
+  if (govFeeTotal > 0 && profFeeTotal > 0) totalsLineCount += 2;
+  if (itemDiscountTotal > 0) totalsLineCount += 1;
+  if (discountAmount > 0) totalsLineCount += 1;
+  const totalsBoxHeight = PAD_V * 2 + totalsLineCount * LINE_H + STRIP_H;
+
+  ensureRoom(totalsBoxHeight + 20);
+  const boxTop = y;
+  const stripTop = boxTop + totalsBoxHeight - STRIP_H;
+
+  doc.save();
+  doc.roundedRect(totalsX, boxTop, totalsWidth, totalsBoxHeight, CARD_RADIUS).clip();
+  doc.rect(totalsX, stripTop, totalsWidth, STRIP_H).fill(theme.totalBg);
+  doc.restore();
+  drawCardBorder(doc, totalsX, boxTop, totalsWidth, totalsBoxHeight);
+
+  let ty = boxTop + PAD_V;
   const drawFeeTotalLine = (label, amount) => {
-    doc.font("Inter").fontSize(9.5).fillColor(GRAY).text(label, totalsX, y, { width: 110 });
-    doc.font("Inter").fontSize(9.5).fillColor(INK).text(money2(amount), totalsX + 110, y, { width: totalsWidth - 110, align: "right" });
-    y += 16;
+    doc.font("Inter").fontSize(9.5).fillColor(GRAY).text(label, totalsX + PAD_H, ty, { width: labelWidth, lineBreak: false });
+    doc.font("Inter").fontSize(9.5).fillColor(INK).text(money2(amount), valueX, ty, { width: valueWidth, align: "right" });
+    ty += LINE_H;
   };
   if (govFeeTotal > 0 && profFeeTotal > 0) {
     if (govFirst) { drawFeeTotalLine("Government Fee Total", govFeeTotal); drawFeeTotalLine("Professional Fee Total", profFeeTotal); }
     else { drawFeeTotalLine("Professional Fee Total", profFeeTotal); drawFeeTotalLine("Government Fee Total", govFeeTotal); }
   }
   if (itemDiscountTotal > 0) {
-    doc.font("Inter").fontSize(9.5).fillColor(GRAY).text("Item Discount", totalsX, y, { width: 110 });
-    doc.font("Inter").fontSize(9.5).fillColor(INK).text(`(-) ${money2(itemDiscountTotal)}`, totalsX + 110, y, { width: totalsWidth - 110, align: "right" });
-    y += 16;
+    doc.font("Inter").fontSize(9.5).fillColor(GRAY).text("Item Discount", totalsX + PAD_H, ty, { width: labelWidth, lineBreak: false });
+    doc.font("Inter").fontSize(9.5).fillColor(INK).text(`(-) ${money2(itemDiscountTotal)}`, valueX, ty, { width: valueWidth, align: "right" });
+    ty += LINE_H;
   }
-  doc.font("Inter").fontSize(9.5).fillColor(GRAY).text("Sub Total", totalsX, y, { width: 110 });
-  doc.font("Inter").fontSize(9.5).fillColor(INK).text(money2(subtotal), totalsX + 110, y, { width: totalsWidth - 110, align: "right" });
-  y += 16;
+  doc.font("Inter").fontSize(9.5).fillColor(GRAY).text("Sub Total", totalsX + PAD_H, ty, { width: labelWidth, lineBreak: false });
+  doc.font("Inter").fontSize(9.5).fillColor(INK).text(money2(subtotal), valueX, ty, { width: valueWidth, align: "right" });
+  ty += LINE_H;
   if (discountAmount > 0) {
     const label = orderDiscountType === "percent" ? `Discount (${money2(orderDiscount)}%)` : "Discount";
-    doc.font("Inter").fontSize(9.5).fillColor(GRAY).text(label, totalsX, y, { width: 110 });
-    doc.font("Inter").fontSize(9.5).fillColor(INK).text(`(-) ${money2(discountAmount)}`, totalsX + 110, y, { width: totalsWidth - 110, align: "right" });
-    y += 16;
+    doc.font("Inter").fontSize(9.5).fillColor(GRAY).text(label, totalsX + PAD_H, ty, { width: labelWidth, lineBreak: false });
+    doc.font("Inter").fontSize(9.5).fillColor(INK).text(`(-) ${money2(discountAmount)}`, valueX, ty, { width: valueWidth, align: "right" });
+    ty += LINE_H;
   }
-  doc.rect(totalsX, y - 2, totalsWidth, 20).fill(theme.totalBg);
-  doc.font("Inter-SemiBold").fontSize(10.5).fillColor(theme.totalText).text("Total", totalsX + 6, y + 3, { width: 104 });
-  doc.font("Inter-Bold").fontSize(10.5).text(`QAR ${money2(total)}`, totalsX + 110, y + 3, { width: totalsWidth - 116, align: "right" });
-  y += 30;
+  doc.font("Inter-SemiBold").fontSize(10.5).fillColor(theme.totalText).text("Total", totalsX + PAD_H, stripTop + 7, { width: labelWidth, lineBreak: false });
+  doc.font("Inter-Bold").fontSize(10.5).text(`QAR ${money2(total)}`, valueX, stripTop + 7, { width: valueWidth, align: "right" });
+  y = boxTop + totalsBoxHeight + 24;
 
   // --- Notes / Terms & Conditions / Bank Account Details ----------------------------------------
   const noteLines = (quotation.notes || "").split("\n").map((t) => t.trim()).filter(Boolean);
