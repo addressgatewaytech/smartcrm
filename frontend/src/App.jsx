@@ -3063,6 +3063,136 @@ function AddActivityControl({ onAdd }) {
   );
 }
 
+// A quotation document's line-item table and its totals summary, as two distinct bordered, rounded
+// "cards" — the header is its own card, each fee-type group (Government Fee, then Professional Fee)
+// is its own card below it, and the totals are their own card off to the right, same visual language
+// as the rest of the app (.agw-card: 1px hairline border, 10-12px radius) instead of flat, edge-to-
+// edge rows with no real boundary. Shared by QuoteDetailModal and QuotationTemplateEditor so the
+// client-facing document and the template it starts from can never visually drift apart.
+const DOC_CARD = { border:"1px solid var(--hair)", borderRadius:10, overflow:"hidden" };
+
+function QuoteItemsCard({ blocks, hasGovItems, hasProfItems, editingNow, gridCols, themeColors, inputStyle, feeTypeContext, onFieldChange, onRemove, onAddActivity, onAddItem }) {
+  return (
+    <div style={{ fontSize:12.5, marginBottom:16 }}>
+      <div style={{ ...DOC_CARD, marginBottom:10 }}>
+        <div style={{ display:"grid", gridTemplateColumns:gridCols, background:themeColors.headerBg }}>
+          <div style={{ color:"#fff", padding:"10px 12px", fontWeight:600, fontSize:11.5, letterSpacing:".02em", textTransform:"uppercase" }}>#</div>
+          <div style={{ color:"#fff", padding:"10px 12px", fontWeight:600, fontSize:11.5, letterSpacing:".02em", textTransform:"uppercase" }}>Item &amp; Description</div>
+          {editingNow && <div style={{ color:"#fff", padding:"10px 12px", fontWeight:600, fontSize:11.5, letterSpacing:".02em", textTransform:"uppercase", textAlign:"right" }}>Qty</div>}
+          <div style={{ color:"#fff", padding:"10px 12px", fontWeight:600, fontSize:11.5, letterSpacing:".02em", textTransform:"uppercase", textAlign:"right" }}>Rate</div>
+          <div style={{ color:"#fff", padding:"10px 12px", fontWeight:600, fontSize:11.5, letterSpacing:".02em", textTransform:"uppercase", textAlign:"right" }}>Amount</div>
+          {editingNow && <div />}
+        </div>
+      </div>
+
+      {editingNow && !hasGovItems && (
+        <div style={{ margin:"0 0 10px" }}><AddItemControl label="Add government fee item" onAdd={onAddItem("Government Fee")} /></div>
+      )}
+
+      {blocks.map((block, bi) => (
+        <div key={bi} style={{ marginBottom:10 }}>
+          <div style={DOC_CARD}>
+            {block.items.map((r, ri) => {
+              const rowBorder = ri === 0 ? "none" : "1px solid var(--hair)";
+              return r.kind === "category" ? (
+                <div key={r.key} style={{ background:r.bg, fontWeight:700, fontSize:11, letterSpacing:".03em", textTransform:"uppercase", color:"var(--ink-soft)", padding:"8px 12px", borderTop:rowBorder }}>
+                  {r.label}
+                </div>
+              ) : (
+                <div key={r.key} style={{ display:"grid", gridTemplateColumns:gridCols, alignItems:"start", background:r.bg, borderTop:rowBorder }}>
+                  <div style={{ padding:"10px 12px" }}>{r.number}</div>
+                  <div style={{ padding:"10px 12px" }}>
+                    {editingNow ? (
+                      <>
+                        <input style={inputStyle} value={r.it.description || ""} onChange={e=>onFieldChange(r.idx,"description",e.target.value)} placeholder="Item description" />
+                        {!(r.it.description || "").trim() && <span style={{ fontSize:10, color:"var(--danger)", display:"block", marginTop:2 }}>Required</span>}
+                        <textarea rows={2} style={{ ...inputStyle, fontSize:11, color:"var(--ink-soft)", marginTop:3, resize:"vertical" }} value={r.it.note || ""} onChange={e=>onFieldChange(r.idx,"note",e.target.value)} placeholder={"Note (optional) — a numbered list gets its own line per number, e.g. 1 - ... 2 - ..."} />
+                        {isActivityFeeItem(r.it) && <AddActivityControl onAdd={(name)=>onAddActivity(r.idx,name)} />}
+                      </>
+                    ) : (<>
+                      {r.it.description || r.it.service}
+                      <NoteLines note={r.it.note} style={{ fontSize:11, color:"var(--ink-soft)", marginTop:2 }} bullet={!isGovFeeLine(r.it, feeTypeContext)} />
+                    </>)}
+                  </div>
+                  {editingNow && (
+                    <div style={{ padding:"10px 12px", textAlign:"right" }}>
+                      <input type="number" min={1} style={{ ...inputStyle, textAlign:"right" }} value={r.it.qty} onChange={e=>onFieldChange(r.idx,"qty",(e.target.value === "" ? "" : Number(e.target.value)))} />
+                    </div>
+                  )}
+                  <div className="mono" style={{ padding:"10px 12px", textAlign:"right", fontVariantNumeric:"tabular-nums" }}>
+                    {editingNow ? (
+                      <input type="number" style={{ ...inputStyle, textAlign:"right" }} value={r.it.price} onChange={e=>onFieldChange(r.idx,"price",(e.target.value === "" ? "" : Number(e.target.value)))} />
+                    ) : Number(r.it.price).toFixed(2)}
+                  </div>
+                  <div className="mono" style={{ padding:"10px 12px", textAlign:"right", fontVariantNumeric:"tabular-nums" }}>{(r.it.qty*r.it.price*(1-(r.it.discountPct||0)/100)).toFixed(2)}</div>
+                  {editingNow && (
+                    <div style={{ padding:"10px 12px", textAlign:"center" }}>
+                      <button type="button" className="btn btn-sm btn-ghost" style={{color:"var(--danger)", padding:2}} title="Remove" onClick={()=>onRemove(r.idx)}><X size={13}/></button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          {editingNow && (
+            <div style={{ margin:"8px 0 0" }}>
+              <AddItemControl label={block.feeType === "Government Fee" ? "Add government fee item" : "Add professional fee item"} onAdd={onAddItem(block.feeType)} />
+            </div>
+          )}
+        </div>
+      ))}
+
+      {editingNow && !hasProfItems && (
+        <div style={{ margin:"0 0 10px" }}><AddItemControl label="Add professional fee item" onAdd={onAddItem("Professional Fee")} /></div>
+      )}
+    </div>
+  );
+}
+
+function QuoteTotalsCard({ split, itemDiscountTotal, subtotal, discountAmount, total, editingNow, orderDiscount, orderDiscountType, onDiscountChange, onDiscountTypeChange, themeColors, inputStyle }) {
+  const row = (label, value, opts = {}) => (
+    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:16, padding:"6px 14px", ...opts.style }}>
+      <span style={{ color:"var(--ink-soft)" }}>{label}</span>
+      <span className="mono" style={{ fontVariantNumeric:"tabular-nums" }}>{value}</span>
+    </div>
+  );
+  return (
+    <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:24 }}>
+      <div style={{ ...DOC_CARD, width:280, fontSize:13 }}>
+        <div style={{ padding:"6px 0" }}>
+          {split.govTotal > 0 && split.profTotal > 0 && (split.govFirst ? (
+            <>{row("Government Fee Total", split.govTotal.toFixed(2))}{row("Professional Fee Total", split.profTotal.toFixed(2))}</>
+          ) : (
+            <>{row("Professional Fee Total", split.profTotal.toFixed(2))}{row("Government Fee Total", split.govTotal.toFixed(2))}</>
+          ))}
+          {itemDiscountTotal > 0 && row("Item Discount", `(-) ${itemDiscountTotal.toFixed(2)}`)}
+          {row("Sub Total", subtotal.toFixed(2))}
+          {(editingNow || discountAmount > 0) && (
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:16, padding:"6px 14px" }}>
+              <span style={{ color:"var(--ink-soft)" }}>Discount{!editingNow && orderDiscountType==="percent" ? ` (${orderDiscount}%)` : ""}</span>
+              {editingNow ? (
+                <span style={{ display:"inline-flex", alignItems:"center", gap:4 }}>
+                  (-) <input type="number" min={0} max={orderDiscountType==="percent" ? 100 : undefined}
+                    style={{ ...inputStyle, width:60, textAlign:"right", display:"inline-block" }} value={orderDiscount||0}
+                    onChange={e=>onDiscountChange(e.target.value === "" ? "" : Number(e.target.value))} />
+                  <select value={orderDiscountType||"amount"} onChange={e=>onDiscountTypeChange(e.target.value)}
+                    style={{ fontSize:11, border:"1px solid var(--hair)", borderRadius:4, padding:"1px 3px", background:"var(--gold-tint)" }}>
+                    <option value="amount">QAR</option>
+                    <option value="percent">%</option>
+                  </select>
+                </span>
+              ) : <span className="mono" style={{ fontVariantNumeric:"tabular-nums" }}>(-) {discountAmount.toFixed(2)}</span>}
+            </div>
+          )}
+        </div>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"11px 14px", background:themeColors.totalBg, borderTop:"1px solid var(--hair)" }}>
+          <span style={{ fontWeight:700, fontSize:14, color:themeColors.totalText }}>Total</span>
+          <span className="mono" style={{ fontWeight:700, fontSize:14, color:themeColors.totalText, fontVariantNumeric:"tabular-nums" }}>QAR {total.toFixed(2)}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVICES[0], editableCustomer=false, customerOptions=[], services=SERVICES, itemCatalog=[], dispatch, templates, subscriptionPlans={}, subscriptions=[], role=null, employees=[], defaultOwner="", onClose, onCreated }) {
   const [showNewService, setShowNewService] = useState(false);
@@ -3895,118 +4025,14 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
               <div style={{ fontSize:13.5, marginBottom:20 }}>{src.subject || src.items[0]?.service || "Quotation"}</div>
             )}
 
-            <div style={{ fontSize:12.5, marginBottom:16 }}>
-              <div style={{ display:"grid", gridTemplateColumns:gridCols, background:themeColors.headerBg }}>
-                <div style={{ color:"#fff", padding:"9px 10px", fontWeight:500 }}>#</div>
-                <div style={{ color:"#fff", padding:"9px 10px", fontWeight:500 }}>Item & Description</div>
-                {editingNow && <div style={{ color:"#fff", padding:"9px 10px", fontWeight:500, textAlign:"right" }}>Qty</div>}
-                <div style={{ color:"#fff", padding:"9px 10px", fontWeight:500, textAlign:"right" }}>Rate</div>
-                <div style={{ color:"#fff", padding:"9px 10px", fontWeight:500, textAlign:"right" }}>Amount</div>
-                {editingNow && <div />}
-              </div>
+            <QuoteItemsCard blocks={blocks} hasGovItems={hasGovItems} hasProfItems={hasProfItems} editingNow={editingNow}
+              gridCols={gridCols} themeColors={themeColors} inputStyle={inputStyle} feeTypeContext={q.feeType}
+              onFieldChange={updateItemField} onRemove={removeItemAt} onAddActivity={addActivityToItem} onAddItem={addItem} />
 
-              {editingNow && !hasGovItems && (
-                <div style={{ margin:"10px 0" }}><AddItemControl label="Add government fee item" onAdd={addItem("Government Fee")} /></div>
-              )}
-
-              {blocks.map((block, bi) => (
-                <div key={bi}>
-                  <div style={{ borderRadius:10, overflow:"hidden", marginTop: bi === 0 ? 0 : 4 }}>
-                    {block.items.map((r, ri) => {
-                      const rowBorder = ri < block.items.length - 1 ? "1px solid var(--hair)" : "none";
-                      return r.kind === "category" ? (
-                        <div key={r.key} style={{ background:r.bg, fontWeight:600, fontSize:12, padding:"9px 10px", borderBottom:rowBorder }}>
-                          {r.label}
-                        </div>
-                      ) : (
-                        <div key={r.key} style={{ display:"grid", gridTemplateColumns:gridCols, alignItems:"start", background:r.bg, borderBottom:rowBorder }}>
-                          <div style={{ padding:"9px 10px" }}>{r.number}</div>
-                          <div style={{ padding:"9px 10px" }}>
-                            {editingNow ? (
-                              <>
-                                <input style={inputStyle} value={r.it.description || ""} onChange={e=>updateItemField(r.idx,"description",e.target.value)} placeholder="Item description" />
-                                {!(r.it.description || "").trim() && <span style={{ fontSize:10, color:"var(--danger)", display:"block", marginTop:2 }}>Required</span>}
-                                <textarea rows={2} style={{ ...inputStyle, fontSize:11, color:"var(--ink-soft)", marginTop:3, resize:"vertical" }} value={r.it.note || ""} onChange={e=>updateItemField(r.idx,"note",e.target.value)} placeholder={"Note (optional) — a numbered list gets its own line per number, e.g. 1 - ... 2 - ..."} />
-                                {isActivityFeeItem(r.it) && <AddActivityControl onAdd={(name)=>addActivityToItem(r.idx,name)} />}
-                              </>
-                            ) : (<>
-                              {r.it.description || r.it.service}
-                              <NoteLines note={r.it.note} style={{ fontSize:11, color:"var(--ink-soft)", marginTop:2 }} bullet={!isGovFeeLine(r.it, q.feeType)} />
-                            </>)}
-                          </div>
-                          {editingNow && (
-                            <div style={{ padding:"9px 10px", textAlign:"right" }}>
-                              <input type="number" min={1} style={{ ...inputStyle, textAlign:"right" }} value={r.it.qty} onChange={e=>updateItemField(r.idx,"qty",(e.target.value === "" ? "" : Number(e.target.value)))} />
-                            </div>
-                          )}
-                          <div className="mono" style={{ padding:"9px 10px", textAlign:"right" }}>
-                            {editingNow ? (
-                              <input type="number" style={{ ...inputStyle, textAlign:"right" }} value={r.it.price} onChange={e=>updateItemField(r.idx,"price",(e.target.value === "" ? "" : Number(e.target.value)))} />
-                            ) : Number(r.it.price).toFixed(2)}
-                          </div>
-                          <div className="mono" style={{ padding:"9px 10px", textAlign:"right" }}>{(r.it.qty*r.it.price*(1-(r.it.discountPct||0)/100)).toFixed(2)}</div>
-                          {editingNow && (
-                            <div style={{ padding:"9px 10px", textAlign:"center" }}>
-                              <button type="button" className="btn btn-sm btn-ghost" style={{color:"var(--danger)", padding:2}} title="Remove" onClick={()=>removeItemAt(r.idx)}><X size={13}/></button>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                  {editingNow && (
-                    <div style={{ margin:"8px 0" }}>
-                      <AddItemControl label={block.feeType === "Government Fee" ? "Add government fee item" : "Add professional fee item"} onAdd={addItem(block.feeType)} />
-                    </div>
-                  )}
-                </div>
-              ))}
-
-              {editingNow && !hasProfItems && (
-                <div style={{ margin:"10px 0" }}><AddItemControl label="Add professional fee item" onAdd={addItem("Professional Fee")} /></div>
-              )}
-            </div>
-
-            <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:24 }}>
-              <table style={{ fontSize:13 }}>
-                <tbody>
-                  {pdfSplit.govTotal > 0 && pdfSplit.profTotal > 0 && (pdfSplit.govFirst ? (
-                    <>
-                      <tr><td style={{ padding:"4px 16px 4px 0", color:"var(--ink-soft)" }}>Government Fee Total</td><td className="mono" style={{ padding:"4px 0", textAlign:"right" }}>{pdfSplit.govTotal.toFixed(2)}</td></tr>
-                      <tr><td style={{ padding:"4px 16px 4px 0", color:"var(--ink-soft)" }}>Professional Fee Total</td><td className="mono" style={{ padding:"4px 0", textAlign:"right" }}>{pdfSplit.profTotal.toFixed(2)}</td></tr>
-                    </>
-                  ) : (
-                    <>
-                      <tr><td style={{ padding:"4px 16px 4px 0", color:"var(--ink-soft)" }}>Professional Fee Total</td><td className="mono" style={{ padding:"4px 0", textAlign:"right" }}>{pdfSplit.profTotal.toFixed(2)}</td></tr>
-                      <tr><td style={{ padding:"4px 16px 4px 0", color:"var(--ink-soft)" }}>Government Fee Total</td><td className="mono" style={{ padding:"4px 0", textAlign:"right" }}>{pdfSplit.govTotal.toFixed(2)}</td></tr>
-                    </>
-                  ))}
-                  {pdfItemDiscountTotal > 0 && (
-                    <tr><td style={{ padding:"4px 16px 4px 0", color:"var(--ink-soft)" }}>Item Discount</td><td className="mono" style={{ padding:"4px 0", textAlign:"right" }}>(-) {pdfItemDiscountTotal.toFixed(2)}</td></tr>
-                  )}
-                  <tr><td style={{ padding:"4px 16px 4px 0", color:"var(--ink-soft)" }}>Sub Total</td><td className="mono" style={{ padding:"4px 0", textAlign:"right" }}>{pdfSubtotal.toFixed(2)}</td></tr>
-                  {(editingNow || pdfDiscountAmount > 0) && (
-                    <tr><td style={{ padding:"4px 16px 4px 0", color:"var(--ink-soft)" }}>Discount{!editingNow && src.orderDiscountType==="percent" ? ` (${src.orderDiscount}%)` : ""}</td>
-                      <td className="mono" style={{ padding:"4px 0", textAlign:"right" }}>
-                        {editingNow ? (
-                          <span style={{ display:"inline-flex", alignItems:"center", gap:4 }}>
-                            (-) <input type="number" min={0} max={src.orderDiscountType==="percent" ? 100 : undefined}
-                              style={{ ...inputStyle, width:60, textAlign:"right", display:"inline-block" }} value={src.orderDiscount||0}
-                              onChange={e=>updDraft("orderDiscount", (e.target.value === "" ? "" : Number(e.target.value)))} />
-                            <select value={src.orderDiscountType||"amount"} onChange={e=>updDraft("orderDiscountType", e.target.value)}
-                              style={{ fontSize:11, border:"1px solid var(--hair)", borderRadius:4, padding:"1px 3px", background:"var(--gold-tint)" }}>
-                              <option value="amount">QAR</option>
-                              <option value="percent">%</option>
-                            </select>
-                          </span>
-                        ) : <>(-) {pdfDiscountAmount.toFixed(2)}</>}
-                      </td>
-                    </tr>
-                  )}
-                  <tr style={{ background:themeColors.totalBg }}><td style={{ padding:"7px 16px 7px 0", fontWeight:600, color:themeColors.totalText }}>Total</td><td className="mono" style={{ padding:"7px 0", textAlign:"right", fontWeight:600, color:themeColors.totalText }}>QAR {pdfTotal.toFixed(2)}</td></tr>
-                </tbody>
-              </table>
-            </div>
+            <QuoteTotalsCard split={pdfSplit} itemDiscountTotal={pdfItemDiscountTotal} subtotal={pdfSubtotal} discountAmount={pdfDiscountAmount} total={pdfTotal}
+              editingNow={editingNow} orderDiscount={src.orderDiscount} orderDiscountType={src.orderDiscountType}
+              onDiscountChange={(v)=>updDraft("orderDiscount", v)} onDiscountTypeChange={(t)=>updDraft("orderDiscountType", t)}
+              themeColors={themeColors} inputStyle={inputStyle} />
 
             {(editingNow || noteLines.length > 0) && (
               <div style={{ marginBottom:22, paddingTop:16, borderTop:"1px solid var(--hair)" }}>
@@ -4158,7 +4184,7 @@ function QuotationTemplateEditor({ state, dispatch, isAdmin }) {
   const hasGovItems = blocks.some(b => b.isGov);
   const hasProfItems = blocks.some(b => !b.isGov);
   const gridCols = "30px 1fr 50px 90px 90px 26px";
-  const { subtotal, itemDiscountTotal, total } = quoteTotals(items, orderDiscount, orderDiscountType);
+  const { subtotal, itemDiscountTotal, discountAmount, total } = quoteTotals(items, orderDiscount, orderDiscountType);
   const split = govProfSplit(items, "Professional Fee");
 
   const updateItemField = (idx, field, val) => setItems(items.map((it,i) => i===idx ? { ...it, [field]: val } : it));
@@ -4297,99 +4323,14 @@ function QuotationTemplateEditor({ state, dispatch, isAdmin }) {
           <div style={{ fontSize:12, color:"var(--ink-soft)", marginBottom:2 }}>Subject :</div>
           <input style={{ ...inputStyle, fontSize:13.5, marginBottom:12 }} value={subject} onChange={e=>setSubject(e.target.value)} placeholder="e.g. 100% FOREIGN OWNERSHIP COMPANY FORMATION" />
 
-          <div style={{ fontSize:12.5, marginBottom:16 }}>
-            <div style={{ display:"grid", gridTemplateColumns:gridCols, background:themeColors.headerBg }}>
-              <div style={{ color:"#fff", padding:"9px 10px", fontWeight:500 }}>#</div>
-              <div style={{ color:"#fff", padding:"9px 10px", fontWeight:500 }}>Item & Description</div>
-              <div style={{ color:"#fff", padding:"9px 10px", fontWeight:500, textAlign:"right" }}>Qty</div>
-              <div style={{ color:"#fff", padding:"9px 10px", fontWeight:500, textAlign:"right" }}>Rate</div>
-              <div style={{ color:"#fff", padding:"9px 10px", fontWeight:500, textAlign:"right" }}>Amount</div>
-              <div />
-            </div>
+          <QuoteItemsCard blocks={blocks} hasGovItems={hasGovItems} hasProfItems={hasProfItems} editingNow={true}
+            gridCols={gridCols} themeColors={themeColors} inputStyle={inputStyle} feeTypeContext="Professional Fee"
+            onFieldChange={updateItemField} onRemove={removeItemAt} onAddActivity={addActivityToItem} onAddItem={addItem} />
 
-            {!hasGovItems && (
-              <div style={{ margin:"10px 0" }}><AddItemControl label="Add government fee item" onAdd={addItem("Government Fee")} /></div>
-            )}
-
-            {blocks.map((block, bi) => (
-              <div key={bi}>
-                <div style={{ borderRadius:10, overflow:"hidden", marginTop: bi === 0 ? 0 : 4 }}>
-                  {block.items.map((r, ri) => {
-                    const rowBorder = ri < block.items.length - 1 ? "1px solid var(--hair)" : "none";
-                    return r.kind === "category" ? (
-                      <div key={r.key} style={{ background:r.bg, fontWeight:600, fontSize:12, padding:"9px 10px", borderBottom:rowBorder }}>
-                        {r.label}
-                      </div>
-                    ) : (
-                      <div key={r.key} style={{ display:"grid", gridTemplateColumns:gridCols, alignItems:"start", background:r.bg, borderBottom:rowBorder }}>
-                        <div style={{ padding:"9px 10px" }}>{r.number}</div>
-                        <div style={{ padding:"9px 10px" }}>
-                          <input style={inputStyle} value={r.it.description || ""} onChange={e=>updateItemField(r.idx,"description",e.target.value)} placeholder="Item description" />
-                          {!(r.it.description || "").trim() && <span style={{ fontSize:10, color:"var(--danger)", display:"block", marginTop:2 }}>Required</span>}
-                          <textarea rows={2} style={{ ...inputStyle, fontSize:11, color:"var(--ink-soft)", marginTop:3, resize:"vertical" }} value={r.it.note || ""} onChange={e=>updateItemField(r.idx,"note",e.target.value)} placeholder={"Note (optional) — a numbered list gets its own line per number, e.g. 1 - ... 2 - ..."} />
-                          {isActivityFeeItem(r.it) && <AddActivityControl onAdd={(name)=>addActivityToItem(r.idx,name)} />}
-                        </div>
-                        <div style={{ padding:"9px 10px", textAlign:"right" }}>
-                          <input type="number" min={1} style={{ ...inputStyle, textAlign:"right" }} value={r.it.qty} onChange={e=>updateItemField(r.idx,"qty",(e.target.value === "" ? "" : Number(e.target.value)))} />
-                        </div>
-                        <div className="mono" style={{ padding:"9px 10px", textAlign:"right" }}>
-                          <input type="number" style={{ ...inputStyle, textAlign:"right" }} value={r.it.price} onChange={e=>updateItemField(r.idx,"price",(e.target.value === "" ? "" : Number(e.target.value)))} />
-                        </div>
-                        <div className="mono" style={{ padding:"9px 10px", textAlign:"right" }}>{(r.it.qty*r.it.price*(1-(r.it.discountPct||0)/100)).toFixed(2)}</div>
-                        <div style={{ padding:"9px 10px", textAlign:"center" }}>
-                          <button type="button" className="btn btn-sm btn-ghost" style={{color:"var(--danger)", padding:2}} title="Remove" onClick={()=>removeItemAt(r.idx)}><X size={13}/></button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-                <div style={{ margin:"8px 0" }}>
-                  <AddItemControl label={block.feeType === "Government Fee" ? "Add government fee item" : "Add professional fee item"} onAdd={addItem(block.feeType)} />
-                </div>
-              </div>
-            ))}
-
-            {!hasProfItems && (
-              <div style={{ margin:"10px 0" }}><AddItemControl label="Add professional fee item" onAdd={addItem("Professional Fee")} /></div>
-            )}
-          </div>
-
-          <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:24 }}>
-            <table style={{ fontSize:13 }}>
-              <tbody>
-                {split.govTotal > 0 && split.profTotal > 0 && (split.govFirst ? (
-                  <>
-                    <tr><td style={{ padding:"4px 16px 4px 0", color:"var(--ink-soft)" }}>Government Fee Total</td><td className="mono" style={{ padding:"4px 0", textAlign:"right" }}>{split.govTotal.toFixed(2)}</td></tr>
-                    <tr><td style={{ padding:"4px 16px 4px 0", color:"var(--ink-soft)" }}>Professional Fee Total</td><td className="mono" style={{ padding:"4px 0", textAlign:"right" }}>{split.profTotal.toFixed(2)}</td></tr>
-                  </>
-                ) : (
-                  <>
-                    <tr><td style={{ padding:"4px 16px 4px 0", color:"var(--ink-soft)" }}>Professional Fee Total</td><td className="mono" style={{ padding:"4px 0", textAlign:"right" }}>{split.profTotal.toFixed(2)}</td></tr>
-                    <tr><td style={{ padding:"4px 16px 4px 0", color:"var(--ink-soft)" }}>Government Fee Total</td><td className="mono" style={{ padding:"4px 0", textAlign:"right" }}>{split.govTotal.toFixed(2)}</td></tr>
-                  </>
-                ))}
-                {itemDiscountTotal > 0 && (
-                  <tr><td style={{ padding:"4px 16px 4px 0", color:"var(--ink-soft)" }}>Item Discount</td><td className="mono" style={{ padding:"4px 0", textAlign:"right" }}>(-) {itemDiscountTotal.toFixed(2)}</td></tr>
-                )}
-                <tr><td style={{ padding:"4px 16px 4px 0", color:"var(--ink-soft)" }}>Sub Total</td><td className="mono" style={{ padding:"4px 0", textAlign:"right" }}>{subtotal.toFixed(2)}</td></tr>
-                <tr><td style={{ padding:"4px 16px 4px 0", color:"var(--ink-soft)" }}>Discount</td>
-                  <td className="mono" style={{ padding:"4px 0", textAlign:"right" }}>
-                    <span style={{ display:"inline-flex", alignItems:"center", gap:4 }}>
-                      (-) <input type="number" min={0} max={orderDiscountType==="percent" ? 100 : undefined}
-                        style={{ ...inputStyle, width:60, textAlign:"right", display:"inline-block" }} value={orderDiscount||0}
-                        onChange={e=>setOrderDiscount(e.target.value === "" ? "" : Number(e.target.value))} />
-                      <select value={orderDiscountType||"amount"} onChange={e=>setOrderDiscountType(e.target.value)}
-                        style={{ fontSize:11, border:"1px solid var(--hair)", borderRadius:4, padding:"1px 3px", background:"var(--gold-tint)" }}>
-                        <option value="amount">QAR</option>
-                        <option value="percent">%</option>
-                      </select>
-                    </span>
-                  </td>
-                </tr>
-                <tr style={{ background:themeColors.totalBg }}><td style={{ padding:"7px 16px 7px 0", fontWeight:600, color:themeColors.totalText }}>Total</td><td className="mono" style={{ padding:"7px 0", textAlign:"right", fontWeight:600, color:themeColors.totalText }}>QAR {total.toFixed(2)}</td></tr>
-              </tbody>
-            </table>
-          </div>
+          <QuoteTotalsCard split={split} itemDiscountTotal={itemDiscountTotal} subtotal={subtotal} discountAmount={discountAmount} total={total}
+            editingNow={true} orderDiscount={orderDiscount} orderDiscountType={orderDiscountType}
+            onDiscountChange={setOrderDiscount} onDiscountTypeChange={setOrderDiscountType}
+            themeColors={themeColors} inputStyle={inputStyle} />
 
           <div style={{ marginBottom:22, paddingTop:16, borderTop:"1px solid var(--hair)" }}>
             <div style={{ fontSize:12, color:"var(--ink-soft)", marginBottom:6 }}>Notes</div>
