@@ -127,6 +127,14 @@ function drawCardBorder(doc, x, top, w, h) {
   doc.roundedRect(x, top, w, h, CARD_RADIUS).lineWidth(0.8).strokeColor(HAIR).stroke();
 }
 
+// Every column gets the same CELL_PAD inset on both sides of its own boundary, left-aligned
+// columns padded on the left and right-aligned columns padded on the right before the next
+// column's boundary — so the header labels and every row's content (including category labels,
+// which otherwise had no left margin at all) share one consistent margin instead of the
+// previous ad hoc mix of 0px and 5px insets.
+const CELL_PAD_IDX = 5; // the "#" column is narrow — a smaller inset keeps 2-digit row numbers from wrapping
+const CELL_PAD = 8;
+
 function drawTableHeader(doc, y, colX, tableRight, headerBg) {
   const w = tableRight - MARGIN;
   doc.save();
@@ -135,10 +143,10 @@ function drawTableHeader(doc, y, colX, tableRight, headerBg) {
   doc.restore();
   drawCardBorder(doc, MARGIN, y, w, HEADER_H);
   doc.font("Inter-SemiBold").fontSize(9).fillColor("#FFFFFF");
-  doc.text("#", colX.idx + 5, y + 7, { width: colX.desc - colX.idx - 10 });
-  doc.text("Item & Description", colX.desc, y + 7, { width: colX.rate - colX.desc - 5 });
-  doc.text("Rate", colX.rate, y + 7, { width: colX.amount - colX.rate - 5, align: "right" });
-  doc.text("Amount", colX.amount, y + 7, { width: tableRight - colX.amount - 5, align: "right" });
+  doc.text("#", colX.idx + CELL_PAD_IDX, y + 7, { width: colX.desc - colX.idx - CELL_PAD_IDX * 2 });
+  doc.text("Item & Description", colX.desc + CELL_PAD, y + 7, { width: colX.rate - colX.desc - CELL_PAD * 2 });
+  doc.text("Rate", colX.rate + CELL_PAD, y + 7, { width: colX.amount - colX.rate - CELL_PAD * 2, align: "right" });
+  doc.text("Amount", colX.amount + CELL_PAD, y + 7, { width: tableRight - colX.amount - CELL_PAD * 2, align: "right" });
   doc.fillColor(INK);
   return y + HEADER_H;
 }
@@ -158,7 +166,7 @@ function generateQuotationPdf(quotation, res) {
   doc.pipe(res);
 
   const tableRight = doc.page.width - MARGIN;
-  const colX = { idx: MARGIN, desc: MARGIN + 25, rate: MARGIN + 340, amount: MARGIN + 430 };
+  const colX = { idx: MARGIN, desc: MARGIN + 30, rate: MARGIN + 340, amount: MARGIN + 430 };
 
   // --- Header: "QUOTE" title + quote# on the left, brand wordmark + address on the right -------
   const headerTop = MARGIN;
@@ -206,32 +214,36 @@ function generateQuotationPdf(quotation, res) {
     return (quotation.fee_type || quotation.feeType || "Professional Fee") === "Government Fee";
   };
 
-  const descWidth = colX.rate - colX.desc - 5;
+  const descWidth = colX.rate - colX.desc - CELL_PAD * 2;
   const measureItemHeight = (it) => {
     const descText = it.description || it.service || "";
     const descHeight = doc.font("Inter").fontSize(9.5).heightOfString(descText, { width: descWidth });
     const noteHeight = it.note ? doc.font("Inter").fontSize(8).heightOfString(it.note, { width: descWidth }) + 3 : 0;
     return Math.max(18, descHeight + noteHeight + 8);
   };
-  const measureCategoryHeight = (label) => doc.font("Inter-SemiBold").fontSize(9.5).heightOfString(label, { width: tableRight - MARGIN }) + 10;
+  const categoryWidth = tableRight - MARGIN - CELL_PAD_IDX - CELL_PAD;
+  const measureCategoryHeight = (label) => doc.font("Inter-SemiBold").fontSize(9.5).heightOfString(label, { width: categoryWidth }) + 10;
 
   let rowNumber = 0;
   const renderRowBody = (r, ry) => {
     if (r.kind === "category") {
-      doc.font("Inter-SemiBold").fontSize(9.5).fillColor(INK).text(r.label, MARGIN, ry + 6, { width: tableRight - MARGIN });
+      // Aligned with the "#" column's own inset (CELL_PAD_IDX), not the description column's —
+      // it's a full-width label, not a grid cell, so it reads most naturally lined up with the
+      // row numbers directly below it rather than floating at an unrelated indent.
+      doc.font("Inter-SemiBold").fontSize(9.5).fillColor(INK).text(r.label, MARGIN + CELL_PAD_IDX, ry + 6, { width: categoryWidth });
       return;
     }
     rowNumber++;
     const it = r.it;
     const descText = it.description || it.service || "";
-    doc.font("Inter").fontSize(9.5).fillColor(INK).text(String(rowNumber), colX.idx + 5, ry + 6, { width: colX.desc - colX.idx - 10 });
-    doc.text(descText, colX.desc, ry + 6, { width: descWidth });
+    doc.font("Inter").fontSize(9.5).fillColor(INK).text(String(rowNumber), colX.idx + CELL_PAD_IDX, ry + 6, { width: colX.desc - colX.idx - CELL_PAD_IDX * 2 });
+    doc.text(descText, colX.desc + CELL_PAD, ry + 6, { width: descWidth });
     if (it.note) {
-      doc.font("Inter").fontSize(8).fillColor(GRAY).text(it.note, colX.desc, doc.y + 1, { width: descWidth });
+      doc.font("Inter").fontSize(8).fillColor(GRAY).text(it.note, colX.desc + CELL_PAD, doc.y + 1, { width: descWidth });
     }
-    doc.font("Inter").fontSize(9.5).fillColor(INK).text(money2(it.price), colX.rate, ry + 6, { width: colX.amount - colX.rate - 5, align: "right" });
+    doc.font("Inter").fontSize(9.5).fillColor(INK).text(money2(it.price), colX.rate + CELL_PAD, ry + 6, { width: colX.amount - colX.rate - CELL_PAD * 2, align: "right" });
     const lineAmount = (Number(it.qty) || 0) * (Number(it.price) || 0) * (1 - (Number(it.discountPct) || 0) / 100);
-    doc.text(money2(lineAmount), colX.amount, ry + 6, { width: tableRight - colX.amount - 5, align: "right" });
+    doc.text(money2(lineAmount), colX.amount + CELL_PAD, ry + 6, { width: tableRight - colX.amount - CELL_PAD * 2, align: "right" });
   };
 
   // Build one block per contiguous run of same fee-type, each row pre-measured so its card's
