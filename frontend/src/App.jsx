@@ -1858,6 +1858,14 @@ function Dashboard({ state, dispatch, role, userId, setPage, onOpenExpiredCustom
     ...valueKpis,
   ];
 
+  const [activityBadgeDismissed, setActivityBadgeDismissed] = useState(() => {
+    try { return localStorage.getItem("agw_badge_activity_finder_dismissed") === "1"; } catch { return false; }
+  });
+  const dismissActivityBadge = () => {
+    setActivityBadgeDismissed(true);
+    try { localStorage.setItem("agw_badge_activity_finder_dismissed", "1"); } catch { /* storage unavailable: badge just reappears next visit */ }
+  };
+
   return (
     <div>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 16, flexWrap:"wrap", gap:10 }}>
@@ -1876,6 +1884,16 @@ function Dashboard({ state, dispatch, role, userId, setPage, onOpenExpiredCustom
           <AttendanceSignButton />
         </div>
       </div>
+      {!activityBadgeDismissed && (
+        <div style={{ display:"inline-flex", alignItems:"center", gap:8, marginBottom:16, padding:"4px 6px 4px 4px", borderRadius:999, background:"var(--brand-tint)", color:"var(--brand)", fontSize:12.5 }}>
+          <span style={{ background:"var(--brand)", color:"#fff", borderRadius:999, padding:"2px 8px", fontSize:11, fontWeight:600 }}>New</span>
+          <span>Activity search added</span>
+          <button type="button" onClick={()=>setPage("activityFinder")}
+            style={{ border:"none", background:"transparent", color:"inherit", font:"inherit", fontWeight:600, textDecoration:"underline", cursor:"pointer", padding:0 }}>Try it</button>
+          <button type="button" aria-label="Dismiss" onClick={dismissActivityBadge}
+            style={{ border:"none", background:"transparent", color:"inherit", cursor:"pointer", padding:2, display:"flex" }}><X size={13} /></button>
+        </div>
+      )}
       {showQuickAddLead && <LeadFormModal state={state} dispatch={dispatch} userId={userId} editLead={null} onClose={()=>setShowQuickAddLead(false)} />}
 
       {chartTab === "overview" && <>
