@@ -867,6 +867,7 @@ const NAV = [
     { key: "leads", label: "Leads", icon: Users, roles: [...ADMIN_LIKE,"sales_manager","sales_exec","ops_manager","ops_member","pro_head","pro"] },
     { key: "deals", label: "Deals", icon: Handshake, roles: [...ADMIN_LIKE,"sales_manager","sales_exec","ops_manager","ops_member","pro_head","pro"] },
     { key: "quotations", label: "Quotations", icon: FileText, roles: [...ADMIN_LIKE,"sales_manager","sales_exec","ops_manager","ops_member","pro_head","pro"] },
+    { key: "activityFinder", label: "Activity Finder", icon: Search, roles: "all" },
   ]},
   { group: "Customer & KYC", items: [
     // All three route to the same CustomersPage, each remounting it with a different starting
@@ -1335,6 +1336,7 @@ export default function App() {
     deals: ["Deals", "Open opportunities across the sales pipeline"],
     quotations: ["Quotations", "Draft, price, discount and send client quotations"],
     quotationTemplates: ["Quotation Templates", "A reusable starting point for each service — refine anytime"],
+    activityFinder: ["Activity Finder", "Find e-commerce approved business activities for a client's business"],
     customersAddressGateway: ["Customer & KYC — Address Gateway", "Client records, employee documents, and expiry status"],
     customersOthers: ["Customer & KYC — Others", "Client records, employee documents, and expiry status"],
     customersAll: ["Customer & KYC — All Customers", "Client records, employee documents, and expiry status"],
@@ -1491,6 +1493,7 @@ export default function App() {
             {page === "attendance" && <AttendancePage {...ctx} />}
             {page === "leadAssignment" && <LeadAssignmentManagerPage {...ctx} />}
             {page === "knowledgeBase" && <KnowledgeBasePage />}
+            {page === "activityFinder" && <ActivityFinderPage />}
             {page === "users" && <UsersPage {...ctx} />}
             {page === "templates" && <TemplatesPage {...ctx} />}
             {page === "emailTemplates" && <EmailTemplatesPage {...ctx} />}
@@ -8350,6 +8353,217 @@ function SmartSlideModal({ onClose }) {
         </div>
       </div>
     </Modal>
+  );
+}
+
+/* ---------------------------------------------------------------------- */
+/* ACTIVITY FINDER                                                         */
+/* ---------------------------------------------------------------------- */
+
+const ACTIVITY_STOP_WORDS = new Set(["related","relating","relevant","activity","activities","business","the","and","of","for","a","an","in","with","to"]);
+
+// Everyday ways to describe a client's business, mapped to the wording the official list uses. Each
+// entry widens one search word, so "food" also finds "restaurant", "dates" or "honey" without the
+// salesperson having to guess the exact phrasing.
+const ACTIVITY_SYNONYMS = {
+  food: ["restaurant","cafe","catering","bakery","grocer","beverage","drink","meal","dessert","confection","snack","nut","honey","date","coffee","tea","spice","juice","sugar","chocolate"],
+  beverage: ["drink","juice","coffee","tea","water"],
+  drink: ["beverage","juice","coffee","tea","water"],
+  fashion: ["clothing","clothes","apparel","fabric","textile","footwear","jewelry","accessories","abaya"],
+  clothing: ["clothes","apparel","fabric","textile","garment","wear"],
+  clothes: ["clothing","apparel","fabric","textile"],
+  electronics: ["electronic","electrical","computer","mobile","phone","radio","television","stereo","appliance"],
+  phone: ["mobile","telecommunication"],
+  mobile: ["phone","telecommunication"],
+  software: ["programming","web","digital","application"],
+  computer: ["computers","software","technology"],
+  health: ["medical","pharmaceutical","orthopaedic","beauty","cosmetic"],
+  beauty: ["cosmetic","perfumery"],
+  cosmetics: ["perfumery","beauty"],
+  delivery: ["courier","parcel","storage","warehouse","logistics","packing"],
+  logistics: ["storage","warehouse","packing","parcel","freight"],
+  storage: ["warehouse","storages"],
+  digital: ["online","internet","web","platform","software"],
+  online: ["internet","digital","web"],
+  design: ["creative","decoration","photograph"],
+  it: ["computer","software","technology","web"],
+  technology: ["software","digital","computer","artificial intelligence"],
+};
+
+const ACTIVITY_INTENTS = [
+  { label: "Food & beverage", q: "food" },
+  { label: "Fashion & clothing", q: "fashion" },
+  { label: "Electronics & phones", q: "electronics" },
+  { label: "Software & IT", q: "software" },
+  { label: "Storage & logistics", q: "storage" },
+  { label: "Health & beauty", q: "health" },
+  { label: "Online & digital", q: "online" },
+  { label: "Design & creative", q: "design" },
+];
+
+const activityChipStyle = (active) => ({
+  border: `1px solid ${active ? "var(--brand)" : "var(--hair)"}`,
+  background: active ? "var(--brand-tint)" : "var(--surface)",
+  color: active ? "var(--brand)" : "inherit",
+  borderRadius: 999, padding: "5px 12px", fontSize: 12.5, cursor: "pointer", font: "inherit",
+});
+
+// Whole-word matching for short terms ("it" must not match "items"), word-start matching for
+// longer ones so "date" still finds "dates" and "grocer" finds "grocery".
+const activityTermRegex = (term) => new RegExp(term.length <= 3 ? `\\b${term}\\b` : `\\b${term}`);
+
+// Every word typed has to match somewhere on the row (activity, category or note). Matches in the
+// activity text rank above category-only matches, so "food" puts the food activities first.
+function searchActivities(items, rawQuery, category) {
+  const tokens = rawQuery.toLowerCase().split(/[^a-z0-9]+/).filter(t => t && !ACTIVITY_STOP_WORDS.has(t));
+  const pool = category ? items.filter(i => i.category === category) : items;
+  if (!tokens.length) return pool.map(item => ({ item, score: 0 }));
+
+  const matches = [];
+  for (const item of pool) {
+    let score = 0;
+    let matchedAll = true;
+    for (const tok of tokens) {
+      if (/^\d+$/.test(tok)) {
+        if (item.code.startsWith(tok)) { score += 3; continue; }
+        matchedAll = false; break;
+      }
+      const singular = tok.length > 4 && tok.endsWith("s") ? tok.slice(0, -1) : tok;
+      const regexes = [...new Set([tok, singular, ...(ACTIVITY_SYNONYMS[tok] || ACTIVITY_SYNONYMS[singular] || [])])].map(activityTermRegex);
+      const hit = (text) => regexes.some(r => r.test(text));
+      if (hit(item._act)) score += 2;
+      else if (hit(item._cat)) score += 1;
+      else if (hit(item._note)) score += 0.5;
+      else { matchedAll = false; break; }
+    }
+    if (matchedAll) matches.push({ item, score });
+  }
+  return matches.sort((a, b) => b.score - a.score || a.item.code.localeCompare(b.item.code));
+}
+
+function ActivityFinderPage() {
+  const [items, setItems] = useState(null);
+  const [loadError, setLoadError] = useState("");
+  const [query, setQuery] = useState("");
+  const [category, setCategory] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    api.activities.list()
+      .then(list => {
+        if (!alive) return;
+        setItems(list.map(i => ({ ...i, _act: i.activity.toLowerCase(), _cat: i.category.toLowerCase(), _note: (i.note || "").toLowerCase() })));
+      })
+      .catch(err => { if (alive) setLoadError(err.message || "Could not load the activity list"); });
+    return () => { alive = false; };
+  }, []);
+
+  const categories = useMemo(() => items ? [...new Set(items.map(i => i.category))].sort() : [], [items]);
+  const results = useMemo(() => items ? searchActivities(items, query, category) : [], [items, query, category]);
+  const activeQuery = query.trim();
+
+  const suggestions = useMemo(() => {
+    if (!activeQuery) return [];
+    const counts = {};
+    results.forEach(r => { counts[r.item.category] = (counts[r.item.category] || 0) + 1; });
+    return Object.entries(counts).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 6);
+  }, [results, activeQuery]);
+
+  const grouped = useMemo(() => {
+    const groups = new Map();
+    results.forEach(r => {
+      if (!groups.has(r.item.category)) groups.set(r.item.category, []);
+      groups.get(r.item.category).push(r.item);
+    });
+    return [...groups.entries()];
+  }, [results]);
+
+  return (
+    <div>
+      <div className="agw-card" style={{ marginBottom: 14 }}>
+        <div style={{ fontSize:13, color:"var(--ink-soft)", lineHeight:1.6, marginBottom:14 }}>
+          Find the activity codes that fit a client's business. Describe what the business does in plain words, for example
+          food, fashion or mobile phones, or search by a code.
+        </div>
+        <div style={{ position:"relative" }}>
+          <Search size={16} style={{ position:"absolute", left:12, top:11, color:"var(--ink-soft)" }} />
+          <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="e.g. food, fashion, mobile phones, storage, 472112"
+            style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:8, padding:"9px 34px 9px 36px", fontSize:14, background:"var(--surface)" }} />
+          {query && (
+            <button type="button" onClick={()=>setQuery("")} aria-label="Clear search"
+              style={{ position:"absolute", right:8, top:7, border:"none", background:"transparent", cursor:"pointer", color:"var(--ink-soft)", padding:4 }}>
+              <X size={15} />
+            </button>
+          )}
+        </div>
+        <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginTop:12 }}>
+          {ACTIVITY_INTENTS.map(s => {
+            const active = activeQuery.toLowerCase() === s.q;
+            return <button key={s.q} type="button" onClick={()=>setQuery(active ? "" : s.q)} style={activityChipStyle(active)}>{s.label}</button>;
+          })}
+        </div>
+      </div>
+
+      {loadError && <div className="agw-card" style={{ color:"var(--danger)", marginBottom:14 }}>{loadError}</div>}
+      {!items && !loadError && <div className="agw-card" style={{ color:"var(--ink-soft)", fontSize:13 }}>Loading activities…</div>}
+
+      {items && (
+        <>
+          <div style={{ display:"flex", alignItems:"center", flexWrap:"wrap", gap:10, marginBottom:12 }}>
+            <select value={category} onChange={e=>setCategory(e.target.value)}
+              style={{ border:"1px solid var(--hair)", borderRadius:8, padding:"6px 10px", fontSize:13, background:"var(--surface)", maxWidth:320 }}>
+              <option value="">All categories</option>
+              {categories.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <span style={{ fontSize:13, color:"var(--ink-soft)" }}>{results.length} of {items.length} activities</span>
+            {(activeQuery || category) && (
+              <button className="btn btn-sm btn-ghost" onClick={()=>{ setQuery(""); setCategory(""); }}>Clear</button>
+            )}
+          </div>
+
+          {suggestions.length > 0 && (
+            <div className="agw-card" style={{ marginBottom:14, padding:"12px 14px" }}>
+              <div style={{ fontSize:11.5, fontWeight:600, color:"var(--ink-soft)", textTransform:"uppercase", letterSpacing:".03em", marginBottom:8 }}>
+                Most relevant categories
+              </div>
+              <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+                {suggestions.map(([name, count]) => (
+                  <button key={name} type="button" onClick={()=>setCategory(category === name ? "" : name)} style={activityChipStyle(category === name)}>
+                    {name} <span style={{ opacity:.7 }}>· {count}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {grouped.length === 0 ? (
+            <div className="agw-card" style={{ textAlign:"center", color:"var(--ink-soft)", fontSize:13, padding:"28px 16px" }}>
+              No activities match "{activeQuery}". Try a broader word, such as "food" instead of "restaurant".
+            </div>
+          ) : grouped.map(([cat, rows]) => (
+            <div key={cat} className="agw-card" style={{ marginBottom:12, padding:0, overflow:"hidden" }}>
+              <div style={{ padding:"10px 14px", background:"var(--page)", borderBottom:"1px solid var(--hair)", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                <strong style={{ fontSize:13.5 }}>{cat}</strong>
+                <span style={{ fontSize:12, color:"var(--ink-soft)" }}>{rows.length}</span>
+              </div>
+              {rows.map((r, i) => (
+                <div key={r.code} style={{ display:"grid", gridTemplateColumns:"84px 1fr", gap:12, padding:"10px 14px", borderTop: i ? "1px solid var(--hair)" : "none" }}>
+                  <div className="mono" style={{ fontSize:13 }}>{r.code}</div>
+                  <div>
+                    <div style={{ fontSize:13.5 }}>{r.activity}</div>
+                    {r.note && (
+                      <div style={{ fontSize:12, color:"var(--ink-soft)", marginTop:4, lineHeight:1.5, background:"var(--gold-tint)", borderRadius:6, padding:"6px 8px" }}>
+                        {r.note}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))}
+        </>
+      )}
+    </div>
   );
 }
 

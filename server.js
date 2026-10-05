@@ -65,6 +65,7 @@ app.use("/api/data-manager", require("./src/routes/dataManager.routes"));
 app.use("/api/settings", require("./src/routes/settings.routes"));
 app.use("/api/approval-workflow", require("./src/routes/approvalWorkflow.routes"));
 app.use("/api", require("./src/routes/templates.routes")); // /api/services, /api/quotation-templates, /api/checklist-templates
+app.use("/api/activities", require("./src/routes/activities.routes"));
 
 // --- Frontend (built React app) ------------------------------------------------------------
 // Served from the same Express app/domain as the API, so there's no separate hosting target

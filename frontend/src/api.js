@@ -431,6 +431,9 @@ export const api = {
     update: (id, payload) => patch(`/item-catalog/${id}`, payload),
     remove: (id) => del(`/item-catalog/${id}`),
   },
+  activities: {
+    list: () => get("/activities"),
+  },
   serviceCosts: {
     list: () => get("/service-costs"),
     update: (service, cost) => request("PUT", `/service-costs/${encodeURIComponent(service)}`, { cost }),
