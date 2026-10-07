@@ -3950,11 +3950,19 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
         src.items.forEach((it, i) => {
           const isGov = isGovFeeLine(it, q.feeType);
           const bg = isGov ? GOV_FEE_BG : PROF_FEE_BG;
-          if (!blocks.length || blocks[blocks.length - 1].isGov !== isGov) {
+          const isNewBlock = !blocks.length || blocks[blocks.length - 1].isGov !== isGov;
+          if (isNewBlock) {
             blocks.push({ feeType: isGov ? "Government Fee" : "Professional Fee", isGov, items: [] });
             lastCategory = null;
           }
           const block = blocks[blocks.length - 1];
+          // A block always opens with SOME header — its own category text when the item has one,
+          // otherwise the fee type itself ("Government Fee" / "Professional Fee") — so a Government
+          // Fee section is never just an unlabeled band of rows distinguished only by background tint.
+          if (isNewBlock && !it.category) {
+            block.items.push({ kind: "category", label: block.feeType, key: "cat-fallback-"+i, bg });
+            lastCategory = block.feeType;
+          }
           if ((it.category || "") !== lastCategory && it.category) {
             block.items.push({ kind: "category", label: it.category, key: "cat-"+i, bg });
             lastCategory = it.category;
@@ -4190,11 +4198,18 @@ function QuotationTemplateEditor({ state, dispatch, isAdmin }) {
   items.forEach((it, i) => {
     const isGov = isGovFeeLine(it, "Professional Fee");
     const bg = isGov ? GOV_FEE_BG : PROF_FEE_BG;
-    if (!blocks.length || blocks[blocks.length - 1].isGov !== isGov) {
+    const isNewBlock = !blocks.length || blocks[blocks.length - 1].isGov !== isGov;
+    if (isNewBlock) {
       blocks.push({ feeType: isGov ? "Government Fee" : "Professional Fee", isGov, items: [] });
       lastCategory = null;
     }
     const block = blocks[blocks.length - 1];
+    // Same fallback as QuoteDetailModal: a block always opens with a header, defaulting to the fee
+    // type itself when the item carries no category text of its own.
+    if (isNewBlock && !it.category) {
+      block.items.push({ kind: "category", label: block.feeType, key: "cat-fallback-"+i, bg });
+      lastCategory = block.feeType;
+    }
     if ((it.category || "") !== lastCategory && it.category) {
       block.items.push({ kind: "category", label: it.category, key: "cat-"+i, bg });
       lastCategory = it.category;

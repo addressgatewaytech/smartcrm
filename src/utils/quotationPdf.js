@@ -252,11 +252,20 @@ function generateQuotationPdf(quotation, res) {
   let lastCategory = null;
   items.forEach((it) => {
     const isGov = isGovFeeItem(it);
-    if (!blocks.length || blocks[blocks.length - 1].isGov !== isGov) {
+    const isNewBlock = !blocks.length || blocks[blocks.length - 1].isGov !== isGov;
+    if (isNewBlock) {
       blocks.push({ isGov, rows: [] });
       lastCategory = null;
     }
     const block = blocks[blocks.length - 1];
+    // A block always opens with a header — its own category text when the item has one, otherwise
+    // the fee type itself ("Government Fee" / "Professional Fee") — matching the on-screen preview,
+    // so a Government Fee section is never just an unlabeled band distinguished only by its tint.
+    if (isNewBlock && !it.category) {
+      const feeTypeLabel = isGov ? "Government Fee" : "Professional Fee";
+      block.rows.push({ kind: "category", label: feeTypeLabel, height: measureCategoryHeight(feeTypeLabel) });
+      lastCategory = feeTypeLabel;
+    }
     if ((it.category || "") && it.category !== lastCategory) {
       block.rows.push({ kind: "category", label: it.category, height: measureCategoryHeight(it.category) });
       lastCategory = it.category;
