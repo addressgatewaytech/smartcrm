@@ -6821,7 +6821,9 @@ function TenantDetailModal({ tenant: t, dispatch, isAdmin, onClose }) {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({ room:t.room, tenantName:t.tenantName, contact:t.contact||"", phone:t.phone||"", monthlyRent:t.monthlyRent, status:t.status, notes:t.notes||"" });
   const [payFor, setPayFor] = useState(null);
+  const [addingMonth, setAddingMonth] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const confirm = useConfirm();
   // Already ORDER BY month DESC from the API — no need to re-sort here.
   const totalDue = t.payments.reduce((a,p)=>a+p.amountDue,0);
   const totalPaid = t.payments.reduce((a,p)=>a+p.amountPaid,0);
@@ -6830,6 +6832,24 @@ function TenantDetailModal({ tenant: t, dispatch, isAdmin, onClose }) {
 
   const statusOf = (p) => (p.amountDue > 0 && p.amountPaid >= p.amountDue) ? "Paid" : p.amountPaid > 0 ? "Partial" : "Pending";
   const statusTone = { Paid:"success", Partial:"warning", Pending:"neutral" };
+
+  // A month is only removable before any payment is recorded against it — otherwise a paid
+  // month's record could disappear by accident (correct the amount instead). A month inside the
+  // tenant's normal start_date-through-today range also gets re-created by the server's own
+  // backfill the next time this tenant is opened, so the warning only fires for those.
+  const removeMonth = async (p) => {
+    const now = new Date();
+    const currentMonthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+    const withinAutoRange = p.month <= currentMonthStart;
+    if (!(await confirm({
+      title: `Remove ${tenantMonthLabel(p.month)}?`,
+      body: withinAutoRange
+        ? "This falls within the tenant's normal lease period, so it will be added back automatically the next time this tenant is opened — removing it now won't permanently drop a current or past month."
+        : "This permanently removes the month from the ledger. You can add it back later if needed.",
+      confirmLabel: "Remove",
+    }))) return;
+    dispatch({ type:"DELETE_TENANT_PAYMENT_MONTH", tenantId:t.id, paymentId:p.id });
+  };
 
   return (
     <Modal title={`${t.room} — ${t.tenantName}`} sub={`ID: ${t.id}`} onClose={onClose} width={880}>
@@ -6842,6 +6862,7 @@ function TenantDetailModal({ tenant: t, dispatch, isAdmin, onClose }) {
         </div>
         <div style={{display:"flex", gap:8, flexShrink:0}}>
           {isAdmin && <button className="btn btn-sm" onClick={()=>setEditing(true)}><Pencil size={13}/> Edit</button>}
+          <button className="btn btn-sm" onClick={()=>setAddingMonth(true)}><Plus size={13}/> Add month</button>
           <button className="btn btn-sm" disabled={downloading} onClick={async ()=>{
             setDownloading(true);
             try { const blob = await api.tenants.downloadStatementPdf(t.id); downloadBlob(`SOA-${t.room}.pdf`, blob); }
@@ -6911,6 +6932,9 @@ function TenantDetailModal({ tenant: t, dispatch, isAdmin, onClose }) {
                       <button className="btn btn-sm btn-ghost" title="Send a deposit reminder" onClick={()=>dispatch({type:"REMIND_TENANT_CHEQUE_DEPOSIT", tenantId:t.id, paymentId:p.id})}><Bell size={12}/></button>
                     </>
                   )}
+                  {p.amountPaid === 0 && (
+                    <button className="btn btn-sm btn-ghost" style={{color:"var(--danger)"}} title="Remove this month" onClick={()=>removeMonth(p)}><Trash2 size={12}/></button>
+                  )}
                 </td>
               </tr>
             );
@@ -6920,11 +6944,47 @@ function TenantDetailModal({ tenant: t, dispatch, isAdmin, onClose }) {
       </div>
 
       {payFor && <RecordTenantPaymentModal tenant={t} payment={payFor} dispatch={dispatch} onClose={()=>setPayFor(null)} />}
+      {addingMonth && <AddTenantMonthModal tenant={t} dispatch={dispatch} onClose={()=>setAddingMonth(false)} />}
+    </Modal>
+  );
+}
+
+// For adding a month ahead of the tenant's normal start_date-through-today range (most often a
+// future month). Rent due defaults to the tenant's current monthly rent but can be overridden,
+// e.g. for a prorated partial month.
+function AddTenantMonthModal({ tenant, dispatch, onClose }) {
+  const [month, setMonth] = useState("");
+  const [amountDue, setAmountDue] = useState(tenant.monthlyRent);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+
+  const save = async () => {
+    setSaving(true); setSaveError("");
+    try {
+      await dispatch({ type:"ADD_TENANT_PAYMENT_MONTH", tenantId: tenant.id, payload: { month, amountDue: Number(amountDue) || 0 } });
+      onClose();
+    } catch (err) {
+      setSaveError(err instanceof ApiError ? err.message : "Couldn't add that month — please try again.");
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <Modal title="Add a month" sub={`${tenant.room} — ${tenant.tenantName}`} onClose={onClose} width={420}>
+      <div className="row2">
+        <div className="field"><label>Month</label><input type="month" value={month} onChange={e=>setMonth(e.target.value)} autoFocus /></div>
+        <div className="field"><label>Rent due (QAR)</label><input type="number" min="0" value={amountDue} onChange={e=>setAmountDue(e.target.value)} /></div>
+      </div>
+      {saveError && <div className="side-note" style={{color:"var(--danger)"}}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{saveError}</div>}
+      <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:16}}>
+        <button className="btn" onClick={onClose}>Cancel</button>
+        <button className="btn btn-primary" disabled={saving || !month} onClick={save}>{saving ? "Adding…" : "Add month"}</button>
+      </div>
     </Modal>
   );
 }
 
 function RecordTenantPaymentModal({ tenant, payment, dispatch, onClose }) {
+  const [amountDue, setAmountDue] = useState(payment.amountDue);
   const [amountPaid, setAmountPaid] = useState(payment.amountPaid || payment.amountDue);
   const [paidAt, setPaidAt] = useState(payment.paidAt || daysFromNow(0));
   const [mode, setMode] = useState(payment.mode || "Cash");
@@ -6937,7 +6997,7 @@ function RecordTenantPaymentModal({ tenant, payment, dispatch, onClose }) {
     setSaving(true);
     try {
       await dispatch({ type:"RECORD_TENANT_PAYMENT", tenantId: tenant.id, paymentId: payment.id, payload: {
-        amountPaid: Number(amountPaid) || 0, paidAt, mode, chequeNumber, chequeBank, chequeDate,
+        amountDue: Number(amountDue) || 0, amountPaid: Number(amountPaid) || 0, paidAt, mode, chequeNumber, chequeBank, chequeDate,
       }});
       onClose();
     } finally { setSaving(false); }
@@ -6945,15 +7005,17 @@ function RecordTenantPaymentModal({ tenant, payment, dispatch, onClose }) {
 
   return (
     <Modal title={`Record payment — ${tenantMonthLabel(payment.month)}`} sub={`${tenant.room} — ${tenant.tenantName}`} onClose={onClose} width={480}>
-      <div className="side-note" style={{marginTop:0}}>Rent due for this month: {money(payment.amountDue)}</div>
       <div className="row2">
+        <div className="field"><label>Rent due (QAR)</label><input type="number" min="0" value={amountDue} onChange={e=>setAmountDue(e.target.value)} /></div>
         <div className="field"><label>Amount paid (QAR)</label><input type="number" min="0" value={amountPaid} onChange={e=>setAmountPaid(e.target.value)} autoFocus /></div>
-        <div className="field"><label>Paid on</label><input type="date" value={paidAt} onChange={e=>setPaidAt(e.target.value)} /></div>
       </div>
-      <div className="field"><label>Payment mode</label>
-        <select value={mode} onChange={e=>setMode(e.target.value)}>
-          <option>Cash</option><option>Cheque</option><option>Bank Transfer</option><option>Online</option>
-        </select>
+      <div className="row2">
+        <div className="field"><label>Paid on</label><input type="date" value={paidAt} onChange={e=>setPaidAt(e.target.value)} /></div>
+        <div className="field"><label>Payment mode</label>
+          <select value={mode} onChange={e=>setMode(e.target.value)}>
+            <option>Cash</option><option>Cheque</option><option>Bank Transfer</option><option>Online</option>
+          </select>
+        </div>
       </div>
       {mode === "Cheque" && (
         <>

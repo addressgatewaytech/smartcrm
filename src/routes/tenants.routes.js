@@ -95,17 +95,53 @@ router.delete("/:id", requireRole(["admin_like"]), async (req, res) => {
 // (amount actually paid, how, and — if a cheque — its own details). Recording a fresh cheque here
 // always resets cheque_deposited to 0: entering payment details is "a cheque was received", not
 // "and it's already been banked" — see the separate /deposited route for that.
+// amountDue is optional and, unlike the other fields, NOT reset to a default when omitted — it's
+// the month's rent, not a payment detail, so a plain "record this payment" call (no amountDue in
+// the body) must leave it exactly as it was.
 router.patch("/:id/payments/:paymentId", requireRole(ACCESS_ROLES), async (req, res) => {
-  const [row] = await query("SELECT id FROM tenant_payments WHERE id = ? AND tenant_id = ?", [req.params.paymentId, req.params.id]);
+  const [row] = await query("SELECT * FROM tenant_payments WHERE id = ? AND tenant_id = ?", [req.params.paymentId, req.params.id]);
   if (!row) return res.status(404).json({ error: "Not found" });
   const b = req.body;
   const isCheque = b.mode === "Cheque";
+  const amountDue = b.amountDue !== undefined ? Number(b.amountDue) || 0 : row.amount_due;
   await query(
-    `UPDATE tenant_payments SET amount_paid=?, paid_at=?, mode=?, cheque_number=?, cheque_bank=?, cheque_date=?, cheque_deposited=0, notes=? WHERE id = ?`,
-    [b.amountPaid || 0, b.paidAt || null, b.mode || null,
+    `UPDATE tenant_payments SET amount_due=?, amount_paid=?, paid_at=?, mode=?, cheque_number=?, cheque_bank=?, cheque_date=?, cheque_deposited=0, notes=? WHERE id = ?`,
+    [amountDue, b.amountPaid || 0, b.paidAt || null, b.mode || null,
       isCheque ? (b.chequeNumber || null) : null, isCheque ? (b.chequeBank || null) : null, isCheque ? (b.chequeDate || null) : null,
       b.notes || null, req.params.paymentId]
   );
+  res.json({ ok: true });
+});
+
+// Manually adds one month to a tenant's rent ledger — for a month outside the normal
+// start_date-through-today range that GET / lazily backfills (most often a future month, added
+// ahead of time). Defaults amountDue to the tenant's current monthly_rent when not given.
+router.post("/:id/payments", requireRole(ACCESS_ROLES), async (req, res) => {
+  const [tenant] = await query("SELECT id, monthly_rent FROM tenants WHERE id = ?", [req.params.id]);
+  if (!tenant) return res.status(404).json({ error: "Not found" });
+  const { month, amountDue } = req.body;
+  if (!month) return res.status(400).json({ error: "month is required" });
+  const normalizedMonth = `${String(month).slice(0, 7)}-01`;
+  const [existing] = await query("SELECT id FROM tenant_payments WHERE tenant_id = ? AND month = ?", [req.params.id, normalizedMonth]);
+  if (existing) return res.status(409).json({ error: "That month already has a row." });
+  const id = nextId("TP");
+  await query(
+    "INSERT INTO tenant_payments (id, tenant_id, month, amount_due) VALUES (?,?,?,?)",
+    [id, req.params.id, normalizedMonth, amountDue !== undefined ? Number(amountDue) || 0 : tenant.monthly_rent]
+  );
+  res.status(201).json({ id });
+});
+
+// Removes one month from the ledger. Only allowed before any payment has been recorded against
+// it, so a paid month's record can never silently disappear — correct the amount instead. Note:
+// a month inside the tenant's normal start_date-through-today range will simply be re-created by
+// GET /'s backfill the next time this tenant is opened (same reason it's safe to allow at all —
+// nothing paid is ever lost); it only "sticks" for a future month added ahead of schedule.
+router.delete("/:id/payments/:paymentId", requireRole(ACCESS_ROLES), async (req, res) => {
+  const [row] = await query("SELECT amount_paid FROM tenant_payments WHERE id = ? AND tenant_id = ?", [req.params.paymentId, req.params.id]);
+  if (!row) return res.status(404).json({ error: "Not found" });
+  if (Number(row.amount_paid) > 0) return res.status(400).json({ error: "Can't remove a month that already has a payment recorded." });
+  await query("DELETE FROM tenant_payments WHERE id = ?", [req.params.paymentId]);
   res.json({ ok: true });
 });
 

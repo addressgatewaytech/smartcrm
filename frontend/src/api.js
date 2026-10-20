@@ -318,6 +318,8 @@ export const api = {
     update: (id, payload) => patch(`/tenants/${id}`, payload),
     remove: (id) => del(`/tenants/${id}`),
     recordPayment: (id, paymentId, payload) => patch(`/tenants/${id}/payments/${paymentId}`, payload),
+    addPaymentMonth: (id, payload) => post(`/tenants/${id}/payments`, payload),
+    removePaymentMonth: (id, paymentId) => del(`/tenants/${id}/payments/${paymentId}`),
     markDeposited: (id, paymentId) => post(`/tenants/${id}/payments/${paymentId}/deposited`),
     remindDeposit: (id, paymentId) => post(`/tenants/${id}/payments/${paymentId}/remind-deposit`),
     // Same reasoning as quotations.downloadPdf: needs the Bearer auth header a plain <a href>

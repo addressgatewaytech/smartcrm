@@ -220,6 +220,8 @@ export function useApiStore(enabled) {
       case "UPDATE_TENANT": await api.tenants.update(action.id, action.payload); return refresh(["tenants"]);
       case "DELETE_TENANT": await api.tenants.remove(action.id); return refresh(["tenants"]);
       case "RECORD_TENANT_PAYMENT": await api.tenants.recordPayment(action.tenantId, action.paymentId, action.payload); return refresh(["tenants"]);
+      case "ADD_TENANT_PAYMENT_MONTH": await api.tenants.addPaymentMonth(action.tenantId, action.payload); return refresh(["tenants"]);
+      case "DELETE_TENANT_PAYMENT_MONTH": await api.tenants.removePaymentMonth(action.tenantId, action.paymentId); return refresh(["tenants"]);
       case "MARK_TENANT_CHEQUE_DEPOSITED": await api.tenants.markDeposited(action.tenantId, action.paymentId); return refresh(["tenants"]);
       case "REMIND_TENANT_CHEQUE_DEPOSIT": await api.tenants.remindDeposit(action.tenantId, action.paymentId); return refresh(["notifications"]);
 
