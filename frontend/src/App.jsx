@@ -569,6 +569,14 @@ const sameSubCustomer = (x, sub) => (x.customerId && sub.customerId) ? x.custome
 const isGrowthPartnerCustomer = (state, job) =>
   state.subscriptions.some(s => sameSubCustomer(job, s) && s.plan === "Growth Partner Program" && !["Cancelled","Expired"].includes(subStatusOf(s)));
 
+// Any customer with an active (not Cancelled/Expired) subscription, whichever plan it's for — used
+// purely to badge their job cards so staff can spot at a glance that this customer is a subscriber,
+// same as isGrowthPartnerCustomer above but not limited to that one plan. Billing-affecting logic
+// (the plan's transaction allowance / "Extra Job" flag below) stays scoped to Growth Partner
+// Program specifically — generalizing that would change allowance math, not just a badge.
+const activeSubscriptionFor = (state, job) =>
+  state.subscriptions.find(s => sameSubCustomer(job, s) && !["Cancelled","Expired"].includes(subStatusOf(s)));
+
 // A Growth Partner customer's routine, included services are created directly (no sales order —
 // see job_cards.routes.js POST /direct) and are what the plan's own transaction allowance meters.
 // A job card that instead went through its own quotation -> sales order -> invoice is a separate,
@@ -586,6 +594,21 @@ function ExtraJobBadge({ big }) {
         : { background:"var(--info-tint)", color:"var(--info)", fontSize:10, padding:"3px 8px 3px 6px", flexShrink:0, display:"inline-flex", alignItems:"center", gap:4 }}
       title="Billed separately through its own quotation, sales order and invoice — doesn't count toward this customer's Growth Partner transaction allowance">
       <Briefcase size={big ? 15 : 13} strokeWidth={2.25}/>Extra Job
+    </span>
+  );
+}
+
+// Identifies which subscription a job card's customer belongs to, whatever the plan — the tier
+// (e.g. "Silver") is more useful at a glance than the plan name when there is one, since a job
+// card's own service often isn't the plan's name (see activeSubscriptionFor above).
+function SubscriptionBadge({ sub, big }) {
+  if (!sub) return null;
+  return (
+    <span className="pill" style={big
+        ? { background:"var(--gold-tint)", color:"var(--gold-dark)", fontSize:12, padding:"4px 10px 4px 8px", display:"inline-flex", alignItems:"center", gap:5 }
+        : { background:"var(--gold-tint)", color:"var(--gold-dark)", fontSize:10, padding:"3px 8px 3px 6px", flexShrink:0, display:"inline-flex", alignItems:"center", gap:4 }}
+      title={`Subscription customer — ${sub.plan}${sub.tier ? " · " + sub.tier : ""}`}>
+      <Award size={big ? 18 : 16} fill="var(--gold)" fillOpacity={0.35} strokeWidth={2.25}/>{big ? sub.plan : (sub.tier || sub.plan)}
     </span>
   );
 }
@@ -7321,7 +7344,7 @@ function JobsPage({ state, dispatch, role, userId, highlightId, onHighlightHandl
                   <td className="mono" style={{fontSize:12, whiteSpace:"nowrap"}}>{daysSince(j.createdAt)}d<div style={{fontSize:11,color:"var(--ink-soft)"}}>{fmtDate(j.createdAt)}</div></td>
                   <td style={{ display:"flex", alignItems:"center", gap:6, maxWidth:200 }}>
                     <span style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }} title={j.customer}>{j.customer}</span>
-                    {isGrowthPartnerCustomer(state, j) && <span className="pill" style={{ background:"var(--gold-tint)", color:"var(--gold-dark)", fontSize:10, padding:"3px 8px 3px 6px", flexShrink:0, display:"inline-flex", alignItems:"center", gap:4 }} title="Growth Partner Program customer"><Award size={16} fill="var(--gold)" fillOpacity={0.35} strokeWidth={2.25}/>{j.service==="Growth Partner Program" && j.packageTier ? j.packageTier : ""}</span>}
+                    <SubscriptionBadge sub={activeSubscriptionFor(state, j)} />
                     {isExtraJobForGrowthPartner(state, j) && <ExtraJobBadge/>}
                   </td>
                   <td style={{maxWidth:220, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}} title={`${j.service}${j.description && j.description.trim().toLowerCase() !== j.service.trim().toLowerCase() ? ` — ${j.description}` : ""}`}>
@@ -7383,7 +7406,7 @@ function JobsPage({ state, dispatch, role, userId, highlightId, onHighlightHandl
                 style={cardStyle} title="Click for full details">
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:6 }}>
                   <h5 style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{j.customer}</h5>
-                  {isGrowthPartnerCustomer(state, j) && <span className="pill" style={{ background:"var(--gold-tint)", color:"var(--gold-dark)", fontSize:10, padding:"3px 8px 3px 6px", flexShrink:0, display:"inline-flex", alignItems:"center", gap:4 }} title="Growth Partner Program customer"><Award size={16} fill="var(--gold)" fillOpacity={0.35} strokeWidth={2.25}/>{j.service==="Growth Partner Program" && j.packageTier ? j.packageTier : ""}</span>}
+                  <SubscriptionBadge sub={activeSubscriptionFor(state, j)} />
                   {isExtraJobForGrowthPartner(state, j) && <ExtraJobBadge/>}
                 </div>
                 <div className="mono" style={{ fontSize:11, color:"var(--ink-soft)", marginTop:-4, marginBottom:4, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
@@ -7488,7 +7511,7 @@ function AssignModal({ job, dispatch, employees, onClose }) {
 }
 
 function JobDetailModal({ job, state, dispatch, role, userId, employees, approvalTypes=[], onClose, onReassign, initialShowCancel=false }) {
-  const isGP = !!state && isGrowthPartnerCustomer(state, job);
+  const jobSub = state ? activeSubscriptionFor(state, job) : null;
   const isExtra = !!state && isExtraJobForGrowthPartner(state, job);
   const [cancelReason, setCancelReason] = useState("");
   const [showCancel, setShowCancel] = useState(initialShowCancel);
@@ -7570,9 +7593,7 @@ function JobDetailModal({ job, state, dispatch, role, userId, employees, approva
     <>
     <Modal title={<span style={{ display:"inline-flex", alignItems:"center", gap:10 }}>
         {job.id}
-        {isGP && <span className="pill" style={{ background:"var(--gold-tint)", color:"var(--gold-dark)", fontSize:12, padding:"4px 10px 4px 8px", display:"inline-flex", alignItems:"center", gap:5 }} title="Growth Partner Program customer">
-          <Award size={18} fill="var(--gold)" fillOpacity={0.35} strokeWidth={2.25}/>Growth Partner{job.packageTier ? ` · ${job.packageTier}` : ""}
-        </span>}
+        <SubscriptionBadge sub={jobSub} big />
         {isExtra && <ExtraJobBadge big/>}
       </span>} sub={`${job.customer} — ${job.service}${job.packageTier ? ` (${job.packageTier})` : ""}${job.description && job.description.trim().toLowerCase() !== job.service.trim().toLowerCase() ? " — "+job.description : ""}`} onClose={onClose} width={640}>
       <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop:-6, marginBottom:6 }}>
