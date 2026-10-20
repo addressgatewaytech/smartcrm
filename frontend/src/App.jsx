@@ -577,6 +577,13 @@ const isGrowthPartnerCustomer = (state, job) =>
 const activeSubscriptionFor = (state, job) =>
   state.subscriptions.find(s => sameSubCustomer(job, s) && !["Cancelled","Expired"].includes(subStatusOf(s)));
 
+// How many job cards this customer has in total (any status) — shown next to the subscription
+// badge so staff can gauge a subscriber's workload at a glance without leaving the Job Cards
+// screen. sameSubCustomer works here too since a job card is already shaped like {customer,
+// customerId}.
+const jobCountForCustomer = (state, job) =>
+  state.jobCards.filter(j => sameSubCustomer(job, j)).length;
+
 // A Growth Partner customer's routine, included services are created directly (no sales order —
 // see job_cards.routes.js POST /direct) and are what the plan's own transaction allowance meters.
 // A job card that instead went through its own quotation -> sales order -> invoice is a separate,
@@ -601,14 +608,16 @@ function ExtraJobBadge({ big }) {
 // Identifies which subscription a job card's customer belongs to, whatever the plan — the tier
 // (e.g. "Silver") is more useful at a glance than the plan name when there is one, since a job
 // card's own service often isn't the plan's name (see activeSubscriptionFor above).
-function SubscriptionBadge({ sub, big }) {
+function SubscriptionBadge({ sub, big, jobCount }) {
   if (!sub) return null;
+  const jobCountLabel = jobCount != null ? `${jobCount} job${jobCount === 1 ? "" : "s"}` : null;
   return (
     <span className="pill" style={big
         ? { background:"var(--gold-tint)", color:"var(--gold-dark)", fontSize:12, padding:"4px 10px 4px 8px", display:"inline-flex", alignItems:"center", gap:5 }
         : { background:"var(--gold-tint)", color:"var(--gold-dark)", fontSize:10, padding:"3px 8px 3px 6px", flexShrink:0, display:"inline-flex", alignItems:"center", gap:4 }}
-      title={`Subscription customer — ${sub.plan}${sub.tier ? " · " + sub.tier : ""}`}>
+      title={`Subscription customer — ${sub.plan}${sub.tier ? " · " + sub.tier : ""}${jobCountLabel ? ` — ${jobCountLabel} on file` : ""}`}>
       <Award size={big ? 18 : 16} fill="var(--gold)" fillOpacity={0.35} strokeWidth={2.25}/>{big ? sub.plan : (sub.tier || sub.plan)}
+      {jobCountLabel && <span style={{ opacity:.75 }}>· {jobCountLabel}</span>}
     </span>
   );
 }
@@ -7344,7 +7353,7 @@ function JobsPage({ state, dispatch, role, userId, highlightId, onHighlightHandl
                   <td className="mono" style={{fontSize:12, whiteSpace:"nowrap"}}>{daysSince(j.createdAt)}d<div style={{fontSize:11,color:"var(--ink-soft)"}}>{fmtDate(j.createdAt)}</div></td>
                   <td style={{ display:"flex", alignItems:"center", gap:6, maxWidth:200 }}>
                     <span style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }} title={j.customer}>{j.customer}</span>
-                    <SubscriptionBadge sub={activeSubscriptionFor(state, j)} />
+                    <SubscriptionBadge sub={activeSubscriptionFor(state, j)} jobCount={jobCountForCustomer(state, j)} />
                     {isExtraJobForGrowthPartner(state, j) && <ExtraJobBadge/>}
                   </td>
                   <td style={{maxWidth:220, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}} title={`${j.service}${j.description && j.description.trim().toLowerCase() !== j.service.trim().toLowerCase() ? ` — ${j.description}` : ""}`}>
@@ -7406,7 +7415,7 @@ function JobsPage({ state, dispatch, role, userId, highlightId, onHighlightHandl
                 style={cardStyle} title="Click for full details">
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:6 }}>
                   <h5 style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{j.customer}</h5>
-                  <SubscriptionBadge sub={activeSubscriptionFor(state, j)} />
+                  <SubscriptionBadge sub={activeSubscriptionFor(state, j)} jobCount={jobCountForCustomer(state, j)} />
                   {isExtraJobForGrowthPartner(state, j) && <ExtraJobBadge/>}
                 </div>
                 <div className="mono" style={{ fontSize:11, color:"var(--ink-soft)", marginTop:-4, marginBottom:4, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
@@ -7593,7 +7602,7 @@ function JobDetailModal({ job, state, dispatch, role, userId, employees, approva
     <>
     <Modal title={<span style={{ display:"inline-flex", alignItems:"center", gap:10 }}>
         {job.id}
-        <SubscriptionBadge sub={jobSub} big />
+        <SubscriptionBadge sub={jobSub} big jobCount={state ? jobCountForCustomer(state, job) : null} />
         {isExtra && <ExtraJobBadge big/>}
       </span>} sub={`${job.customer} — ${job.service}${job.packageTier ? ` (${job.packageTier})` : ""}${job.description && job.description.trim().toLowerCase() !== job.service.trim().toLowerCase() ? " — "+job.description : ""}`} onClose={onClose} width={640}>
       <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop:-6, marginBottom:6 }}>
