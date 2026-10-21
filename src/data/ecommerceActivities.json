@@ -192,5 +192,17 @@
   { "code": "741090", "category": "Design & Creative Services", "activity": "Other specialized design activities", "note": "This class does not include: design and programming of web pages, see 6201 architect" },
   { "code": "742010", "category": "Design & Creative Services", "activity": "Photographic activities" },
   { "code": "742020", "category": "Design & Creative Services", "activity": "Photography for commercials and tourism purposes" },
-  { "code": "813020", "category": "Landscape & Facility Services", "activity": "Activities of landscape design services" }
+  { "code": "813020", "category": "Landscape & Facility Services", "activity": "Activities of landscape design services" },
+  { "code": "432250", "category": "Facility Management, Cleaning, Hospitality, Air Conditioning, Electrical work, Plumbing", "activity": "Installation, maintenance and repair of plumbing and sanitary equipment" },
+  { "code": "812904", "category": "Facility Management, Cleaning, Hospitality, Air Conditioning, Electrical work, Plumbing", "activity": "Disinfection activities and pest and rodents control by fumes" },
+  { "code": "432111", "category": "Facility Management, Cleaning, Hospitality, Air Conditioning, Electrical work, Plumbing", "activity": "Electrical wiring" },
+  { "code": "952250", "category": "Facility Management, Cleaning, Hospitality, Air Conditioning, Electrical work, Plumbing", "activity": "Maintenance of air conditioners of various types" },
+  { "code": "681030", "category": "Facility Management, Cleaning, Hospitality, Air Conditioning, Electrical work, Plumbing", "activity": "Management and operation of furnished flats" },
+  { "code": "562905", "category": "Facility Management, Cleaning, Hospitality, Air Conditioning, Electrical work, Plumbing", "activity": "Hospitality Services" },
+  { "code": "811003", "category": "Facility Management, Cleaning, Hospitality, Air Conditioning, Electrical work, Plumbing", "activity": "Provision of maintenance services within facilities" },
+  { "code": "381102", "category": "Facility Management, Cleaning, Hospitality, Air Conditioning, Electrical work, Plumbing", "activity": "Street cleaning" },
+  { "code": "812901", "category": "Facility Management, Cleaning, Hospitality, Air Conditioning, Electrical work, Plumbing", "activity": "Exterior cleaning of buildings" },
+  { "code": "812902", "category": "Facility Management, Cleaning, Hospitality, Air Conditioning, Electrical work, Plumbing", "activity": "Specialized cleaning activities for buildings such as window cleaning, chimney cleaning, etc" },
+  { "code": "433091", "category": "Facility Management, Cleaning, Hospitality, Air Conditioning, Electrical work, Plumbing", "activity": "Cleaning of new buildings after construction" },
+  { "code": "812100", "category": "Facility Management, Cleaning, Hospitality, Air Conditioning, Electrical work, Plumbing", "activity": "General cleaning of buildings", "note": "This class does not include: specialized interior cleaning activities, such as chimney cleaning, cleaning of fireplaces, stoves, furnaces, incinerators, boilers, ventilation ducts, exhaust units, see 8129" }
 ]

@@ -1368,7 +1368,7 @@ export default function App() {
     deals: ["Deals", "Open opportunities across the sales pipeline"],
     quotations: ["Quotations", "Draft, price, discount and send client quotations"],
     quotationTemplates: ["Quotation Templates", "A reusable starting point for each service — refine anytime"],
-    activityFinder: ["Activity Finder", "Find e-commerce approved business activities for a client's business"],
+    activityFinder: ["Activity Finder", "Find business activity codes for a client's company formation"],
     customersAddressGateway: ["Customer & KYC — Address Gateway", "Client records, employee documents, and expiry status"],
     customersOthers: ["Customer & KYC — Others", "Client records, employee documents, and expiry status"],
     customersAll: ["Customer & KYC — All Customers", "Client records, employee documents, and expiry status"],
@@ -8513,6 +8513,15 @@ const ACTIVITY_SYNONYMS = {
   design: ["creative","decoration","photograph"],
   it: ["computer","software","technology","web"],
   technology: ["software","digital","computer","artificial intelligence"],
+  facility: ["cleaning","hospitality","plumbing","electrical","maintenance","housekeeping","pest","disinfection","air conditioning"],
+  cleaning: ["clean","housekeeping","sanitation","disinfection","fumigation","sanitary"],
+  plumbing: ["plumber","sanitary","pipe"],
+  electrical: ["wiring","electric","electrician"],
+  hospitality: ["hotel","guest","flat"],
+  pest: ["fumigation","disinfection","rodent"],
+  maintenance: ["repair","upkeep","servicing","facility"],
+  ac: ["air conditioner","air conditioning","hvac","cooling"],
+  aircon: ["air conditioner","air conditioning","hvac","cooling"],
 };
 
 const ACTIVITY_INTENTS = [
@@ -8521,6 +8530,7 @@ const ACTIVITY_INTENTS = [
   { label: "Electronics & phones", q: "electronics" },
   { label: "Software & IT", q: "software" },
   { label: "Storage & logistics", q: "storage" },
+  { label: "Facility, cleaning & maintenance", q: "facility" },
   { label: "Health & beauty", q: "health" },
   { label: "Online & digital", q: "online" },
   { label: "Design & creative", q: "design" },
