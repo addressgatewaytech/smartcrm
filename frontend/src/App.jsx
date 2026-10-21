@@ -8549,9 +8549,12 @@ const activityTermRegex = (term) => new RegExp(term.length <= 3 ? `\\b${term}\\b
 
 // Every word typed has to match somewhere on the row (activity, category or note). Matches in the
 // activity text rank above category-only matches, so "food" puts the food activities first.
-function searchActivities(items, rawQuery, category) {
+// `list` narrows to one source list (e.g. "E-commerce" vs "Facility Management") before `category`
+// narrows further within it — see the tab bar in ActivityFinderPage.
+function searchActivities(items, rawQuery, category, list) {
   const tokens = rawQuery.toLowerCase().split(/[^a-z0-9]+/).filter(t => t && !ACTIVITY_STOP_WORDS.has(t));
-  const pool = category ? items.filter(i => i.category === category) : items;
+  let pool = list ? items.filter(i => i.list === list) : items;
+  if (category) pool = pool.filter(i => i.category === category);
   if (!tokens.length) return pool.map(item => ({ item, score: 0 }));
 
   const matches = [];
@@ -8581,20 +8584,31 @@ function ActivityFinderPage() {
   const [loadError, setLoadError] = useState("");
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("");
+  // Which source list is active ("" = All). Separate from `category`, which narrows within
+  // whichever list(s) are in play — switching lists resets it, since a category from one list
+  // (e.g. a Facility Management category) is meaningless while viewing another.
+  const [list, setList] = useState("");
+  const selectList = (l) => { setList(l); setCategory(""); };
 
   useEffect(() => {
     let alive = true;
     api.activities.list()
-      .then(list => {
+      .then(data => {
         if (!alive) return;
-        setItems(list.map(i => ({ ...i, _act: i.activity.toLowerCase(), _cat: i.category.toLowerCase(), _note: (i.note || "").toLowerCase() })));
+        setItems(data.map(i => ({ ...i, _act: i.activity.toLowerCase(), _cat: i.category.toLowerCase(), _note: (i.note || "").toLowerCase() })));
       })
       .catch(err => { if (alive) setLoadError(err.message || "Could not load the activity list"); });
     return () => { alive = false; };
   }, []);
 
-  const categories = useMemo(() => items ? [...new Set(items.map(i => i.category))].sort() : [], [items]);
-  const results = useMemo(() => items ? searchActivities(items, query, category) : [], [items, query, category]);
+  const lists = useMemo(() => items ? [...new Set(items.map(i => i.list))] : [], [items]);
+  const categories = useMemo(() => {
+    if (!items) return [];
+    const pool = list ? items.filter(i => i.list === list) : items;
+    return [...new Set(pool.map(i => i.category))].sort();
+  }, [items, list]);
+  const poolTotal = useMemo(() => items ? (list ? items.filter(i => i.list === list).length : items.length) : 0, [items, list]);
+  const results = useMemo(() => items ? searchActivities(items, query, category, list) : [], [items, query, category, list]);
   const activeQuery = query.trim();
 
   const suggestions = useMemo(() => {
@@ -8615,6 +8629,14 @@ function ActivityFinderPage() {
 
   return (
     <div>
+      {items && lists.length > 1 && (
+        <div className="tabbar">
+          <button className={`tab ${!list?"active":""}`} onClick={()=>selectList("")}>All</button>
+          {lists.map(l => (
+            <button key={l} className={`tab ${list===l?"active":""}`} onClick={()=>selectList(l)}>{l}</button>
+          ))}
+        </div>
+      )}
       <div className="agw-card" style={{ marginBottom: 14 }}>
         <div style={{ fontSize:13, color:"var(--ink-soft)", lineHeight:1.6, marginBottom:14 }}>
           Find the activity codes that fit a client's business. Describe what the business does in plain words, for example
@@ -8650,7 +8672,7 @@ function ActivityFinderPage() {
               <option value="">All categories</option>
               {categories.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
-            <span style={{ fontSize:13, color:"var(--ink-soft)" }}>{results.length} of {items.length} activities</span>
+            <span style={{ fontSize:13, color:"var(--ink-soft)" }}>{results.length} of {poolTotal} activities</span>
             {(activeQuery || category) && (
               <button className="btn btn-sm btn-ghost" onClick={()=>{ setQuery(""); setCategory(""); }}>Clear</button>
             )}
