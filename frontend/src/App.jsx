@@ -3273,22 +3273,28 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
   const [notes, setNotes] = useState("");
   const [terms, setTerms] = useState("");
   // Government Fee lines are trusted straight from the template — nothing to review per line, so
-  // there's no per-item editor for them here. Professional Fee collapses to one confirmable amount
-  // (matches how it's actually written on every real quotation: one lump-sum line, not itemized —
-  // see QuotationTemplateEditor). Full per-line editing is still available after creation via the
-  // existing Edit action on the quotation itself.
+  // there's no per-item editor for them here. Professional Fee is reviewed as one confirmable
+  // amount (the number salespeople actually negotiate per deal), but as long as that number is
+  // left exactly as the template loaded it, every Professional Fee item from the template still
+  // goes into the quotation individually — same as Government Fee — instead of being silently
+  // collapsed into a single generic line. Only an actual override (the amount changed from what
+  // the template summed to) falls back to one combined line, since per-item proportions for an
+  // arbitrary negotiated total would be guesswork. Full per-line editing is still available after
+  // creation via the existing Edit action on the quotation itself.
   const [profFee, setProfFee] = useState(0);
   const govLines = items.filter(it => isGovFeeLine(it, undefined));
   const profLines = items.filter(it => !isGovFeeLine(it, undefined));
   const firstProfTemplateLine = items.find(it => !isGovFeeLine(it, undefined));
   const govTotal = govLines.reduce((a, it) => a + it.qty * it.price * (1 - (it.discountPct || 0) / 100), 0);
-  const finalItems = [...govLines, ...(profFee > 0 ? [{
+  const profTemplateTotal = profLines.reduce((a, it) => a + it.qty * it.price * (1 - (it.discountPct || 0) / 100), 0);
+  const profFeeUnchanged = Math.abs(profFee - profTemplateTotal) < 0.005;
+  const finalItems = [...govLines, ...(profFeeUnchanged ? profLines : (profFee > 0 ? [{
     category: firstProfTemplateLine?.category || "",
     service: templateService,
     description: firstProfTemplateLine?.description || "PROFESSIONAL FEE IS INCLUSIVE OF THE FOLLOWING:",
     note: firstProfTemplateLine?.note || "",
     qty: 1, price: profFee, discountPct: 0, feeType: "Professional Fee",
-  }] : [])];
+  }] : []))];
   const { subtotal, itemDiscountTotal, discountAmount, total } = quoteTotals(finalItems, orderDiscount, orderDiscountType);
   const hasDiscount = finalItems.some(it => it.discountPct > 0) || orderDiscount > 0;
   // One merged template per service (Professional Fee and Government Fee lines share the same
@@ -3523,7 +3529,11 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
             ))}
           </div>
         )}
-        <div style={{ fontSize:11, color:"var(--ink-soft)", marginTop:8 }}>These items set the amount below — adjust it there if this job's actual fee is different.</div>
+        <div style={{ fontSize:11, color:"var(--ink-soft)", marginTop:8 }}>
+          {profFeeUnchanged
+            ? "These items will each appear on the quotation individually, same as Government Fee. Change the amount below only if this job's actual fee is different — that combines them into one line instead."
+            : "The amount below no longer matches these items' total, so the quotation will show one combined Professional Fee line instead of itemizing them — reset it to the total shown above to itemize again."}
+        </div>
       </div>
 
       <div className="field">
