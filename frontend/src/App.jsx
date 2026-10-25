@@ -3279,6 +3279,7 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
   // existing Edit action on the quotation itself.
   const [profFee, setProfFee] = useState(0);
   const govLines = items.filter(it => isGovFeeLine(it, undefined));
+  const profLines = items.filter(it => !isGovFeeLine(it, undefined));
   const firstProfTemplateLine = items.find(it => !isGovFeeLine(it, undefined));
   const govTotal = govLines.reduce((a, it) => a + it.qty * it.price * (1 - (it.discountPct || 0) / 100), 0);
   const finalItems = [...govLines, ...(profFee > 0 ? [{
@@ -3503,6 +3504,26 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
           </div>
         )}
         <div style={{ fontSize:11, color:"var(--ink-soft)", marginTop:8 }}>Loaded from the {templateService} template — pass-through to the client, nothing to review here.</div>
+      </div>
+
+      <div className="agw-card" style={{ background:"var(--page)", marginBottom:14 }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: profLines.length ? 8 : 0 }}>
+          <strong style={{ fontSize:13 }}>Professional Fee — included in this template</strong>
+          <span className="mono" style={{ fontSize:13 }}>{money(profLines.reduce((a,it) => a + it.qty * it.price * (1 - (it.discountPct || 0) / 100), 0))}</span>
+        </div>
+        {profLines.length === 0 ? (
+          <div style={{ fontSize:12.5, color:"var(--ink-soft)" }}>No Professional Fee items in this template.</div>
+        ) : (
+          <div style={{ display:"grid", gridTemplateColumns:"1fr auto", rowGap:6, columnGap:16 }}>
+            {profLines.map((it,i) => (
+              <React.Fragment key={i}>
+                <span style={{ fontSize:12.5, color:"var(--ink-soft)" }}>{it.description || it.service}{it.qty > 1 ? ` × ${it.qty}` : ""}</span>
+                <span className="mono" style={{ fontSize:12.5, color:"var(--ink-soft)", whiteSpace:"nowrap", textAlign:"right" }}>{money(it.qty * it.price * (1 - (it.discountPct || 0) / 100))}</span>
+              </React.Fragment>
+            ))}
+          </div>
+        )}
+        <div style={{ fontSize:11, color:"var(--ink-soft)", marginTop:8 }}>These items set the amount below — adjust it there if this job's actual fee is different.</div>
       </div>
 
       <div className="field">
