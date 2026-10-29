@@ -566,6 +566,23 @@ const jobCategoryColor = (service, services) => {
   return JOB_CATEGORY_COLORS[hash % JOB_CATEGORY_COLORS.length];
 };
 
+// Tints a kanban column by the status it represents, reusing the exact same semantic tint tokens
+// that color every Stamp badge elsewhere (see statusTone, ui.jsx) — so a column's background always
+// matches the status badges of the cards inside it, rather than introducing a second, unrelated
+// color language. Without this, every column on the Leads/Deals boards shared one flat neutral
+// background, making them hard to tell apart at a glance (especially once scrolled past the
+// header row). "neutral"/unmapped statuses fall back to the column's own default background —
+// returning null rather than a visible color for those keeps an unstyled status from standing out
+// as if it were an error state.
+const STATUS_TONE_TINT = { info: "var(--info-tint)", warning: "var(--warning-tint)", gold: "var(--gold-tint)", danger: "var(--danger-tint)", success: "var(--success-tint)" };
+const statusColumnTint = (status) => STATUS_TONE_TINT[statusTone(status)] || null;
+// Same idea, one level down: a status-colored card border so individual cards stay visually
+// separated from each other even sitting on their own column's tint. Uses the solid tone color
+// (not the pale -tint) — unlike the tints, these aren't redeclared for dark mode, so they read the
+// same accent in both themes rather than needing a parallel dark-mode color to keep in sync.
+const STATUS_TONE_BORDER = { info: "var(--info)", warning: "var(--warning)", gold: "var(--gold)", danger: "var(--danger)", success: "var(--success)" };
+const statusCardBorder = (status) => STATUS_TONE_BORDER[statusTone(status)] || null;
+
 // Matches a job card (or anything else with {customerId, customer}) to a subscription's customer.
 // Prefers the linked customer_id — immune to the customer name being retyped, renamed, or just
 // carrying stray whitespace (real data has both: e.g. the customers row "Stanford International "
@@ -2602,12 +2619,14 @@ function LeadsPage({ state, dispatch, userId, role, setPage, onViewQuotation }) 
             const shownLeads = isExpanded ? colLeads : colLeads.slice(0, KANBAN_PAGE_SIZE);
             return (
             <div className={`board-col ${dragOverStatus===status ? "drag-over" : ""}`} key={status}
+              style={dragOverStatus===status ? undefined : { background: statusColumnTint(status) || undefined }}
               onDragOver={(e)=>{ e.preventDefault(); if (dragOverStatus!==status) setDragOverStatus(status); }}
               onDragLeave={()=>setDragOverStatus(prev => prev===status ? null : prev)}
               onDrop={(e)=>{ e.preventDefault(); if (draggedLeadId) dispatch({type:"SET_LEAD_STATUS", id:draggedLeadId, status}); setDraggedLeadId(null); setDragOverStatus(null); }}>
               <h4>{status}<span className="pill">{colLeads.length}</span></h4>
               {shownLeads.map(l => (
                 <div className={`job-card ${draggedLeadId===l.id ? "dragging" : ""}`} key={l.id} draggable
+                  style={{ borderColor: statusCardBorder(l.status) || undefined }}
                   onDragStart={(e)=>{ setDraggedLeadId(l.id); e.dataTransfer.effectAllowed = "move"; }}
                   onDragEnd={()=>{ setDraggedLeadId(null); setDragOverStatus(null); }}>
                   <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
@@ -2903,13 +2922,14 @@ function DealsPage({ state, dispatch, setPage, onViewQuotation, role, userId }) 
       <div className="board" style={{ gridTemplateColumns: "repeat(4, minmax(210px,1fr))" }}>
         {stages.map(stage => (
           <div className={`board-col ${dragOverStage===stage ? "drag-over" : ""}`} key={stage}
+            style={dragOverStage===stage ? undefined : { background: statusColumnTint(stage) || undefined }}
             onDragOver={(e)=>{ e.preventDefault(); if (dragOverStage!==stage) setDragOverStage(stage); }}
             onDragLeave={()=>setDragOverStage(prev => prev===stage ? null : prev)}
             onDrop={(e)=>{ e.preventDefault(); if (draggedDealId) dispatch({type:"UPDATE_DEAL", id:draggedDealId, payload:{stage}}); setDraggedDealId(null); setDragOverStage(null); }}>
             <h4>{stage}<span className="pill">{deals.filter(d=>d.stage===stage).length}</span></h4>
             {deals.filter(d => d.stage === stage).map(d => (
               <div className={`job-card ${draggedDealId===d.id ? "dragging" : ""}`} key={d.id} id={`deal-row-${d.id}`} draggable
-                style={dealHighlightStyle(d)}
+                style={{ borderColor: statusCardBorder(d.stage) || undefined, ...(dealHighlightStyle(d) || {}) }}
                 onClick={()=>{ if (highlightDealId===d.id) setHighlightDealId(null); }}
                 onDragStart={(e)=>{ setDraggedDealId(d.id); e.dataTransfer.effectAllowed = "move"; }}
                 onDragEnd={()=>{ setDraggedDealId(null); setDragOverStage(null); }}>
