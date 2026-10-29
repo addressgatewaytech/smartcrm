@@ -28,13 +28,23 @@ const CSS = `
   .agw { --ink:#151A1F; --ink-soft:#4B535B; --hair:#E1E6E8;
     --page:#F5F6F6; --surface:#FFFFFF;
     --sidebar:#0E3350; --sidebar-line:#1C4C6E; --sidebar-text:#B9D2E0; --sidebar-text-dim:#6E90A5;
-    --brand:#1391AC; --brand-dark:#0D7288; --brand-tint:#E1F2F5;
+    --brand:#0F99B3; --brand-dark:#0B7E93; --brand-tint:#E1F2F5;
     --gold:#E8791E; --gold-dark:#C05F0F; --gold-tint:#FCEBDA;
     --success:#2B6B4F; --success-tint:#E6F1EA;
     --warning:#95661C; --warning-tint:#FBEEDA;
     --danger:#9E3B33; --danger-tint:#FBE9E6;
     --info:#0E3350; --info-tint:#E6ECF0;
-    --radius: 10px;
+    /* Curvature/elevation scale — "fresh, curved" refresh. radius-sm is for controls (buttons,
+       inputs, nav items); radius for cards/panels; radius-lg for modals, which get the most
+       noticeably rounder treatment since they're the app's biggest, most frequent surfaces.
+       shadow-sm/md are deliberately soft (low opacity, large blur, no hard edge) rather than a
+       heavy drop shadow — depth without looking dated. Both no-ops in dark mode (see below),
+       where a black shadow on an already-dark surface reads as mud, not depth. */
+    --radius-sm: 10px;
+    --radius: 16px;
+    --radius-lg: 22px;
+    --shadow-sm: 0 1px 2px rgba(16,24,32,.05), 0 6px 16px rgba(16,24,32,.05);
+    --shadow-md: 0 12px 32px rgba(16,24,32,.12), 0 2px 8px rgba(16,24,32,.06);
     font-family: 'Inter', -apple-system, sans-serif;
     color: var(--ink);
     background: var(--page);
@@ -64,7 +74,7 @@ const CSS = `
   .agw-nav { flex: 1; overflow-y: auto; padding: 10px 10px; }
   .agw-nav-group { font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--sidebar-text-dim);
     padding: 14px 10px 6px; }
-  .agw-nav-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px;
+  .agw-nav-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--radius-sm);
     font-size: 13.5px; color: var(--sidebar-text); border: none; background: transparent; width: 100%; text-align: left; }
   .agw-nav-item:hover { background: #1B2229; color: #EDEBE4; }
   .agw-nav-item.active { background: var(--brand); color: #fff; }
@@ -143,7 +153,7 @@ const CSS = `
   /* overflow-x here (not just below 860px) so a table with enough columns scrolls horizontally
      within its card at any window width, instead of bleeding past the card's edge — this is also
      what TableScrollHint (ui.jsx) needs to find as the scrollable ancestor on desktop. */
-  .agw-card { background: var(--surface); border: 1px solid var(--hair); border-radius: 12px; padding: 16px 18px; overflow-x: auto; }
+  .agw-card { background: var(--surface); border: 1px solid var(--hair); border-radius: var(--radius); padding: 16px 18px; overflow-x: auto; box-shadow: var(--shadow-sm); }
   .agw-grid { display: grid; gap: 14px; }
 
   .kpi-label { font-size: 12px; color: var(--ink-soft); margin-bottom: 6px; }
@@ -158,7 +168,7 @@ const CSS = `
   .agw-table tbody tr:last-child td { border-bottom: none; }
 
   .btn { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500;
-    padding: 8px 14px; border-radius: 8px; border: 1px solid var(--hair); background: var(--surface); color: var(--ink); }
+    padding: 8px 14px; border-radius: var(--radius-sm); border: 1px solid var(--hair); background: var(--surface); color: var(--ink); transition: border-color .12s ease, background .12s ease; }
   .btn:hover { border-color: #C9C6BB; }
   .btn-primary { background: var(--brand); border-color: var(--brand); color: #fff; }
   .btn-primary:hover { background: var(--brand-dark); }
@@ -195,12 +205,12 @@ const CSS = `
 
   .modal-backdrop { position: fixed; inset: 0; background: rgba(20,18,14,.4); display: flex;
     align-items: center; justify-content: center; padding: 40px 20px; z-index: 50; overflow-y:auto; }
-  .modal { background: var(--surface); border-radius: 14px; width: 100%; max-width: 620px; padding: 22px 24px 24px; max-height: calc(100vh - 80px); overflow-y: auto; }
+  .modal { background: var(--surface); border-radius: var(--radius-lg); width: 100%; max-width: 620px; padding: 22px 24px 24px; max-height: calc(100vh - 80px); overflow-y: auto; box-shadow: var(--shadow-md); }
   /* Any table sitting directly inside a modal (several PDF/document preview modals render one
      without their own overflow wrapper) scrolls horizontally instead of blowing out the modal's
      width on a narrow screen. */
   .modal div:has(> table) { overflow-x: auto; }
-  .doc-paper { border: 1px solid var(--hair); border-radius: 8px; padding: 32px 36px; background: #fff; overflow-x: auto; }
+  .doc-paper { border: 1px solid var(--hair); border-radius: var(--radius-sm); padding: 32px 36px; background: #fff; overflow-x: auto; }
 
   /* Floating "more to see" affordance injected by TableScrollHint (ui.jsx) over any wide table
      that's actually overflowing on a small screen — pulses so it's not just another static icon
@@ -220,7 +230,7 @@ const CSS = `
   .modal-sub { font-size: 12.5px; color: var(--ink-soft); margin-bottom: 18px; }
   .field { margin-bottom: 12px; }
   .field label { display: block; font-size: 12px; color: var(--ink-soft); margin-bottom: 5px; }
-  .field input, .field select, .field textarea { width: 100%; border: 1px solid var(--hair); border-radius: 8px;
+  .field input, .field select, .field textarea { width: 100%; border: 1px solid var(--hair); border-radius: var(--radius-sm);
     padding: 8px 10px; font-size: 13.5px; background: var(--surface); color: var(--ink); appearance: auto; -webkit-appearance: auto; }
   .field input:focus, .field select:focus, .field textarea:focus { outline: 2px solid var(--brand-tint); border-color: var(--brand); }
   /* Plain typing for amount fields — no spinner arrows, and the mouse-wheel-over-a-focused-number-
@@ -240,13 +250,13 @@ const CSS = `
   .empty svg { opacity: .35; margin-bottom: 10px; }
 
   .board { display: grid; grid-template-columns: repeat(5, minmax(200px,1fr)); gap: 12px; overflow-x: auto; }
-  .board-col { background: #F0EFE9; border-radius: 12px; padding: 10px; min-width: 200px; transition: background .12s ease; }
+  .board-col { background: #F0EFE9; border-radius: var(--radius); padding: 10px; min-width: 200px; transition: background .12s ease; }
   .board-col.drag-over { background: var(--brand-tint); outline: 2px dashed var(--brand); outline-offset: -2px; }
   .job-card[draggable="true"] { cursor: grab; }
   .job-card.dragging { opacity: .4; }
   .board-col h4 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-soft);
     margin: 4px 6px 10px; display:flex; justify-content:space-between; align-items:center;}
-  .job-card { background: var(--surface); border: 1px solid var(--hair); border-radius: 10px; padding: 11px 12px; margin-bottom: 9px; }
+  .job-card { background: var(--surface); border: 1px solid var(--hair); border-radius: var(--radius-sm); padding: 11px 12px; margin-bottom: 9px; box-shadow: var(--shadow-sm); }
   .job-card h5 { font-size: 13px; font-weight: 500; margin: 0 0 4px; }
   .job-card .meta { font-size: 11px; color: var(--ink-soft); margin-bottom: 6px; }
   .avatars { display: flex; gap: -4px; }
@@ -267,7 +277,7 @@ const CSS = `
   .checkbox.checked { background: var(--success); border-color: var(--success); color:#fff; }
 
   .side-note { font-size: 12px; color: var(--ink-soft); background: #F7F6F1; border: 1px dashed var(--hair);
-    border-radius: 8px; padding: 9px 11px; margin-top: 10px; }
+    border-radius: var(--radius-sm); padding: 9px 11px; margin-top: 10px; }
 
   .no-spinner::-webkit-outer-spin-button, .no-spinner::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   .no-spinner { -moz-appearance: textfield; }
@@ -314,6 +324,10 @@ const CSS = `
   html.dark .agw .job-card:hover { border-color: var(--brand); }
   html.dark .agw .btn-ghost:hover { background: #262E37; }
   html.dark .agw .notif-unread { background: #1C2731; }
+  /* A soft shadow reads as depth against a light page; against an already-dark surface it just
+     reads as a murky edge, so dark mode drops back to the border alone for definition. */
+  html.dark .agw .agw-card, html.dark .agw .job-card { box-shadow: none; }
+  html.dark .agw .modal { box-shadow: 0 12px 32px rgba(0,0,0,.45); }
 
   /* Popup/modal windows always render in light-mode colors, even with dark mode on for the rest
      of the app — re-declares the same tokens html.dark .agw overrides above, scoped one level
@@ -777,7 +791,7 @@ function CloudLinkButton({ url, onSave, big=false }) {
     return (
       <span style={{ display:"inline-flex", flexDirection:"column", gap:4, alignItems:"flex-start" }} onClick={e=>e.stopPropagation()}>
         <span style={{ display:"inline-flex", gap:4, alignItems:"center" }}>
-          <input style={{ width: big?260:170, border:"1px solid var(--hair)", borderRadius:6, padding: big?"7px 10px":"3px 6px", fontSize: big?13:11.5 }}
+          <input style={{ width: big?260:170, border:"1px solid var(--hair)", borderRadius:8, padding: big?"7px 10px":"3px 6px", fontSize: big?13:11.5 }}
             placeholder="Paste cloud folder link" value={val} onChange={e=>setVal(e.target.value)} autoFocus />
           <button className={big?"btn":"btn btn-sm btn-ghost"} disabled={saving} onClick={save}><Check size={big?14:12}/></button>
           <button className={big?"btn":"btn btn-sm btn-ghost"} disabled={saving} onClick={()=>{ setEditing(false); setError(""); }}><X size={big?14:12}/></button>
@@ -1952,8 +1966,8 @@ function Dashboard({ state, dispatch, role, userId, setPage, onOpenExpiredCustom
                       {snap.currentIndex < CONTENT_STAGES.length ? CONTENT_STAGES[snap.currentIndex] : "Delivered"}
                     </span>
                   </div>
-                  <div style={{ background:"var(--page)", borderRadius:4, height:6, overflow:"hidden", marginTop:4 }}>
-                    <div style={{ width:`${snap.completionPct}%`, height:"100%", background: progressColor(snap.completionPct), borderRadius:4 }} />
+                  <div style={{ background:"var(--page)", borderRadius:6, height:6, overflow:"hidden", marginTop:4 }}>
+                    <div style={{ width:`${snap.completionPct}%`, height:"100%", background: progressColor(snap.completionPct), borderRadius:6 }} />
                   </div>
                 </div>
               ))}
@@ -2034,7 +2048,7 @@ function Dashboard({ state, dispatch, role, userId, setPage, onOpenExpiredCustom
           </div>
           <div style={{ display:"flex", gap:12, flexWrap:"wrap" }}>
             {closedOwners.slice(0,3).map(({ employee: e, deals }) => (
-              <div key={e.id} style={{ display:"flex", alignItems:"center", gap:10, background:"var(--gold-tint)", borderRadius:10, padding:"8px 14px 8px 8px" }}>
+              <div key={e.id} style={{ display:"flex", alignItems:"center", gap:10, background:"var(--gold-tint)", borderRadius:12, padding:"8px 14px 8px 8px" }}>
                 {e.photoUrl ? <img src={e.photoUrl} alt={e.name} style={{ width:36, height:36, borderRadius:"50%", objectFit:"cover" }} /> : <span className="avatar" style={{ width:36, height:36 }}>{e.initials}</span>}
                 <div>
                   <div style={{ fontSize:13, fontWeight:600 }}>{e.name} 🏆</div>
@@ -2068,7 +2082,7 @@ function Dashboard({ state, dispatch, role, userId, setPage, onOpenExpiredCustom
           </div>
           <div style={{ display:"flex", gap:12, flexWrap:"wrap" }}>
             {completedJobCompleters.slice(0,3).map(({ employee: e, jobs }) => (
-              <div key={e.id} style={{ display:"flex", alignItems:"center", gap:10, background:"var(--success-tint)", borderRadius:10, padding:"8px 14px 8px 8px", maxWidth:280 }}>
+              <div key={e.id} style={{ display:"flex", alignItems:"center", gap:10, background:"var(--success-tint)", borderRadius:12, padding:"8px 14px 8px 8px", maxWidth:280 }}>
                 {e.photoUrl ? <img src={e.photoUrl} alt={e.name} style={{ width:36, height:36, borderRadius:"50%", objectFit:"cover", flexShrink:0 }} /> : <span className="avatar" style={{ width:36, height:36, flexShrink:0 }}>{e.initials}</span>}
                 <div style={{ minWidth:0 }}>
                   <div style={{ fontSize:13, fontWeight:600 }}>{e.name} ✅</div>
@@ -2103,7 +2117,7 @@ function Dashboard({ state, dispatch, role, userId, setPage, onOpenExpiredCustom
           </div>
           <div style={{ display:"flex", gap:12, flexWrap:"wrap" }}>
             {completedTaskCompleters.slice(0,3).map(({ employee: e, tasks }) => (
-              <div key={e.id} style={{ display:"flex", alignItems:"center", gap:10, background:"var(--success-tint)", borderRadius:10, padding:"8px 14px 8px 8px", maxWidth:280 }}>
+              <div key={e.id} style={{ display:"flex", alignItems:"center", gap:10, background:"var(--success-tint)", borderRadius:12, padding:"8px 14px 8px 8px", maxWidth:280 }}>
                 {e.photoUrl ? <img src={e.photoUrl} alt={e.name} style={{ width:36, height:36, borderRadius:"50%", objectFit:"cover", flexShrink:0 }} /> : <span className="avatar" style={{ width:36, height:36, flexShrink:0 }}>{e.initials}</span>}
                 <div style={{ minWidth:0 }}>
                   <div style={{ fontSize:13, fontWeight:600 }}>{e.name} ✅</div>
@@ -2508,7 +2522,7 @@ function LeadsPage({ state, dispatch, userId, role, setPage, onViewQuotation }) 
           <PeriodFilter period={period} setPeriod={setPeriod} customFrom={customFrom} setCustomFrom={setCustomFrom} customTo={customTo} setCustomTo={setCustomTo} />
           {canFilterByOwner && (
             <select value={ownerFilter} onChange={e=>setOwnerFilter(e.target.value)}
-              style={{ fontSize:13, border:"1px solid var(--hair)", borderRadius:8, padding:"7px 10px", background:"var(--surface)" }}>
+              style={{ fontSize:13, border:"1px solid var(--hair)", borderRadius:10, padding:"7px 10px", background:"var(--surface)" }}>
               <option value="">All salespeople</option>
               <option value={userId}>My leads</option>
               {salespeople.filter(e=>e.id!==userId).map(e=><option key={e.id} value={e.id}>{e.name}</option>)}
@@ -2517,7 +2531,7 @@ function LeadsPage({ state, dispatch, userId, role, setPage, onViewQuotation }) 
           <div style={{ position:"relative", maxWidth: 260 }}>
             <Search size={15} style={{ position:"absolute", left:12, top:9, color:"var(--ink-soft)" }} />
             <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search leads"
-              style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:8, padding:"7px 12px 7px 34px", fontSize:13, background:"var(--surface)" }} />
+              style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:10, padding:"7px 12px 7px 34px", fontSize:13, background:"var(--surface)" }} />
           </div>
           <button className="btn btn-sm" onClick={()=>exportCSV("leads.csv",
             ["Lead ID","Created","Name","Email","Phone","Company","Service","Lead Type","Source","Reference","Owner","Status","Next Follow-up"],
@@ -2552,7 +2566,7 @@ function LeadsPage({ state, dispatch, userId, role, setPage, onViewQuotation }) 
                 <td onClick={e=>e.stopPropagation()}>
                   {isAdmin ? (
                     <select value={l.owner || ""} onChange={e=>dispatch({type:"ASSIGN_LEAD", id:l.id, userId:e.target.value})}
-                      style={{ fontSize:12, border:"1px solid var(--hair)", borderRadius:8, padding:"4px 8px", background:"var(--page)" }}>
+                      style={{ fontSize:12, border:"1px solid var(--hair)", borderRadius:10, padding:"4px 8px", background:"var(--page)" }}>
                       {!l.owner && <option value="">— Unassigned —</option>}
                       {assignableEmployees.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}
                     </select>
@@ -2609,7 +2623,7 @@ function LeadsPage({ state, dispatch, userId, role, setPage, onViewQuotation }) 
                   </div>
                   {l.nextFollowUp && <div style={{ fontSize:11, color:"var(--ink-soft)", marginTop:6 }}>Next follow-up: <span className="mono">{fmtDateDMY(l.nextFollowUp)}</span></div>}
                   <select value={l.status} onChange={e=>dispatch({type:"SET_LEAD_STATUS", id:l.id, status:e.target.value})}
-                    style={{ width:"100%", marginTop:8, fontSize:12, border:"1px solid var(--hair)", borderRadius:8, padding:"5px 8px", background:"var(--surface)" }}>
+                    style={{ width:"100%", marginTop:8, fontSize:12, border:"1px solid var(--hair)", borderRadius:10, padding:"5px 8px", background:"var(--surface)" }}>
                     {LEAD_STATUSES.map(s=><option key={s}>{s}</option>)}
                   </select>
                   <div style={{ display:"flex", gap:6, marginTop:8 }}>
@@ -2671,7 +2685,7 @@ function LeadsPage({ state, dispatch, userId, role, setPage, onViewQuotation }) 
                     <div style={{ marginTop:3 }} onClick={e=>e.stopPropagation()}>
                       {isAdmin ? (
                         <select value={l.owner || ""} onChange={e=>dispatch({type:"ASSIGN_LEAD", id:l.id, userId:e.target.value})}
-                          style={{ width:"100%", fontSize:12, border:"1px solid var(--hair)", borderRadius:8, padding:"4px 8px", background:"var(--page)" }}>
+                          style={{ width:"100%", fontSize:12, border:"1px solid var(--hair)", borderRadius:10, padding:"4px 8px", background:"var(--page)" }}>
                           {!l.owner && <option value="">— Unassigned —</option>}
                           {assignableEmployees.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}
                         </select>
@@ -2696,7 +2710,7 @@ function LeadsPage({ state, dispatch, userId, role, setPage, onViewQuotation }) 
                   // way to see what was actually said on the last call is to open the modal first.
                   const latest = (l.followUps || []).slice().sort((a,b)=>new Date(b.at)-new Date(a.at))[0];
                   return latest?.note && (
-                    <div style={{ fontSize:12, marginTop:8, padding:"6px 8px", background:"var(--page)", borderRadius:6 }}>
+                    <div style={{ fontSize:12, marginTop:8, padding:"6px 8px", background:"var(--page)", borderRadius:8 }}>
                       <span style={{ color:"var(--ink-soft)" }}>Last comment: </span>{latest.note}
                     </div>
                   );
@@ -2722,7 +2736,7 @@ function LeadsPage({ state, dispatch, userId, role, setPage, onViewQuotation }) 
             <div style={{ marginBottom: 16 }}>
               <div style={{ fontSize:11.5, color:"var(--ink-soft)", textTransform:"uppercase", letterSpacing:".04em", marginBottom:6 }}>Previous follow-ups</div>
               {followFor.followUps.map(f => (
-                <div key={f.id} style={{ fontSize:12.5, padding:"10px 12px", marginBottom:8, background:"var(--page)", border:"1px solid var(--hair)", borderRadius:8 }}>
+                <div key={f.id} style={{ fontSize:12.5, padding:"10px 12px", marginBottom:8, background:"var(--page)", border:"1px solid var(--hair)", borderRadius:10 }}>
                   <div style={{ display:"flex", gap:8, alignItems:"center" }}>
                     <span className="pill">{f.outcome}</span>
                     <span style={{ color:"var(--ink-soft)", fontSize:11.5 }}>{fmtDateDMY(f.at)}</span>
@@ -2818,7 +2832,7 @@ function DealsPage({ state, dispatch, setPage, onViewQuotation, role, userId }) 
         <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
           <PeriodFilter period={period} setPeriod={setPeriod} customFrom={customFrom} setCustomFrom={setCustomFrom} customTo={customTo} setCustomTo={setCustomTo} />
           <select value={ownerFilter} onChange={e=>setOwnerFilter(e.target.value)}
-            style={{ fontSize:13, border:"1px solid var(--hair)", borderRadius:8, padding:"7px 10px", background:"var(--surface)" }}>
+            style={{ fontSize:13, border:"1px solid var(--hair)", borderRadius:10, padding:"7px 10px", background:"var(--surface)" }}>
             <option value="">All salespeople</option>
             <option value={userId}>My deals</option>
             {salespeople.filter(e=>e.id!==userId).map(e=><option key={e.id} value={e.id}>{e.name}</option>)}
@@ -2826,7 +2840,7 @@ function DealsPage({ state, dispatch, setPage, onViewQuotation, role, userId }) 
           <div style={{ position:"relative", maxWidth: 260 }}>
             <Search size={15} style={{ position:"absolute", left:12, top:9, color:"var(--ink-soft)" }} />
             <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search deals"
-              style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:8, padding:"7px 12px 7px 34px", fontSize:13, background:"var(--surface)" }} />
+              style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:10, padding:"7px 12px 7px 34px", fontSize:13, background:"var(--surface)" }} />
           </div>
           <button className="btn btn-sm" onClick={()=>exportCSV("deals.csv",
             ["Deal ID","Created","Customer","Service","Value","Lead Type","Owner","Stage","Expected Close"],
@@ -2856,7 +2870,7 @@ function DealsPage({ state, dispatch, setPage, onViewQuotation, role, userId }) 
                   <td onClick={e=>e.stopPropagation()}>
                     {isAdmin ? (
                       <select value={d.owner || ""} onChange={e=>dispatch({type:"UPDATE_DEAL", id:d.id, payload:{owner:e.target.value}})}
-                        style={{ fontSize:12, border:"1px solid var(--hair)", borderRadius:8, padding:"4px 8px", background:"var(--page)" }}>
+                        style={{ fontSize:12, border:"1px solid var(--hair)", borderRadius:10, padding:"4px 8px", background:"var(--page)" }}>
                         {!d.owner && <option value="">— Unassigned —</option>}
                         {assignableEmployees.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}
                       </select>
@@ -2962,7 +2976,7 @@ function DealsPage({ state, dispatch, setPage, onViewQuotation, role, userId }) 
                     <div style={{ marginTop:3 }}>
                       {isAdmin ? (
                         <select value={d.owner || ""} onChange={e=>dispatch({type:"UPDATE_DEAL", id:d.id, payload:{owner:e.target.value}})}
-                          style={{ width:"100%", fontSize:12, border:"1px solid var(--hair)", borderRadius:8, padding:"4px 8px", background:"var(--page)" }}>
+                          style={{ width:"100%", fontSize:12, border:"1px solid var(--hair)", borderRadius:10, padding:"4px 8px", background:"var(--page)" }}>
                           {!d.owner && <option value="">— Unassigned —</option>}
                           {assignableEmployees.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}
                         </select>
@@ -3122,7 +3136,7 @@ function AddActivityControl({ onAdd }) {
 // as the rest of the app (.agw-card: 1px hairline border, 10-12px radius) instead of flat, edge-to-
 // edge rows with no real boundary. Shared by QuoteDetailModal and QuotationTemplateEditor so the
 // client-facing document and the template it starts from can never visually drift apart.
-const DOC_CARD = { border:"1px solid var(--hair)", borderRadius:10, overflow:"hidden" };
+const DOC_CARD = { border:"1px solid var(--hair)", borderRadius:12, overflow:"hidden" };
 
 function QuoteItemsCard({ blocks, hasGovItems, hasProfItems, editingNow, gridCols, themeColors, inputStyle, feeTypeContext, onFieldChange, onRemove, onAddActivity, onAddItem }) {
   return (
@@ -3229,7 +3243,7 @@ function QuoteTotalsCard({ split, itemDiscountTotal, subtotal, discountAmount, t
                     style={{ ...inputStyle, width:60, textAlign:"right", display:"inline-block" }} value={orderDiscount||0}
                     onChange={e=>onDiscountChange(e.target.value === "" ? "" : Number(e.target.value))} />
                   <select value={orderDiscountType||"amount"} onChange={e=>onDiscountTypeChange(e.target.value)}
-                    style={{ fontSize:11, border:"1px solid var(--hair)", borderRadius:4, padding:"1px 3px", background:"var(--gold-tint)" }}>
+                    style={{ fontSize:11, border:"1px solid var(--hair)", borderRadius:6, padding:"1px 3px", background:"var(--gold-tint)" }}>
                     <option value="amount">QAR</option>
                     <option value="percent">%</option>
                   </select>
@@ -3645,7 +3659,7 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, autoOpenPd
           <PeriodFilter period={period} setPeriod={setPeriod} customFrom={customFrom} setCustomFrom={setCustomFrom} customTo={customTo} setCustomTo={setCustomTo} />
           {role !== "sales_exec" && (
             <select value={ownerFilter} onChange={e=>setOwnerFilter(e.target.value)}
-              style={{ fontSize:13, border:"1px solid var(--hair)", borderRadius:8, padding:"7px 10px", background:"var(--surface)" }}>
+              style={{ fontSize:13, border:"1px solid var(--hair)", borderRadius:10, padding:"7px 10px", background:"var(--surface)" }}>
               <option value="">All salespeople</option>
               <option value={userId}>My quotations</option>
               {salespeople.filter(e=>e.id!==userId).map(e=><option key={e.id} value={e.id}>{e.name}</option>)}
@@ -3654,7 +3668,7 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, autoOpenPd
           <div style={{ position:"relative", maxWidth: 260 }}>
             <Search size={15} style={{ position:"absolute", left:12, top:9, color:"var(--ink-soft)" }} />
             <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search quotations"
-              style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:8, padding:"7px 12px 7px 34px", fontSize:13, background:"var(--surface)" }} />
+              style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:10, padding:"7px 12px 7px 34px", fontSize:13, background:"var(--surface)" }} />
           </div>
           <button className="btn btn-sm" onClick={()=>exportCSV("quotations.csv",
             ["Quotation ID","Created","Customer","Service","Sales Person","Lead Type","Fee Type","Amount (QAR)","Professional Fees (QAR)","Valid Till","Status"],
@@ -3838,7 +3852,7 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
           <span>Sales person:</span>
           {isAdmin ? (
             <select value={q.owner || ""} onChange={e=>dispatch({type:"SET_QUOTATION_OWNER", id:q.id, owner:e.target.value})}
-              style={{ fontSize:12.5, border:"1px solid var(--hair)", borderRadius:6, padding:"3px 8px", background:"var(--surface)", color:"var(--ink)" }}>
+              style={{ fontSize:12.5, border:"1px solid var(--hair)", borderRadius:8, padding:"3px 8px", background:"var(--surface)", color:"var(--ink)" }}>
               {!q.owner && <option value="">—</option>}
               {salesPeopleOptions.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}
             </select>
@@ -4742,7 +4756,7 @@ function CustomersPage({ state, dispatch, role, userId, expiryFilterRequest, onE
           <div style={{ position:"relative", maxWidth: 320, flex:1, minWidth:200 }}>
             <Search size={15} style={{ position:"absolute", left:12, top:11, color:"var(--ink-soft)" }} />
             <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search customers by name, contact, phone or email"
-              style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:8, padding:"9px 12px 9px 34px", fontSize:13.5, background:"var(--surface)" }} />
+              style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:10, padding:"9px 12px 9px 34px", fontSize:13.5, background:"var(--surface)" }} />
           </div>
           <select value={sizeFilter} onChange={e=>setSizeFilter(e.target.value)} style={{ maxWidth:190 }}>
             <option value="">All company sizes</option>
@@ -5588,7 +5602,7 @@ function SubscriptionsPage({ state, dispatch, role, userId }) {
             <div style={{ position:"relative", maxWidth: 260 }}>
               <Search size={15} style={{ position:"absolute", left:12, top:9, color:"var(--ink-soft)" }} />
               <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search subscriptions"
-                style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:8, padding:"7px 12px 7px 34px", fontSize:13, background:"var(--surface)" }} />
+                style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:10, padding:"7px 12px 7px 34px", fontSize:13, background:"var(--surface)" }} />
             </div>
             <button className="btn btn-sm" onClick={()=>exportCSV("subscriptions.csv",
               ["Subscription ID","Customer","Plan","Tier","Annual Fee","Start","Expiry","Status"],
@@ -5711,7 +5725,7 @@ function PlanCatalog({ state, dispatch, isAdmin }) {
           return (
             <div key={t.name} style={{
               flex: "1 0 220px", minWidth: 220, maxWidth: 280, position:"relative",
-              background: "var(--surface)", borderRadius: 14, padding: "22px 20px",
+              background: "var(--surface)", borderRadius: 16, padding: "22px 20px",
               border: popular ? "2px solid var(--brand)" : "1px solid var(--hair)",
               boxShadow: popular ? "0 8px 24px rgba(19,145,172,0.14)" : "0 1px 3px rgba(0,0,0,0.04)",
             }}>
@@ -6005,7 +6019,7 @@ function SubscriptionDetailModal({ subscription: sub, state, dispatch, isAdmin, 
         <div style={{ display:"flex", justifyContent:"space-between", fontSize:12.5, marginBottom:4 }}>
           <span>{label}</span><span className="mono" style={{ color: danger ? "var(--danger)" : "inherit" }}>{used}/{included}{danger && ` (+${used-included} over)`}</span>
         </div>
-        <div style={{ height:6, background:"var(--page)", borderRadius:4, overflow:"hidden" }}>
+        <div style={{ height:6, background:"var(--page)", borderRadius:6, overflow:"hidden" }}>
           <div style={{ width:`${pct}%`, height:"100%", background: danger || pct>=100 ? "var(--danger)" : "var(--brand)" }} />
         </div>
       </div>
@@ -6176,7 +6190,7 @@ function OrdersPage({ state, dispatch, role, highlightId, onHighlightHandled, se
           <div style={{ position:"relative", maxWidth: 260, flex:1 }}>
             <Search size={15} style={{ position:"absolute", left:12, top:9, color:"var(--ink-soft)" }} />
             <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search sales orders"
-              style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:8, padding:"7px 12px 7px 34px", fontSize:13, background:"var(--surface)" }} />
+              style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:10, padding:"7px 12px 7px 34px", fontSize:13, background:"var(--surface)" }} />
           </div>
           <button className="btn btn-sm" onClick={()=>exportCSV("sales-orders.csv",
             ["Order ID","Created","Customer","Sales Person","Service","Fee Type","Amount (QAR)","Status"],
@@ -6405,7 +6419,7 @@ function InvoicesPage({ state, dispatch, role, highlightId, onHighlightHandled, 
           <div style={{ position:"relative", maxWidth: 260, flex:1 }}>
             <Search size={15} style={{ position:"absolute", left:12, top:9, color:"var(--ink-soft)" }} />
             <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search invoices"
-              style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:8, padding:"7px 12px 7px 34px", fontSize:13, background:"var(--surface)" }} />
+              style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:10, padding:"7px 12px 7px 34px", fontSize:13, background:"var(--surface)" }} />
           </div>
           <button className="btn btn-sm" onClick={()=>exportCSV("invoices.csv",
             ["Invoice ID","Created","Customer","Sales Person","Service","Fee Type","Amount","Paid","Balance","Due","Status"],
@@ -7396,34 +7410,34 @@ function JobsPage({ state, dispatch, role, userId, highlightId, onHighlightHandl
           <PeriodFilter period={period} setPeriod={setPeriod} customFrom={customFrom} setCustomFrom={setCustomFrom} customTo={customTo} setCustomTo={setCustomTo} />
           {leadBySalespeople.length > 0 && (
             <select value={leadByFilter} onChange={e=>setLeadByFilter(e.target.value)}
-              style={{ fontSize:13, border:"1px solid var(--hair)", borderRadius:8, padding:"7px 10px", background:"var(--surface)" }}>
+              style={{ fontSize:13, border:"1px solid var(--hair)", borderRadius:10, padding:"7px 10px", background:"var(--surface)" }}>
               <option value="">All salespeople</option>
               {leadBySalespeople.map(name=><option key={name} value={name}>{name}</option>)}
             </select>
           )}
           {assignedPeople.length > 0 && (
             <select value={assignedFilter} onChange={e=>setAssignedFilter(e.target.value)}
-              style={{ fontSize:13, border:"1px solid var(--hair)", borderRadius:8, padding:"7px 10px", background:"var(--surface)" }}>
+              style={{ fontSize:13, border:"1px solid var(--hair)", borderRadius:10, padding:"7px 10px", background:"var(--surface)" }}>
               <option value="">All assignees</option>
               {assignedPeople.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}
             </select>
           )}
           {jobCategories.length > 0 && (
             <select value={categoryFilter} onChange={e=>setCategoryFilter(e.target.value)}
-              style={{ fontSize:13, border:"1px solid var(--hair)", borderRadius:8, padding:"7px 10px", background:"var(--surface)" }}>
+              style={{ fontSize:13, border:"1px solid var(--hair)", borderRadius:10, padding:"7px 10px", background:"var(--surface)" }}>
               <option value="">All categories</option>
               {jobCategories.map(c=><option key={c} value={c}>{c}</option>)}
             </select>
           )}
           <select value={ageFilter} onChange={e=>setAgeFilter(e.target.value)}
-            style={{ fontSize:13, border:"1px solid var(--hair)", borderRadius:8, padding:"7px 10px", background:"var(--surface)" }}>
+            style={{ fontSize:13, border:"1px solid var(--hair)", borderRadius:10, padding:"7px 10px", background:"var(--surface)" }}>
             <option value="">Any age</option>
             {JOB_AGE_BUCKETS.map(b=><option key={b.key} value={b.key}>{b.label}</option>)}
           </select>
           <div style={{ position:"relative", maxWidth: 260 }}>
             <Search size={15} style={{ position:"absolute", left:12, top:9, color:"var(--ink-soft)" }} />
             <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search job cards"
-              style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:8, padding:"7px 12px 7px 34px", fontSize:13, background:"var(--surface)" }} />
+              style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:10, padding:"7px 12px 7px 34px", fontSize:13, background:"var(--surface)" }} />
           </div>
           <button className="btn btn-sm" onClick={()=>exportCSV("job-cards.csv",
             ["Job Card","Customer","Service","Priority","Status","Target Date","Created"],
@@ -7603,7 +7617,7 @@ function AssignModal({ job, dispatch, employees, onClose }) {
     <Modal title={`Assign ${job.id}`} sub={`${job.customer} — select one or more team members`} onClose={onClose}>
       <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
         {opsTeam.map(t => (
-          <label key={t.id} style={{ display:"flex", alignItems:"center", gap:10, border:"1px solid var(--hair)", borderRadius:8, padding:"8px 10px" }}>
+          <label key={t.id} style={{ display:"flex", alignItems:"center", gap:10, border:"1px solid var(--hair)", borderRadius:10, padding:"8px 10px" }}>
             <input type="checkbox" checked={selected.includes(t.id)} onChange={()=>toggle(t.id)} />
             <span className="avatar">{t.initials}</span>
             <div><div style={{fontSize:13}}>{t.name}</div><div style={{fontSize:11,color:"var(--ink-soft)"}}>{t.designation}</div></div>
@@ -7789,7 +7803,7 @@ function JobDetailModal({ job, state, dispatch, role, userId, employees, approva
         </div>
         {canManage && !locked && (
           <div style={{ display:"flex", gap:6, marginTop: 10 }}>
-            <input style={{ flex:1, border:"1px solid var(--hair)", borderRadius:8, padding:"7px 10px", fontSize:13 }} placeholder="Add a checklist item" value={newItemLabel} onChange={e=>setNewItemLabel(e.target.value)} />
+            <input style={{ flex:1, border:"1px solid var(--hair)", borderRadius:10, padding:"7px 10px", fontSize:13 }} placeholder="Add a checklist item" value={newItemLabel} onChange={e=>setNewItemLabel(e.target.value)} />
             <button className="btn btn-sm" onClick={()=>{ if(newItemLabel.trim()){ dispatch({type:"ADD_JOB_CHECKLIST_ITEM", jobId:job.id, label:newItemLabel.trim()}); setNewItemLabel(""); } }}><Plus size={13}/> Add</button>
           </div>
         )}
@@ -7821,7 +7835,7 @@ function JobDetailModal({ job, state, dispatch, role, userId, employees, approva
               {JOB_STATUSES.map(s=><option key={s}>{s}</option>)}
             </select>
             {adminStatus === "Cancelled" && (
-              <input style={{ flex:1, minWidth:180, border:"1px solid var(--hair)", borderRadius:8, padding:"7px 10px", fontSize:13 }}
+              <input style={{ flex:1, minWidth:180, border:"1px solid var(--hair)", borderRadius:10, padding:"7px 10px", fontSize:13 }}
                 placeholder="Cancellation reason (optional)" value={adminCancelReason} onChange={e=>setAdminCancelReason(e.target.value)} />
             )}
             <button className="btn btn-primary" disabled={adminStatusBusy || adminStatus===job.status} onClick={changeStatusAdmin}>
@@ -7837,7 +7851,7 @@ function JobDetailModal({ job, state, dispatch, role, userId, employees, approva
           <strong style={{ fontSize:13 }}>Admin: change customer</strong>
           <p className="modal-sub" style={{ marginTop:4, marginBottom:8 }}>For mistake correction — moves this job card to a different existing customer, at any status including Completed. It only repoints this job card; anything already created under the old customer (invoices, subscriptions, documents) stays as is.</p>
           <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"center" }}>
-            <input style={{ flex:1, minWidth:200, border:"1px solid var(--hair)", borderRadius:8, padding:"7px 10px", fontSize:13 }}
+            <input style={{ flex:1, minWidth:200, border:"1px solid var(--hair)", borderRadius:10, padding:"7px 10px", fontSize:13 }}
               list="job-customer-options" placeholder="Type or pick the correct customer"
               value={customerQuery} onChange={e=>{ setCustomerQuery(e.target.value); setCustomerError(""); }} />
             <datalist id="job-customer-options">{state?.customers.map(c=><option key={c.id} value={c.name} />)}</datalist>
@@ -7881,7 +7895,7 @@ function JobDetailModal({ job, state, dispatch, role, userId, employees, approva
           )}
         </div>
         <div style={{ display:"flex", gap:6, marginTop: 10 }}>
-          <input style={{ flex:1, border:"1px solid var(--hair)", borderRadius:8, padding:"7px 10px", fontSize:13 }} placeholder="Add a comment"
+          <input style={{ flex:1, border:"1px solid var(--hair)", borderRadius:10, padding:"7px 10px", fontSize:13 }} placeholder="Add a comment"
             value={newComment} onChange={e=>setNewComment(e.target.value)}
             onKeyDown={e=>{ if(e.key==="Enter" && newComment.trim()){ dispatch({type:"ADD_JOB_COMMENT", id:job.id, note:newComment.trim()}); setNewComment(""); } }} />
           <button className="btn btn-sm" onClick={()=>{ if(newComment.trim()){ dispatch({type:"ADD_JOB_COMMENT", id:job.id, note:newComment.trim()}); setNewComment(""); } }}><MessageCircle size={13}/> Comment</button>
@@ -7943,9 +7957,9 @@ function PeriodFilter({ period, setPeriod, customFrom, setCustomFrom, customTo, 
       </div>
       {period === "custom" && (
         <div style={{ display:"flex", gap:6, alignItems:"center" }}>
-          <input type="date" value={customFrom} onChange={e=>setCustomFrom(e.target.value)} style={{ border:"1px solid var(--hair)", borderRadius:8, padding:"5px 8px", fontSize:12.5 }} />
+          <input type="date" value={customFrom} onChange={e=>setCustomFrom(e.target.value)} style={{ border:"1px solid var(--hair)", borderRadius:10, padding:"5px 8px", fontSize:12.5 }} />
           <span style={{ fontSize:12, color:"var(--ink-soft)" }}>to</span>
-          <input type="date" value={customTo} onChange={e=>setCustomTo(e.target.value)} style={{ border:"1px solid var(--hair)", borderRadius:8, padding:"5px 8px", fontSize:12.5 }} />
+          <input type="date" value={customTo} onChange={e=>setCustomTo(e.target.value)} style={{ border:"1px solid var(--hair)", borderRadius:10, padding:"5px 8px", fontSize:12.5 }} />
         </div>
       )}
     </div>
@@ -8205,7 +8219,7 @@ function HrPage({ state, dispatch, role, userId }) {
             <div style={{ position:"relative", maxWidth: 260 }}>
               <Search size={15} style={{ position:"absolute", left:12, top:9, color:"var(--ink-soft)" }} />
               <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search team"
-                style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:8, padding:"7px 12px 7px 34px", fontSize:13, background:"var(--surface)" }} />
+                style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:10, padding:"7px 12px 7px 34px", fontSize:13, background:"var(--surface)" }} />
             </div>
             <button className="btn btn-sm" onClick={()=>exportCSV("team.csv",
               ["Employee ID","Name","Category","Department","Designation","Nationality","Join Date","Date of Birth","Status","Leave Balance"],
@@ -8682,7 +8696,7 @@ function ActivityFinderPage() {
         <div style={{ position:"relative" }}>
           <Search size={16} style={{ position:"absolute", left:12, top:11, color:"var(--ink-soft)" }} />
           <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="e.g. food, fashion, mobile phones, storage, 472112"
-            style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:8, padding:"9px 34px 9px 36px", fontSize:14, background:"var(--surface)" }} />
+            style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:10, padding:"9px 34px 9px 36px", fontSize:14, background:"var(--surface)" }} />
           {query && (
             <button type="button" onClick={()=>setQuery("")} aria-label="Clear search"
               style={{ position:"absolute", right:8, top:7, border:"none", background:"transparent", cursor:"pointer", color:"var(--ink-soft)", padding:4 }}>
@@ -8705,7 +8719,7 @@ function ActivityFinderPage() {
         <>
           <div style={{ display:"flex", alignItems:"center", flexWrap:"wrap", gap:10, marginBottom:12 }}>
             <select value={category} onChange={e=>setCategory(e.target.value)}
-              style={{ border:"1px solid var(--hair)", borderRadius:8, padding:"6px 10px", fontSize:13, background:"var(--surface)", maxWidth:320 }}>
+              style={{ border:"1px solid var(--hair)", borderRadius:10, padding:"6px 10px", fontSize:13, background:"var(--surface)", maxWidth:320 }}>
               <option value="">All categories</option>
               {categories.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
@@ -8746,7 +8760,7 @@ function ActivityFinderPage() {
                   <div>
                     <div style={{ fontSize:13.5 }}>{r.activity}</div>
                     {r.note && (
-                      <div style={{ fontSize:12, color:"var(--ink-soft)", marginTop:4, lineHeight:1.5, background:"var(--gold-tint)", borderRadius:6, padding:"6px 8px" }}>
+                      <div style={{ fontSize:12, color:"var(--ink-soft)", marginTop:4, lineHeight:1.5, background:"var(--gold-tint)", borderRadius:8, padding:"6px 8px" }}>
                         {r.note}
                       </div>
                     )}
@@ -8781,7 +8795,7 @@ function KnowledgeBasePage() {
           {KB_SECTIONS.map((s, i) => (
             <button key={s.id} onClick={()=>goTo(s.id)}
               style={{ display:"flex", alignItems:"center", gap:8, textAlign:"left", padding:"6px 8px", border:"none",
-                background:"transparent", borderRadius:6, cursor:"pointer", font:"inherit", fontSize:13, color:"var(--brand)" }}
+                background:"transparent", borderRadius:8, cursor:"pointer", font:"inherit", fontSize:13, color:"var(--brand)" }}
               onMouseEnter={e=>e.currentTarget.style.background="var(--page)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
               <span className="mono" style={{ fontSize:11, color:"var(--ink-soft)" }}>{i+1}</span>
               {s.label}
@@ -8795,7 +8809,7 @@ function KnowledgeBasePage() {
         <div style={{ display:"flex", alignItems:"stretch", flexWrap:"wrap", gap:0, marginTop:16 }}>
           {WORKFLOW_STAGES.map((s, i) => (
             <React.Fragment key={s.label}>
-              <div style={{ flex:"1 1 150px", minWidth:150, background:"var(--page)", borderRadius:8, padding:"14px 12px", textAlign:"center" }}>
+              <div style={{ flex:"1 1 150px", minWidth:150, background:"var(--page)", borderRadius:10, padding:"14px 12px", textAlign:"center" }}>
                 <div style={{ width:36, height:36, borderRadius:"50%", background:"var(--brand-tint)", color:"var(--brand)",
                   display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 8px" }}>
                   <s.icon size={17} />
@@ -9038,40 +9052,40 @@ function EmployeeHrCard({ e, state, dispatch, isAdmin, userId, onOpenDocs, onOpe
       )}
 
       <div className="row2" style={{ marginTop: 12 }}>
-        <div style={{ background:"var(--page)", borderRadius:8, padding:"8px 10px" }}>
+        <div style={{ background:"var(--page)", borderRadius:10, padding:"8px 10px" }}>
           <div style={{ fontSize:10.5, color:"var(--ink-soft)", textTransform:"uppercase", letterSpacing:".03em" }}>Incentive earned</div>
           <div className="disp" style={{ fontSize:15, color:"var(--gold)" }}>{money(incentive)}</div>
         </div>
-        <div style={{ background:"var(--page)", borderRadius:8, padding:"8px 10px" }}>
+        <div style={{ background:"var(--page)", borderRadius:10, padding:"8px 10px" }}>
           <div style={{ fontSize:10.5, color:"var(--ink-soft)", textTransform:"uppercase", letterSpacing:".03em" }}>Leave balance</div>
           <div className="disp" style={{ fontSize:15 }}>{e.leaveBalance ?? 21} days</div>
         </div>
       </div>
 
       <div className="row2" style={{ marginTop: 8 }}>
-        <div style={{ background:"var(--page)", borderRadius:8, padding:"8px 10px" }}>
+        <div style={{ background:"var(--page)", borderRadius:10, padding:"8px 10px" }}>
           <div style={{ fontSize:10.5, color:"var(--ink-soft)", textTransform:"uppercase", letterSpacing:".03em" }}>Join date</div>
           <div style={{ fontSize:13, fontWeight:500, marginTop:2 }}>{e.joined ? fmtDate(e.joined) : "—"}</div>
         </div>
-        <div style={{ background:"var(--page)", borderRadius:8, padding:"8px 10px" }}>
+        <div style={{ background:"var(--page)", borderRadius:10, padding:"8px 10px" }}>
           <div style={{ fontSize:10.5, color:"var(--ink-soft)", textTransform:"uppercase", letterSpacing:".03em" }}>Date of birth</div>
           <div style={{ fontSize:13, fontWeight:500, marginTop:2 }}>{e.dateOfBirth ? fmtDate(e.dateOfBirth) : "—"}</div>
         </div>
       </div>
 
       <div className="row2" style={{ marginTop: 8 }}>
-        <div style={{ background:"var(--page)", borderRadius:8, padding:"8px 10px" }}>
+        <div style={{ background:"var(--page)", borderRadius:10, padding:"8px 10px" }}>
           <div style={{ fontSize:10.5, color:"var(--ink-soft)", textTransform:"uppercase", letterSpacing:".03em" }}>Nationality</div>
           <div style={{ fontSize:13, fontWeight:500, marginTop:2 }}>{e.nationality || "—"}</div>
         </div>
-        <div style={{ background:"var(--page)", borderRadius:8, padding:"8px 10px" }}>
+        <div style={{ background:"var(--page)", borderRadius:10, padding:"8px 10px" }}>
           <div style={{ fontSize:10.5, color:"var(--ink-soft)", textTransform:"uppercase", letterSpacing:".03em" }}>QID type</div>
           <div style={{ fontSize:13, fontWeight:500, marginTop:2 }}>{e.qidType || "—"}</div>
         </div>
       </div>
       {(e.mobileN || e.mobileP || e.mobileC) && (
         <div style={{ marginTop: 8 }}>
-          <div style={{ background:"var(--page)", borderRadius:8, padding:"8px 10px" }}>
+          <div style={{ background:"var(--page)", borderRadius:10, padding:"8px 10px" }}>
             <div style={{ fontSize:10.5, color:"var(--ink-soft)", textTransform:"uppercase", letterSpacing:".03em" }}>Mobile numbers</div>
             <div style={{ fontSize:12.5, marginTop:2, display:"flex", gap:14, flexWrap:"wrap" }}>
               {e.mobileN && <span>N: <span className="mono">{e.mobileN}</span></span>}
@@ -9088,7 +9102,7 @@ function EmployeeHrCard({ e, state, dispatch, isAdmin, userId, onOpenDocs, onOpe
         const visaDoc = e.docs.find(d => d.type === "Visa");
         if (!passportDoc && !qidDoc && !visaDoc) return null;
         const row = (label, doc) => doc && (
-          <div style={{ background:"var(--page)", borderRadius:8, padding:"8px 10px" }}>
+          <div style={{ background:"var(--page)", borderRadius:10, padding:"8px 10px" }}>
             <div style={{ fontSize:10.5, color:"var(--ink-soft)", textTransform:"uppercase", letterSpacing:".03em" }}>{label}</div>
             <div style={{ fontSize:13, fontWeight:500, marginTop:2 }}>{doc.number || "—"}</div>
             {doc.expiry && (
@@ -9112,7 +9126,7 @@ function EmployeeHrCard({ e, state, dispatch, isAdmin, userId, onOpenDocs, onOpe
         );
       })()}
 
-      <div style={{ marginTop:8, display:"flex", alignItems:"center", gap:8, background:"var(--page)", borderRadius:8, padding:"8px 10px" }}>
+      <div style={{ marginTop:8, display:"flex", alignItems:"center", gap:8, background:"var(--page)", borderRadius:10, padding:"8px 10px" }}>
         <div style={{ fontSize:10.5, color:"var(--ink-soft)", textTransform:"uppercase", letterSpacing:".03em", flexShrink:0 }}>Google Cloud</div>
         {isAdmin ? (
           <CloudLinkButton url={e.cloudLink} onSave={(url)=>dispatch({type:"SET_USER_CLOUD_LINK", employeeId:e.id, url})} />
@@ -9457,7 +9471,7 @@ function UsersPage({ state, dispatch, role }) {
             <div style={{ position:"relative", maxWidth: 260 }}>
               <Search size={15} style={{ position:"absolute", left:12, top:9, color:"var(--ink-soft)" }} />
               <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search users"
-                style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:8, padding:"7px 12px 7px 34px", fontSize:13, background:"var(--surface)" }} />
+                style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:10, padding:"7px 12px 7px 34px", fontSize:13, background:"var(--surface)" }} />
             </div>
             <button className="btn btn-sm" onClick={()=>exportCSV("users.csv",
               ["Name","Email","Designation","Roles","Category","Department","Status"],
@@ -9773,7 +9787,7 @@ function TemplatesPage({ state, dispatch }) {
           </div>
         ))}
         <div style={{ display:"flex", gap:8, marginTop: 10 }}>
-          <input style={{ flex:1, border:"1px solid var(--hair)", borderRadius:8, padding:"8px 10px", fontSize:13.5 }} placeholder="Add a checklist step" value={newStep} onChange={e=>setNewStep(e.target.value)} />
+          <input style={{ flex:1, border:"1px solid var(--hair)", borderRadius:10, padding:"8px 10px", fontSize:13.5 }} placeholder="Add a checklist step" value={newStep} onChange={e=>setNewStep(e.target.value)} />
           <button className="btn btn-sm" onClick={()=>{ if(newStep){ setSteps([...steps,newStep]); setNewStep(""); } }}>Add</button>
         </div>
         <button className="btn btn-primary" style={{ marginTop: 16 }} onClick={()=>dispatch({type:"UPDATE_CHECKLIST_TEMPLATE", service, steps})}>Save template</button>
@@ -9913,7 +9927,7 @@ function NotificationsPage({ state, dispatch, myNotifs }) {
           <div className="field"><label>To</label><input value={audienceLabel(emailFor.audience)} disabled style={{ background:"var(--page)" }} /></div>
           <div className="field"><label>Subject</label><input value={emailFor.title} disabled style={{ background:"var(--page)" }} /></div>
           <div className="field"><label>Message</label>
-            <div style={{ border:"1px solid var(--hair)", borderRadius:8, padding:"10px 12px", fontSize:13, lineHeight:1.6, background:"var(--page)" }}>
+            <div style={{ border:"1px solid var(--hair)", borderRadius:10, padding:"10px 12px", fontSize:13, lineHeight:1.6, background:"var(--page)" }}>
               {emailFor.body}
             </div>
           </div>
@@ -9969,21 +9983,21 @@ function SettingsPage({ state, dispatch, setPage }) {
           Manage the reusable starting points used elsewhere in the app.
         </div>
         <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 12px", border:"1px solid var(--hair)", borderRadius:8 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 12px", border:"1px solid var(--hair)", borderRadius:10 }}>
             <div>
               <div style={{ fontSize:13, fontWeight:500 }}><Files size={13} style={{verticalAlign:-2,marginRight:6}}/>Quotation Templates</div>
               <div style={{ fontSize:11.5, color:"var(--ink-soft)", marginTop:2 }}>A reusable starting point for each service's quotation.</div>
             </div>
             <button className="btn btn-sm" onClick={()=>setPage("quotationTemplates")}>Manage <ChevronRight size={14}/></button>
           </div>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 12px", border:"1px solid var(--hair)", borderRadius:8 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 12px", border:"1px solid var(--hair)", borderRadius:10 }}>
             <div>
               <div style={{ fontSize:13, fontWeight:500 }}><ListChecks size={13} style={{verticalAlign:-2,marginRight:6}}/>Checklist Templates</div>
               <div style={{ fontSize:11.5, color:"var(--ink-soft)", marginTop:2 }}>Default job card checklist steps, per service.</div>
             </div>
             <button className="btn btn-sm" onClick={()=>setPage("templates")}>Manage <ChevronRight size={14}/></button>
           </div>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 12px", border:"1px solid var(--hair)", borderRadius:8 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 12px", border:"1px solid var(--hair)", borderRadius:10 }}>
             <div>
               <div style={{ fontSize:13, fontWeight:500 }}><Mail size={13} style={{verticalAlign:-2,marginRight:6}}/>Email Templates</div>
               <div style={{ fontSize:11.5, color:"var(--ink-soft)", marginTop:2 }}>Subject/body for every automated reminder and staff-composed email.</div>

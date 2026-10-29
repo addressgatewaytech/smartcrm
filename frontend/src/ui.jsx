@@ -80,7 +80,7 @@ export function PaginationBar({ page, setPage, pageSize, setPageSize, totalPages
         <label style={{ fontSize:12.5, color:"var(--ink-soft)", display:"flex", alignItems:"center", gap:6 }}>
           Rows per page
           <select value={pageSize} onChange={e=>setPageSize(Number(e.target.value))}
-            style={{ fontSize:12.5, border:"1px solid var(--hair)", borderRadius:8, padding:"4px 8px", background:"var(--surface)" }}>
+            style={{ fontSize:12.5, border:"1px solid var(--hair)", borderRadius:10, padding:"4px 8px", background:"var(--surface)" }}>
             {[10,25,50,100].map(n=><option key={n} value={n}>{n}</option>)}
           </select>
         </label>
@@ -279,8 +279,8 @@ export function BarChart({ data, height = 22 }) {
             <span style={{ color:"var(--ink-soft)" }}>{d.label}</span>
             <span style={{ fontWeight:600 }}>{d.value}</span>
           </div>
-          <div style={{ background:"var(--page)", borderRadius:4, height, overflow:"hidden" }}>
-            <div style={{ width:`${(d.value/max)*100}%`, height:"100%", background:d.color, borderRadius:4, transition:"width .3s" }} />
+          <div style={{ background:"var(--page)", borderRadius:6, height, overflow:"hidden" }}>
+            <div style={{ width:`${(d.value/max)*100}%`, height:"100%", background:d.color, borderRadius:6, transition:"width .3s" }} />
           </div>
         </div>
       ))}
@@ -303,7 +303,7 @@ export function SalesPersonBars({ rows }) {
     <div>
       <div style={{ display:"flex", gap:14, fontSize:11, color:"var(--ink-soft)", marginBottom:14 }}>
         {metrics.map(m => (
-          <span key={m.key}><span style={{ display:"inline-block", width:8, height:8, borderRadius:2, background:m.color, marginRight:4 }}/>{m.label}</span>
+          <span key={m.key}><span style={{ display:"inline-block", width:8, height:8, borderRadius:3, background:m.color, marginRight:4 }}/>{m.label}</span>
         ))}
       </div>
       {rows.map(r => (
@@ -319,8 +319,8 @@ export function SalesPersonBars({ rows }) {
           </div>
           {metrics.map(m => (
             <div key={m.key} style={{ display:"flex", alignItems:"center", gap:7, marginBottom:3 }}>
-              <div style={{ flex:1, height:6, background:"var(--page)", borderRadius:3, overflow:"hidden" }}>
-                <div style={{ width:`${(r[m.key]/max)*100}%`, height:"100%", background:m.color, borderRadius:3, transition:"width .3s" }} />
+              <div style={{ flex:1, height:6, background:"var(--page)", borderRadius:4, overflow:"hidden" }}>
+                <div style={{ width:`${(r[m.key]/max)*100}%`, height:"100%", background:m.color, borderRadius:4, transition:"width .3s" }} />
               </div>
               <span style={{ fontSize:11, color:"var(--ink-soft)", width:16, textAlign:"right" }}>{r[m.key]}</span>
             </div>
