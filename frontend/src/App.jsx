@@ -3352,6 +3352,14 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
 
   const loadTemplate = () => {
     if (!tpl) return;
+    // Always load the template's items immediately and unconditionally — never gated behind the
+    // activity prompt below. It used to return early instead of calling applyTemplate whenever an
+    // Activity Fees line needed naming, so cancelling or dismissing that prompt (the X, Escape, a
+    // click outside it) left the whole builder stuck on its blank starting placeholder: no
+    // Government Fee items, no Professional Fee items, nothing from the template at all. Now a
+    // skipped prompt just leaves the template's own generic "Activity Fees" line in place instead
+    // of one expanded per named activity — every other item is unaffected either way.
+    applyTemplate(tpl, tpl.items);
     // startsWith, not exact match — a template's Activity Fees line can carry extra explanatory
     // text after the label (e.g. "Activity Fees (QAR 300 to 500 for one activity...)"), which an
     // exact-equality check would miss entirely, silently skipping the activity-list prompt.
@@ -3361,9 +3369,7 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
     }, []);
     if (activityIdxs.length) {
       setActivityPrompt({ tpl, activityIdxs, activities: [""] });
-      return;
     }
-    applyTemplate(tpl, tpl.items);
   };
 
   // Picking the service already tells us which template applies, so load it the moment it's
