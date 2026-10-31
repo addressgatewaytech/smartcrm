@@ -40,7 +40,7 @@ function generateTablePdf({ title, subtitle, columns, rows }, res) {
   const drawHeader = () => {
     doc.rect(MARGIN, y, tableRight - MARGIN, rowHeight + 2).fill(DARK_BG);
     doc.font("Inter-SemiBold").fontSize(8.5).fillColor("#FFFFFF");
-    columns.forEach((c, i) => doc.text(c.label, colX[i].x + 4, y + 6, { width: colX[i].w - 8, align: colX[i].align }));
+    columns.forEach((c, i) => doc.text(c.label, colX[i].x + 4, y + 6, { width: colX[i].w - 8, align: colX[i].align, lineBreak: false, ellipsis: true }));
     doc.fillColor(INK);
     y += rowHeight + 2;
   };
@@ -60,7 +60,7 @@ function generateTablePdf({ title, subtitle, columns, rows }, res) {
     columns.forEach((c, ci) => {
       const raw = r[c.key];
       const val = raw instanceof Date ? fmtDate(raw) : raw == null ? "" : String(raw);
-      doc.text(val, colX[ci].x + 4, y + 5, { width: colX[ci].w - 8, align: colX[ci].align });
+      doc.text(val, colX[ci].x + 4, y + 5, { width: colX[ci].w - 8, align: colX[ci].align, lineBreak: false, ellipsis: true });
     });
     y += rowHeight;
     doc.moveTo(MARGIN, y).lineTo(tableRight, y).strokeColor(HAIR).stroke();

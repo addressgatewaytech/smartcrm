@@ -173,13 +173,26 @@ router.get("/:id/statement/pdf", async (req, res) => {
   if (!tenant) return res.status(404).json({ error: "Not found" });
   const payments = await query("SELECT * FROM tenant_payments WHERE tenant_id = ? ORDER BY month ASC", [req.params.id]);
   const money = (n) => Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2 });
+  const monthLabel = (m) => {
+    const [y, mo] = String(m).slice(0, 7).split("-");
+    return new Date(Number(y), Number(mo) - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  };
+  const statusOf = (p) => (p.amount_due > 0 && p.amount_paid >= p.amount_due) ? "Paid" : p.amount_paid > 0 ? "Partial" : "Pending";
+  const chequeDetail = (p) => {
+    if (p.mode !== "Cheque") return "";
+    const parts = [p.cheque_number, p.cheque_bank].filter(Boolean).join(" · ");
+    const status = p.cheque_deposited ? "Deposited" : "Not deposited";
+    return parts ? `${parts} (${status})` : status;
+  };
   const rows = payments.map((p) => ({
-    Month: String(p.month).slice(0, 7),
+    Month: monthLabel(p.month),
     "Rent Due (QAR)": money(p.amount_due),
     "Paid (QAR)": money(p.amount_paid),
     "Balance (QAR)": money(Number(p.amount_due) - Number(p.amount_paid)),
+    Status: statusOf(p),
     "Paid On": p.paid_at ? String(p.paid_at).slice(0, 10) : "",
     Mode: p.mode || "",
+    Cheque: chequeDetail(p),
   }));
   const totalDue = payments.reduce((a, p) => a + Number(p.amount_due), 0);
   const totalPaid = payments.reduce((a, p) => a + Number(p.amount_paid), 0);
@@ -188,19 +201,23 @@ router.get("/:id/statement/pdf", async (req, res) => {
     "Rent Due (QAR)": money(totalDue),
     "Paid (QAR)": money(totalPaid),
     "Balance (QAR)": money(totalDue - totalPaid),
+    Status: "",
     "Paid On": "",
     Mode: "",
+    Cheque: "",
   });
   generateTablePdf({
     title: "Statement of Account",
     subtitle: `${tenant.room} — ${tenant.tenant_name}`,
     columns: [
-      { key: "Month", label: "Month", width: 70 },
-      { key: "Rent Due (QAR)", label: "Rent Due (QAR)", align: "right" },
-      { key: "Paid (QAR)", label: "Paid (QAR)", align: "right" },
-      { key: "Balance (QAR)", label: "Balance (QAR)", align: "right" },
-      { key: "Paid On", label: "Paid On", width: 70 },
-      { key: "Mode", label: "Mode", width: 80 },
+      { key: "Month", label: "Month", width: 78 },
+      { key: "Rent Due (QAR)", label: "Due (QAR)", width: 60, align: "right" },
+      { key: "Paid (QAR)", label: "Paid (QAR)", width: 58, align: "right" },
+      { key: "Balance (QAR)", label: "Balance (QAR)", width: 65, align: "right" },
+      { key: "Status", label: "Status", width: 44 },
+      { key: "Paid On", label: "Paid On", width: 55 },
+      { key: "Mode", label: "Mode", width: 68 },
+      { key: "Cheque", label: "Cheque", align: "left" },
     ],
     rows,
   }, res);
