@@ -9,7 +9,7 @@ import {
   UserPlus, ShieldCheck, Ban, Clock, ArrowRight, Search, Mail, Phone,
   BadgeCheck, CalendarClock, Briefcase, Copy, Files, Link2, Pencil, Trash2, Repeat, BarChart3, Download, MoreHorizontal, ChevronsLeft, ChevronsRight, Camera, Star,
   Database, Upload, MessageCircle, ArchiveX, Settings as SettingsIcon,
-  Sun, Moon, BookOpen, Award, Landmark, Presentation, ExternalLink, KeyRound, BellOff
+  Sun, Moon, BookOpen, Award, Landmark, Presentation, ExternalLink, KeyRound, BellOff, Maximize2
 } from "lucide-react";
 import { money, fmtDate, fmtDateDMY, Stamp, statusTone, Rail, DonutChart, LineChart, BarChart, SalesPersonBars, ProgressRing, progressColor, Modal, Empty, ConfirmModal, RowActions, exportCSV, usePagination, PaginationBar, TableScrollHint, useConfirm, ADMIN_LIKE, ROLE_LABEL, isSalesRole, isAssignable } from "./ui.jsx";
 import { todayStr as salesTaskToday, firstOfWeekStr, firstOfMonthStr, userTaskSnapshot, dailyCompletionColor } from "./salesTasksHelpers";
@@ -2495,6 +2495,7 @@ function LeadsPage({ state, dispatch, userId, role, setPage, onViewQuotation }) 
   const [editLead, setEditLead] = useState(null);
   const [removeLead, setRemoveLead] = useState(null);
   const [convert, setConvert] = useState(null);
+  const [enlargedLead, setEnlargedLead] = useState(null);
   const [quoteFor, setQuoteFor] = useState(null);
   const [followFor, setFollowFor] = useState(null);
   const [fuNote, setFuNote] = useState("");
@@ -2631,9 +2632,12 @@ function LeadsPage({ state, dispatch, userId, role, setPage, onViewQuotation }) 
                   onDragEnd={()=>{ setDraggedLeadId(null); setDragOverStatus(null); }}>
                   <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
                     <h5 style={{ margin:0 }}>{l.company}</h5>
-                    <RowActions onEdit={()=>openEdit(l)} onRemove={()=>setRemoveLead(l)} />
+                    <div style={{ display:"flex", alignItems:"center", gap:2 }}>
+                      <button className="btn btn-sm btn-ghost" style={{ padding:4 }} title="Enlarge" onClick={(e)=>{ e.stopPropagation(); setEnlargedLead(l); }}><Maximize2 size={13}/></button>
+                      <RowActions onEdit={()=>openEdit(l)} onRemove={()=>setRemoveLead(l)} />
+                    </div>
                   </div>
-                  <div className="meta" style={{ marginBottom: 2 }}>{l.name}{l.email && <> · {l.email}</>}{l.phone && <> · {l.phone}</>}</div>
+                  <div className="meta" style={{ marginBottom: 2, display:"-webkit-box", WebkitLineClamp:5, WebkitBoxOrient:"vertical", overflow:"hidden" }}>{l.name}{l.email && <> · {l.email}</>}{l.phone && <> · {l.phone}</>}</div>
                   <div className="meta">{l.service}</div>
                   <div style={{ fontSize:11, color:"var(--ink-soft)", marginTop:2 }}>Created {fmtDate(l.createdAt)}</div>
                   <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginTop:6 }}>
@@ -2748,6 +2752,28 @@ function LeadsPage({ state, dispatch, userId, role, setPage, onViewQuotation }) 
       )}
 
       {removeLead && <ConfirmModal title={`Remove lead ${removeLead.id}?`} body={`${removeLead.company} — ${removeLead.name}. This can't be undone.`} onConfirm={()=>dispatch({type:"DELETE_LEAD", id:removeLead.id})} onClose={()=>setRemoveLead(null)} />}
+
+      {enlargedLead && (() => { const l = enlargedLead; return (
+        <Modal title={l.company} sub={l.id} onClose={()=>setEnlargedLead(null)} width={460}>
+          <div style={{ fontSize:14 }}>{l.name}{l.email && <> · {l.email}</>}{l.phone && <> · {l.phone}</>}</div>
+          <div style={{ fontSize:13, color:"var(--ink-soft)", marginTop:4 }}>{l.service}</div>
+          <div style={{ fontSize:11, color:"var(--ink-soft)", marginTop:6 }}>Created {fmtDate(l.createdAt)}</div>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginTop:10 }}>
+            <span className="pill">{l.source}</span>
+            <span className="pill">{state.employees.find(t=>t.id===l.owner)?.initials}</span>
+          </div>
+          {l.nextFollowUp && <div style={{ fontSize:12, color:"var(--ink-soft)", marginTop:10 }}>Next follow-up: <span className="mono">{fmtDateDMY(l.nextFollowUp)}</span></div>}
+          <select value={l.status} onChange={e=>dispatch({type:"SET_LEAD_STATUS", id:l.id, status:e.target.value})}
+            style={{ width:"100%", marginTop:10, fontSize:13, border:"1px solid var(--hair)", borderRadius:10, padding:"7px 10px", background:"var(--surface)" }}>
+            {LEAD_STATUSES.map(s=><option key={s}>{s}</option>)}
+          </select>
+          <div style={{ display:"flex", gap:8, marginTop:10 }}>
+            <button className="btn btn-sm" style={{ flex:1 }} onClick={()=>{ setEnlargedLead(null); openFollowUp(l); }}>Log follow-up</button>
+            {l.status !== "Unqualified" && !state.deals.find(d=>d.leadId===l.id) &&
+              <button className="btn btn-sm" style={{ flex:1 }} onClick={()=>{ setEnlargedLead(null); setConvert(l); }}>Convert</button>}
+          </div>
+        </Modal>
+      ); })()}
 
       {followFor && (
         <Modal title={`Log follow-up — ${followFor.id}`} sub={`${followFor.company} · ${followFor.name}`} onClose={()=>setFollowFor(null)}>
