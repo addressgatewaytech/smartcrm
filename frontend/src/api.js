@@ -170,6 +170,7 @@ export const api = {
   invoices: {
     list: () => get("/invoices"),
     recordPayment: (id, amount, mode, paidAt) => post(`/invoices/${id}/payments`, { amount, mode, paidAt }),
+    editPayment: (id, paymentId, payload) => patch(`/invoices/${id}/payments/${paymentId}`, payload),
     removePayment: (id, paymentId) => del(`/invoices/${id}/payments/${paymentId}`),
     markEmailed: (id, cc) => post(`/invoices/${id}/emailed`, { cc }),
     update: (id, payload) => patch(`/invoices/${id}`, payload),

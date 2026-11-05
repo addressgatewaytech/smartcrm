@@ -6696,6 +6696,7 @@ function InvoicePdfModal({ invoice: inv, items=[], role, onClose }) {
 
 function PaymentHistoryModal({ invoice: inv, dispatch, onClose }) {
   const [removePmt, setRemovePmt] = useState(null);
+  const [editPmt, setEditPmt] = useState(null);
   return (
     <Modal title={`Payment history — ${inv.id}`} sub={inv.customer} onClose={onClose}>
       {inv.payments.length === 0 ? <div className="side-note">No payments recorded yet.</div> : (
@@ -6704,11 +6705,18 @@ function PaymentHistoryModal({ invoice: inv, dispatch, onClose }) {
           <tbody>
             {inv.payments.map(p => (
               <tr key={p.id}>
-                <td className="mono" style={{fontSize:12}}>{fmtDate(p.date)}</td>
+                <td>
+                  <span className="mono" style={{fontSize:12}}>{fmtDate(p.date)}</span>
+                  {p.correctionNote && (
+                    <div style={{fontSize:11, color:"var(--ink-soft)", marginTop:2}}>
+                      Corrected{p.updatedAt ? ` ${fmtDate(p.updatedAt)}` : ""}: {p.correctionNote}
+                    </div>
+                  )}
+                </td>
                 <td className="mono">{money(p.amount)}</td>
                 <td>{p.mode}</td>
                 <td>{p.by}</td>
-                <td><RowActions onRemove={()=>setRemovePmt(p)} /></td>
+                <td><RowActions onEdit={()=>setEditPmt(p)} onRemove={()=>setRemovePmt(p)} /></td>
               </tr>
             ))}
           </tbody>
@@ -6716,6 +6724,48 @@ function PaymentHistoryModal({ invoice: inv, dispatch, onClose }) {
       )}
       {removePmt && <ConfirmModal title="Remove this payment?" body={`${money(removePmt.amount)} via ${removePmt.mode} on ${fmtDate(removePmt.date)}. The invoice balance will be recalculated.`}
         onConfirm={()=>{ dispatch({type:"REMOVE_PAYMENT", invoiceId:inv.id, paymentId:removePmt.id}); onClose(); }} onClose={()=>setRemovePmt(null)} />}
+      {editPmt && <EditInvoicePaymentModal invoice={inv} payment={editPmt} dispatch={dispatch} onClose={()=>setEditPmt(null)} />}
+    </Modal>
+  );
+}
+
+// Correcting a payment already on record (wrong amount/mode/date typed in) — a comment explaining
+// why is required every time, so there's always a reason logged for a payment changing after the
+// fact (not just a silent number swap), matching src/routes/invoices.routes.js's own enforcement.
+function EditInvoicePaymentModal({ invoice: inv, payment: p, dispatch, onClose }) {
+  const [amount, setAmount] = useState(p.amount);
+  const [mode, setMode] = useState(p.mode || "Bank Transfer");
+  const [paidAt, setPaidAt] = useState((p.date || "").slice(0, 10));
+  const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await dispatch({ type:"EDIT_PAYMENT", invoiceId: inv.id, paymentId: p.id, payload: { amount: Number(amount) || 0, mode, paidAt, note: note.trim() } });
+      onClose();
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <Modal title={`Edit payment — ${p.id}`} sub={inv.customer} onClose={onClose}>
+      <div className="row2">
+        <div className="field"><label>Amount (QAR)</label><input type="number" value={amount} onChange={e=>setAmount(e.target.value === "" ? "" : Number(e.target.value))} /></div>
+        <div className="field"><label>Mode</label>
+          <select value={mode} onChange={e=>setMode(e.target.value)}>
+            {["Bank Transfer","Cash","Cheque","Card"].map(m=><option key={m}>{m}</option>)}
+          </select>
+        </div>
+      </div>
+      <div className="field"><label>Payment date</label><input type="date" max={daysFromNow(0)} value={paidAt} onChange={e=>setPaidAt(e.target.value)} /></div>
+      <div className="field">
+        <label>Reason for correction (required)</label>
+        <textarea rows={2} value={note} onChange={e=>setNote(e.target.value)} placeholder="e.g. Amount was entered wrong — corrected from 1,000 to 1,500 per bank statement" />
+      </div>
+      <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop: 16 }}>
+        <button className="btn" onClick={onClose}>Cancel</button>
+        <button className="btn btn-primary" disabled={!note.trim() || !paidAt || saving} onClick={save}>{saving ? "Saving…" : "Save correction"}</button>
+      </div>
     </Modal>
   );
 }

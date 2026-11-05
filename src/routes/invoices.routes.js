@@ -111,6 +111,22 @@ router.post("/:id/payments", requireRole(["accounts", "admin_like"]), async (req
   res.json({ ok: true, status });
 });
 
+// Correcting a payment already recorded (wrong amount/mode/date typed in) — a comment explaining
+// why is required so there's always a reason on record for a payment changing after the fact.
+router.patch("/:id/payments/:paymentId", requireRole(["accounts", "admin_like"]), async (req, res) => {
+  const { amount, mode, paidAt, note } = req.body;
+  if (!note || !note.trim()) return res.status(400).json({ error: "A comment explaining the correction is required" });
+  await query(
+    "UPDATE invoice_payments SET amount = ?, mode = ?, paid_at = COALESCE(?, paid_at), correction_note = ?, updated_by = ?, updated_at = NOW() WHERE id = ? AND invoice_id = ?",
+    [amount, mode, paidAt || null, note.trim(), req.user.id, req.params.paymentId, req.params.id]
+  );
+  const [invoice] = await query("SELECT amount FROM invoices WHERE id = ?", [req.params.id]);
+  const [{ total_paid }] = await query("SELECT COALESCE(SUM(amount),0) AS total_paid FROM invoice_payments WHERE invoice_id = ?", [req.params.id]);
+  const status = Number(total_paid) >= Number(invoice.amount) ? "Paid" : Number(total_paid) > 0 ? "Partially Paid" : "Sent";
+  await query("UPDATE invoices SET status = ? WHERE id = ?", [status, req.params.id]);
+  res.json({ ok: true, status });
+});
+
 router.delete("/:id/payments/:paymentId", async (req, res) => {
   await query("DELETE FROM invoice_payments WHERE id = ? AND invoice_id = ?", [req.params.paymentId, req.params.id]);
   const [invoice] = await query("SELECT amount FROM invoices WHERE id = ?", [req.params.id]);

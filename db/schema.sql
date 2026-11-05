@@ -446,7 +446,14 @@ CREATE TABLE IF NOT EXISTS invoice_payments (
   mode       VARCHAR(50),
   paid_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   recorded_by VARCHAR(20),
-  FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE
+  -- Set together whenever a payment is corrected after the fact (amount/mode/date typo, wrong
+  -- entry, etc.) — correction_note is required by the app on every such edit so there's always a
+  -- reason on record for why a payment changed after being recorded.
+  correction_note VARCHAR(500),
+  updated_by VARCHAR(20),
+  updated_at TIMESTAMP NULL,
+  FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
+  FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------------

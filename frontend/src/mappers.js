@@ -76,7 +76,10 @@ export const mapSalesOrder = (so) => ({
   salesPerson: so.salesPerson || "",
 });
 
-export const mapPayment = (p) => ({ id: p.id, amount: Number(p.amount), mode: p.mode, date: p.paid_at, by: p.recorded_by });
+export const mapPayment = (p) => ({
+  id: p.id, amount: Number(p.amount), mode: p.mode, date: p.paid_at, by: p.recorded_by,
+  correctionNote: p.correction_note || "", updatedAt: p.updated_at,
+});
 
 export const mapInvoice = (inv) => ({
   id: inv.id, salesOrderId: inv.sales_order_id, subscriptionId: inv.subscription_id, customer: inv.customer,
