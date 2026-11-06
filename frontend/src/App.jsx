@@ -4640,6 +4640,27 @@ const CUSTOMER_STATUSES = ["Active", "Administrative Block", "Scarified/Closed",
 // Invoice, or Job Card — not stored, so it can never drift as those get created or removed.
 const CUSTOMER_CATEGORIES = ["Address Gateway Customers", "Others"];
 
+// A company whose CR was opened before July 1 of a given year must submit an audit for that year
+// (submission window: 1 Jan - 30 Apr of that same year). Computed live from cr_opened_at — never
+// stored — so the exact same rule applies to every year without touching this code again; only
+// the submission status itself (customer_audits, via auditStatusFor) is persisted.
+const AUDIT_CUTOFF_MONTH_DAY = "07-01"; // July 1
+const auditYearFor = (date = new Date()) => date.getFullYear();
+const auditRequired = (c, year = auditYearFor()) => !!c.crOpenedAt && c.type === "Company" && c.crOpenedAt < `${year}-${AUDIT_CUTOFF_MONTH_DAY}`;
+const auditStatusFor = (c, year = auditYearFor()) => (c.audits || []).find(a => a.year === year)?.status || "Pending";
+const auditPending = (c, year = auditYearFor()) => auditRequired(c, year) && auditStatusFor(c, year) === "Pending";
+const auditWindowLabel = (year = auditYearFor()) => `1 Jan ${year} – 30 Apr ${year}`;
+
+// Office Space renewal is just another customer_docs row (type "Office Space", expiry = the
+// renewal due date) — reuses the exact same 30-day countdown/expired logic (docState) already
+// built for CR/CP/EC, instead of a parallel bespoke system. Staff add/remove/renew it the same
+// way they manage any other KYC document; there's deliberately no separate "is this customer on
+// Office Space" flag, since having the document on file already is the manual marker.
+const OFFICE_SPACE_DOC_TYPE = "Office Space";
+const officeSpaceDocOf = (c) => c.docs.find(d => d.type === OFFICE_SPACE_DOC_TYPE);
+const officeSpaceStateOf = (c) => { const d = officeSpaceDocOf(c); return d?.expiry ? docState(d.expiry) : null; };
+const officeSpaceDue = (c) => { const st = officeSpaceStateOf(c); return !!st && st.label !== "Valid"; };
+
 // Approximate-duplicate detection for the "Check duplicates" list below — deliberately looser than
 // the backend's findDuplicateCustomer (which only blocks an exact name/phone/email match at
 // creation time). Two already-existing customers entered by different people rarely match
@@ -4829,14 +4850,16 @@ function CustomersPage({ state, dispatch, role, userId, expiryFilterRequest, onE
         <div style={{ display:"flex", gap:8 }}>
           <button className="btn btn-sm" onClick={()=>exportCSV("customers-kyc.csv",
             ["Customer ID","Customer","Sales Person","Type","Contact","Phone","Contact Mobile","Landline","Email","Address","Company Size","Status",
-             "CR Number","CR Expiry","CP Number","CP Expiry","EC Number","EC Expiry","Cloud Folder Link","Created","KYC Status","Category"],
+             "CR Number","CR Expiry","CP Number","CP Expiry","EC Number","EC Expiry","Cloud Folder Link","Created","KYC Status","CR Opened","Auditing","Office Space Renewal","Category"],
             filtered.map(c=>{
               const flagged = [...c.docs, ...c.employees.flatMap(e=>e.docs)].filter(d => docState(d.expiry).label !== "Valid").length;
               const doc = (type) => kycDocOf(c, type) || {};
               const numWithPrefix = (type) => doc(type).number ? `${type}-${doc(type).number}` : "";
+              const officeSpace = officeSpaceDocOf(c);
               return [c.id, c.name, c.salesPerson||"", c.type||"", c.contact||"", c.phone||"", c.contactMobile||"", c.landline||"", c.email||"", c.address||"", c.companySize||"", c.status,
                 numWithPrefix("CR"), doc("CR").expiry||"", numWithPrefix("CP"), doc("CP").expiry||"", numWithPrefix("EC"), doc("EC").expiry||"",
-                c.cloudLink||"", c.createdAt, flagged>0?`${flagged} flagged`:"Clear", c.category];
+                c.cloudLink||"", c.createdAt, flagged>0?`${flagged} flagged`:"Clear", c.crOpenedAt||"", auditRequired(c) ? auditStatusFor(c) : "—",
+                officeSpace?.expiry || "", c.category];
             }))}>
             <Download size={13}/> Export
           </button>
@@ -4867,8 +4890,8 @@ function CustomersPage({ state, dispatch, role, userId, expiryFilterRequest, onE
               : <Empty icon={Search} text="No customers match these filters." />
           ) : (
           <div style={{ overflowX:"auto" }}>
-          <table className="agw-table" style={{ minWidth: 1360 }}>
-            <thead><tr><th>#</th><th>Customer</th><th>Sales Person</th><th>Created</th><th>Contact</th><th>Phone</th><th>Email</th><th>Company size</th><th>Status</th><th>CR</th><th>CP</th><th>EC</th><th>KYC</th><th>Category</th><th></th></tr></thead>
+          <table className="agw-table" style={{ minWidth: 1580 }}>
+            <thead><tr><th>#</th><th>Customer</th><th>Sales Person</th><th>Created</th><th>Contact</th><th>Phone</th><th>Email</th><th>Company size</th><th>Status</th><th>CR</th><th>CP</th><th>EC</th><th>KYC</th><th>Auditing</th><th>Office Space</th><th>Category</th><th></th></tr></thead>
             <tbody>
               {pg.pageRows.map((c, i) => {
                 const flagged = [...c.docs, ...c.employees.flatMap(e=>e.docs)].filter(d => docState(d.expiry).label !== "Valid").length;
@@ -4894,6 +4917,8 @@ function CustomersPage({ state, dispatch, role, userId, expiryFilterRequest, onE
                       </td>;
                     })}
                     <td>{flagged > 0 ? <Stamp tone="warning">{flagged} flagged</Stamp> : <Stamp tone="success">Clear</Stamp>}</td>
+                    <td>{auditPending(c) ? <Stamp tone="danger">Auditing pending</Stamp> : (auditRequired(c) ? <Stamp tone="success">{auditStatusFor(c)}</Stamp> : "—")}</td>
+                    <td>{(() => { const st = officeSpaceStateOf(c); return st ? <Stamp tone={st.cls.replace("stamp-","")}>{st.label}</Stamp> : "—"; })()}</td>
                     <td><Stamp tone={c.category==="Address Gateway Customers"?"success":"neutral"}>{c.category}</Stamp></td>
                     <td><RowActions onEdit={canEditCustomer ? ()=>setEditCustomer(c) : null} onRemove={isAdmin ? ()=>setRemoveCustomer(c) : null} /></td>
                   </tr>
@@ -4926,6 +4951,8 @@ function CustomersPage({ state, dispatch, role, userId, expiryFilterRequest, onE
                 <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                   <Stamp tone={customerStatusTone[c.status] || "neutral"}>{c.status}</Stamp>
                   {flagged > 0 ? <Stamp tone="warning">{flagged} doc{flagged>1?"s":""} flagged</Stamp> : <Stamp tone="success">KYC clear</Stamp>}
+                  {auditPending(c) && <Stamp tone="danger">Auditing pending</Stamp>}
+                  {officeSpaceDue(c) && <Stamp tone="danger">Office Space: {officeSpaceStateOf(c).label}</Stamp>}
                   <RowActions onEdit={canEditCustomer ? ()=>setEditCustomer(c) : null} onRemove={isAdmin ? ()=>setRemoveCustomer(c) : null} />
                 </div>
               </div>
@@ -4966,8 +4993,8 @@ const COMPANY_SIZES = ["Up to 10 Employees", "Up to 30 Employees", "Up to 100 Em
 function NewCustomerModal({ dispatch, onClose, onCreated, customer=null }) {
   const isEdit = !!customer;
   const [form, setForm] = useState(customer
-    ? { name: customer.name, type: customer.type || "Company", contact: customer.contact || "", phone: customer.phone || "", landline: customer.landline || "", contactMobile: customer.contactMobile || "", email: customer.email || "", address: customer.address || "", companySize: customer.companySize || "" }
-    : { name: "", type: "Company", contact: "", phone: "", landline: "", contactMobile: "", email: "", address: "", companySize: "" });
+    ? { name: customer.name, type: customer.type || "Company", contact: customer.contact || "", phone: customer.phone || "", landline: customer.landline || "", contactMobile: customer.contactMobile || "", email: customer.email || "", address: customer.address || "", companySize: customer.companySize || "", crOpenedAt: customer.crOpenedAt || "" }
+    : { name: "", type: "Company", contact: "", phone: "", landline: "", contactMobile: "", email: "", address: "", companySize: "", crOpenedAt: "" });
   const [saveError, setSaveError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -5011,11 +5038,16 @@ function NewCustomerModal({ dispatch, onClose, onCreated, customer=null }) {
       </div>
       <div className="field"><label>Full address (shown on quotations)</label><textarea rows={2} value={form.address} onChange={e=>setForm({...form,address:e.target.value})} placeholder="Optional — building, street, area, city, country" /></div>
       {form.type === "Company" && (
-        <div className="field"><label>Company size (KYC category)</label>
-          <select value={form.companySize} onChange={e=>setForm({...form,companySize:e.target.value})}>
-            <option value="">Not specified</option>
-            {COMPANY_SIZES.map(s=><option key={s}>{s}</option>)}
-          </select>
+        <div className="row2">
+          <div className="field"><label>Company size (KYC category)</label>
+            <select value={form.companySize} onChange={e=>setForm({...form,companySize:e.target.value})}>
+              <option value="">Not specified</option>
+              {COMPANY_SIZES.map(s=><option key={s}>{s}</option>)}
+            </select>
+          </div>
+          <div className="field"><label>CR opened date</label>
+            <input type="date" value={form.crOpenedAt} onChange={e=>setForm({...form,crOpenedAt:e.target.value})} />
+          </div>
         </div>
       )}
       {saveError && <div className="side-note" style={{ color:"var(--danger)" }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{saveError}</div>}
@@ -5056,7 +5088,7 @@ function CustomerDetailModal({ customer: c, state, dispatch, role, userId, setPa
   // CR/CL/EC need an expiry before they can be saved — a customer can't reach Active without one
   // (see PATCH /customers/:id) — everything else stays optional, same as before this existed.
   const isCompulsoryDocType = COMPULSORY_KYC_TYPES.includes(doc.type);
-  const docTypeChoice = isCompulsoryDocType ? doc.type : "Other";
+  const docTypeChoice = isCompulsoryDocType ? doc.type : (doc.type === OFFICE_SPACE_DOC_TYPE ? OFFICE_SPACE_DOC_TYPE : "Other");
   const canSaveDoc = doc.type.trim() && (!isCompulsoryDocType || doc.expiry);
   const saveDoc = () => {
     if (!canSaveDoc) return;
@@ -5177,6 +5209,35 @@ function CustomerDetailModal({ customer: c, state, dispatch, role, userId, setPa
           </div>
         );
       })()}
+      {c.type === "Company" && (() => {
+        const canEditThese = isAdmin || role==="ops_manager" || role==="ops_member" || role==="pro_head" || role==="pro";
+        const year = auditYearFor();
+        const required = auditRequired(c, year);
+        return (
+          <div className="agw-card" style={{ marginBottom: 16, display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:10 }}>
+            <div>
+              <strong style={{ fontSize:13.5 }}>Auditing — {year}</strong>
+              <div style={{ fontSize:11.5, color:"var(--ink-soft)", marginTop:2 }}>
+                {!c.crOpenedAt
+                  ? "CR opened date not on file — set it to determine whether an audit is required."
+                  : required
+                    ? `CR opened ${fmtDate(c.crOpenedAt)} — audit required for ${year}. Submission window: ${auditWindowLabel(year)}.`
+                    : `CR opened ${fmtDate(c.crOpenedAt)} — opened after the ${year} cutoff (1 Jul), no audit required yet.`}
+              </div>
+            </div>
+            <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
+              <input type="date" disabled={!canEditThese} value={c.crOpenedAt || ""} style={{ maxWidth:160 }}
+                onChange={e=>dispatch({type:"UPDATE_CUSTOMER", id:c.id, payload:{crOpenedAt:e.target.value}})} />
+              {required && (
+                <select value={auditStatusFor(c, year)} disabled={!canEditThese} style={{ maxWidth:160 }}
+                  onChange={e=>dispatch({type:"SET_CUSTOMER_AUDIT_STATUS", id:c.id, year, payload:{status:e.target.value}})}>
+                  <option>Pending</option><option>Submitted</option><option>Not Required</option>
+                </select>
+              )}
+            </div>
+          </div>
+        );
+      })()}
       <div className="agw-grid" style={{ gridTemplateColumns: "repeat(3,1fr)", marginBottom: 16 }}>
         <div className="agw-card"><div className="kpi-label">Created</div><div style={{ fontSize:14, fontWeight:500, marginTop:4 }}>{fmtDate(c.createdAt)}</div></div>
         <div className="agw-card"><div className="kpi-label">Contact person</div><div style={{ fontSize:14, fontWeight:500, marginTop:4 }}>{c.contact || "—"}</div></div>
@@ -5227,6 +5288,7 @@ function CustomerDetailModal({ customer: c, state, dispatch, role, userId, setPa
           <div className="field"><label>Type</label>
             <select value={docTypeChoice} onChange={e=>setDoc({...doc, type: e.target.value==="Other" ? "" : e.target.value})}>
               {COMPULSORY_KYC_TYPES.map(t=><option key={t} value={t}>{t}</option>)}
+              <option value={OFFICE_SPACE_DOC_TYPE}>{OFFICE_SPACE_DOC_TYPE}</option>
               <option value="Other">Other</option>
             </select>
           </div>
@@ -5234,7 +5296,7 @@ function CustomerDetailModal({ customer: c, state, dispatch, role, userId, setPa
             ? <div className="field"><label>Document name</label><input value={doc.type} onChange={e=>setDoc({...doc,type:e.target.value})} placeholder="e.g. Passport" /></div>
             : <div className="field"><label>Number</label><input value={doc.number} onChange={e=>setDoc({...doc,number:e.target.value})} /></div>}
           <div className="field">
-            <label>Expiry date{isCompulsoryDocType ? " (required)" : ""}</label>
+            <label>{docTypeChoice === OFFICE_SPACE_DOC_TYPE ? "Renewal date" : "Expiry date"}{isCompulsoryDocType ? " (required)" : ""}</label>
             <input type="date" value={doc.expiry} onChange={e=>setDoc({...doc,expiry:e.target.value})} />
           </div>
         </div>
@@ -5243,6 +5305,9 @@ function CustomerDetailModal({ customer: c, state, dispatch, role, userId, setPa
         )}
         {isCompulsoryDocType && !doc.expiry && (
           <div className="side-note" style={{ marginTop:0 }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{doc.type} needs an expiry date before it can be saved.</div>
+        )}
+        {docTypeChoice === OFFICE_SPACE_DOC_TYPE && !doc.expiry && (
+          <div className="side-note" style={{ marginTop:0 }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>Set the renewal date to get a reminder starting one month before it's due.</div>
         )}
         <div style={{ display:"flex", gap:8 }}>
           <button className="btn btn-primary btn-sm" disabled={!canSaveDoc} onClick={saveDoc}>{docEditingId ? "Save changes" : "Add document"}</button>
@@ -10127,6 +10192,7 @@ const REPORT_TABS = [
   { key:"salespeople", label:"Sales by Person" },
   { key:"collections", label:"Collections" },
   { key:"customers", label:"Customers" },
+  { key:"auditing", label:"Auditing Required" },
   { key:"users", label:"User Base" },
   { key:"hr", label:"Attendance & HR" },
   { key:"incentives", label:"Incentives" },
@@ -10241,6 +10307,7 @@ function ReportsPage({ state, role, userId }) {
       {tab === "salespeople" && <SalesPersonReport state={reportState} range={range} salesFilter={salesFilter} />}
       {tab === "collections" && <CollectionsReport state={reportState} range={range} />}
       {tab === "customers" && <CustomersReport state={reportState} range={range} />}
+      {tab === "auditing" && <AuditingReport state={reportState} />}
       {tab === "users" && <UsersReport state={reportState} range={range} />}
       {tab === "hr" && <AttendanceHRReport state={reportState} range={range} />}
       {tab === "incentives" && <IncentivesReport state={reportState} range={range} />}
@@ -10735,6 +10802,46 @@ function CustomersReport({ state, range }) {
         </tbody>
       </table>
     </ReportTableCard>
+  );
+}
+
+// Every existing Company customer whose CR was opened before 1 July of the current year — the
+// cutoff that makes an audit due for that year (see auditRequired) — regardless of status, so
+// staff can see Pending/Submitted/Not Required side by side, not just the ones still outstanding.
+function AuditingReport({ state }) {
+  const year = auditYearFor();
+  const rows = state.customers.filter(c => auditRequired(c, year))
+    .map(c => ({ c, status: auditStatusFor(c, year) }))
+    .sort((a,b) => (a.status==="Pending"?0:1) - (b.status==="Pending"?0:1) || a.c.name.localeCompare(b.c.name));
+  const pendingCount = rows.filter(r => r.status === "Pending").length;
+
+  return (
+    <div>
+      <ReportKpis items={[
+        { label:`Companies requiring a ${year} audit`, value: rows.length },
+        { label:"Still pending", value: pendingCount },
+        { label:"Submission window", value: auditWindowLabel(year) },
+      ]} />
+      <ReportTableCard title={`Auditing required — ${year}`} empty={rows.length===0 ? "No company has a CR opened date on file that falls before this year's 1 July cutoff yet." : null} emptyIcon={UserCheck}
+        onExport={rows.length ? ()=>exportCSV(`auditing-required-${year}.csv`, ["Customer ID","Company","CR Opened","Audit Status","Contact","Phone","Email"],
+          rows.map(r=>[r.c.id, r.c.name, r.c.crOpenedAt, r.status, r.c.contact||"", r.c.phone||"", r.c.email||""])) : null}>
+        <table className="agw-table">
+          <thead><tr><th>Company</th><th>CR opened</th><th>Status</th><th>Contact</th><th>Phone</th><th>Email</th></tr></thead>
+          <tbody>
+            {rows.map(r => (
+              <tr key={r.c.id}>
+                <td>{r.c.name}<div className="mono" style={{fontSize:11,color:"var(--ink-soft)"}}>{r.c.id}</div></td>
+                <td className="mono" style={{fontSize:12}}>{fmtDate(r.c.crOpenedAt)}</td>
+                <td><Stamp tone={r.status==="Pending"?"danger":r.status==="Submitted"?"success":"neutral"}>{r.status}</Stamp></td>
+                <td>{r.c.contact || "—"}</td>
+                <td className="mono" style={{fontSize:12}}>{r.c.phone || "—"}</td>
+                <td style={{fontSize:12.5}}>{r.c.email || "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </ReportTableCard>
+    </div>
   );
 }
 

@@ -315,9 +315,31 @@ CREATE TABLE IF NOT EXISTS customers (
   -- folder) — replaces per-document links on customer_docs.cloud_link below, which meant
   -- re-pasting a different file link for every single document instead of one folder link.
   cloud_link   VARCHAR(500) NULL,
+  -- When this company's CR (Commercial Registration) was first opened — manually entered, since
+  -- nothing else in the system tracks it. Drives the yearly audit requirement below: a company
+  -- opened before July 1 of a given year must submit an audit for that year (see customer_audits).
+  cr_opened_at DATE NULL,
   created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
   FOREIGN KEY (sales_person_override) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+-- One row per customer per year a yearly audit applies to. Whether a year applies at all is
+-- computed from customers.cr_opened_at (CR opened before July 1 of that year), not stored here —
+-- this table only tracks the submission status once that requirement exists, so the same
+-- Jan 1 - Apr 30 submission-window rule works unchanged every year without a schema change.
+CREATE TABLE IF NOT EXISTS customer_audits (
+  id           VARCHAR(30) PRIMARY KEY,
+  customer_id  VARCHAR(20) NOT NULL,
+  year         INT NOT NULL,
+  status       ENUM('Pending','Submitted','Not Required') NOT NULL DEFAULT 'Pending',
+  submitted_at DATE NULL,
+  note         VARCHAR(500),
+  updated_by   VARCHAR(20) NULL,
+  updated_at   TIMESTAMP NULL,
+  UNIQUE KEY uniq_customer_year (customer_id, year),
+  FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE,
+  FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS customer_docs (

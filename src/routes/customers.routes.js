@@ -38,6 +38,7 @@ router.get("/", async (req, res) => {
   const docs = await query("SELECT * FROM customer_docs");
   const staff = await query("SELECT * FROM customer_staff");
   const staffDocs = await query("SELECT * FROM customer_staff_docs");
+  const audits = await query("SELECT * FROM customer_audits");
 
   // Computed, not stored — a customer only counts as an "Address Gateway Customer" once real
   // business exists (a Sales Order, Invoice, or Job Card), not merely from a lead/deal/quotation
@@ -102,6 +103,7 @@ router.get("/", async (req, res) => {
     salesPerson: users.find((u) => u.id === (c.sales_person_override || ownerFor(c)))?.name || null,
     docs: docs.filter((d) => d.customer_id === c.id),
     employees: staff.filter((s) => s.customer_id === c.id).map((s) => ({ ...s, docs: staffDocs.filter((d) => d.customer_staff_id === s.id) })),
+    audits: audits.filter((a) => a.customer_id === c.id),
   })));
 });
 
@@ -150,6 +152,7 @@ router.patch("/:id", requireRoleOrModuleEdit(["admin_like", "ops_manager", "ops_
   if (b.email !== undefined) { fields.push("email = ?"); params.push(b.email || null); }
   if (b.address !== undefined) { fields.push("address = ?"); params.push(b.address || null); }
   if (b.companySize !== undefined) { fields.push("company_size = ?"); params.push(b.companySize || null); }
+  if (b.crOpenedAt !== undefined) { fields.push("cr_opened_at = ?"); params.push(b.crOpenedAt || null); }
   if (b.status !== undefined) { fields.push("status = ?"); params.push(b.status); }
   // Empty string/null clears the override, reverting to the auto-computed category in GET /.
   if (b.categoryOverride !== undefined) { fields.push("category_override = ?"); params.push(b.categoryOverride || null); }
@@ -185,6 +188,27 @@ router.patch("/:id/cloud-link", requireRoleOrModuleEdit(["admin_like", "ops_mana
     return res.status(400).json({ error: "That doesn't look like a valid link — it should start with http:// or https://" });
   }
   await query("UPDATE customers SET cloud_link = ? WHERE id = ?", [trimmed || null, req.params.id]);
+  res.json({ ok: true });
+});
+
+// Upserts this customer's audit status for one year (Pending/Submitted/Not Required) — whether a
+// year even applies is computed on the frontend from cr_opened_at, not checked here, so marking a
+// status is always allowed (e.g. pre-emptively recording "Not Required" for a one-off exemption).
+router.patch("/:id/audit/:year", requireRoleOrModuleEdit(["admin_like", "ops_manager", "ops_member", "pro_head", "pro"], "customers"), async (req, res) => {
+  const { status, note } = req.body;
+  if (!["Pending", "Submitted", "Not Required"].includes(status)) {
+    return res.status(400).json({ error: "Invalid audit status" });
+  }
+  const year = Number(req.params.year);
+  const submittedAt = status === "Submitted" ? today() : null;
+  const [existing] = await query("SELECT id FROM customer_audits WHERE customer_id = ? AND year = ?", [req.params.id, year]);
+  if (existing) {
+    await query("UPDATE customer_audits SET status=?, note=?, submitted_at=?, updated_by=?, updated_at=NOW() WHERE id=?",
+      [status, note || null, submittedAt, req.user.id, existing.id]);
+  } else {
+    await query("INSERT INTO customer_audits (id, customer_id, year, status, note, submitted_at, updated_by, updated_at) VALUES (?,?,?,?,?,?,?,NOW())",
+      [nextId("AUD"), req.params.id, year, status, note || null, submittedAt, req.user.id]);
+  }
   res.json({ ok: true });
 });
 
