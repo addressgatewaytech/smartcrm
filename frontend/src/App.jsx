@@ -4786,6 +4786,7 @@ function CustomersPage({ state, dispatch, role, userId, expiryFilterRequest, onE
   const [editCustomer, setEditCustomer] = useState(null);
   const [removeCustomer, setRemoveCustomer] = useState(null);
   const [showDuplicates, setShowDuplicates] = useState(false);
+  const [officeSpaceFor, setOfficeSpaceFor] = useState(null);
   const isAdmin = ADMIN_LIKE.includes(role);
   // Ops Manager can update a customer's profile alongside Admin-tier (services KYC/onboarding
   // across every client operationally, not just ones they personally sourced) — Delete stays
@@ -4918,7 +4919,12 @@ function CustomersPage({ state, dispatch, role, userId, expiryFilterRequest, onE
                     })}
                     <td>{flagged > 0 ? <Stamp tone="warning">{flagged} flagged</Stamp> : <Stamp tone="success">Clear</Stamp>}</td>
                     <td>{auditPending(c) ? <Stamp tone="danger">Auditing pending</Stamp> : (auditRequired(c) ? <Stamp tone="success">{auditStatusFor(c)}</Stamp> : "—")}</td>
-                    <td>{(() => { const st = officeSpaceStateOf(c); return st ? <Stamp tone={st.cls.replace("stamp-","")}>{st.label}</Stamp> : "—"; })()}</td>
+                    <td>
+                      <div style={{display:"flex",alignItems:"center",gap:6}}>
+                        {(() => { const st = officeSpaceStateOf(c); return st ? <Stamp tone={st.cls.replace("stamp-","")}>{st.label}</Stamp> : "—"; })()}
+                        {canEditCustomer && <button className="btn btn-sm btn-ghost" style={{padding:4}} title="Mark Office Space" onClick={e=>{e.stopPropagation(); setOfficeSpaceFor(c);}}><Building2 size={13}/></button>}
+                      </div>
+                    </td>
                     <td><Stamp tone={c.category==="Address Gateway Customers"?"success":"neutral"}>{c.category}</Stamp></td>
                     <td><RowActions onEdit={canEditCustomer ? ()=>setEditCustomer(c) : null} onRemove={isAdmin ? ()=>setRemoveCustomer(c) : null} /></td>
                   </tr>
@@ -4953,6 +4959,7 @@ function CustomersPage({ state, dispatch, role, userId, expiryFilterRequest, onE
                   {flagged > 0 ? <Stamp tone="warning">{flagged} doc{flagged>1?"s":""} flagged</Stamp> : <Stamp tone="success">KYC clear</Stamp>}
                   {auditPending(c) && <Stamp tone="danger">Auditing pending</Stamp>}
                   {officeSpaceDue(c) && <Stamp tone="danger">Office Space: {officeSpaceStateOf(c).label}</Stamp>}
+                  {canEditCustomer && <button className="btn btn-sm btn-ghost" style={{padding:4}} title="Mark Office Space" onClick={e=>{e.stopPropagation(); setOfficeSpaceFor(c);}}><Building2 size={13}/></button>}
                   <RowActions onEdit={canEditCustomer ? ()=>setEditCustomer(c) : null} onRemove={isAdmin ? ()=>setRemoveCustomer(c) : null} />
                 </div>
               </div>
@@ -4984,6 +4991,7 @@ function CustomersPage({ state, dispatch, role, userId, expiryFilterRequest, onE
           "Address Gateway Customers" default the moment it's saved. */}
       {showAdd && <NewCustomerModal dispatch={dispatch} onClose={()=>setShowAdd(false)} onCreated={()=>setCategoryFilter("")} />}
       {showDuplicates && <DuplicateCustomersModal state={state} dispatch={dispatch} onClose={()=>setShowDuplicates(false)} />}
+      {officeSpaceFor && <OfficeSpaceModal customer={officeSpaceFor} dispatch={dispatch} onClose={()=>setOfficeSpaceFor(null)} />}
     </div>
   );
 }
@@ -5061,12 +5069,57 @@ function NewCustomerModal({ dispatch, onClose, onCreated, customer=null }) {
   );
 }
 
+// One-click marking from the Customers table/card view, without going through the full "Add KYC
+// document" form (type picker, number field, ...) — this is just the renewal date, since that's
+// the only thing the Office Space reminder actually needs. Still the same customer_docs row under
+// the hood (type "Office Space"), so it shows up identically everywhere else that reads it.
+function OfficeSpaceModal({ customer: c, dispatch, onClose }) {
+  const existing = officeSpaceDocOf(c);
+  const [date, setDate] = useState(existing?.expiry || daysFromNow(365));
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      if (existing) await dispatch({ type:"UPDATE_KYC_DOC", customerId:c.id, docId:existing.id, payload:{ type:OFFICE_SPACE_DOC_TYPE, number:existing.number||"", expiry:date } });
+      else await dispatch({ type:"ADD_KYC_DOC", customerId:c.id, doc:{ type:OFFICE_SPACE_DOC_TYPE, number:"", expiry:date } });
+      onClose();
+    } finally { setSaving(false); }
+  };
+  const removeMarking = async () => {
+    if (!existing) return;
+    setSaving(true);
+    try { await dispatch({ type:"DELETE_KYC_DOC", customerId:c.id, docId:existing.id }); onClose(); } finally { setSaving(false); }
+  };
+
+  return (
+    <Modal title="Office Space renewal" sub={c.name} onClose={onClose}>
+      {existing && (
+        <div className="side-note" style={{ marginTop:0 }}>
+          Currently marked — {docState(existing.expiry).label}.
+        </div>
+      )}
+      <div className="field"><label>Renewal date</label><input type="date" value={date} onChange={e=>setDate(e.target.value)} autoFocus /></div>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginTop: 16 }}>
+        {existing
+          ? <button className="btn btn-sm" style={{ color:"var(--danger)" }} disabled={saving} onClick={removeMarking}>Remove marking</button>
+          : <span />}
+        <div style={{ display:"flex", gap:8 }}>
+          <button className="btn" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" disabled={saving} onClick={save}>{saving ? "Saving…" : existing ? "Save" : "Mark Office Space"}</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function CustomerDetailModal({ customer: c, state, dispatch, role, userId, setPage, onViewQuotation, onClose }) {
   const isAdmin = ADMIN_LIKE.includes(role);
   const [tab, setTab] = useState("profile");
   const [creatingDeal, setCreatingDeal] = useState(false);
   const [quoteFor, setQuoteFor] = useState(null);
   const [merging, setMerging] = useState(false);
+  const [markingOfficeSpace, setMarkingOfficeSpace] = useState(false);
   const blankDoc = { type: "Passport", number: "", expiry: daysFromNow(365) };
   const [doc, setDoc] = useState(blankDoc);
   const [docEditingId, setDocEditingId] = useState(null);
@@ -5131,12 +5184,14 @@ function CustomerDetailModal({ customer: c, state, dispatch, role, userId, setPa
         <div style={{ display:"flex", gap:8 }}>
           <button className="btn btn-sm" onClick={()=>setCreatingDeal(true)}><Handshake size={13}/> Create deal</button>
           <button className="btn btn-sm" onClick={()=>setEmailingCustomer(true)}><Mail size={13}/> Email customer</button>
+          <button className="btn btn-sm" onClick={()=>setMarkingOfficeSpace(true)}><Building2 size={13}/> Office Space</button>
           {isAdmin && <button className="btn btn-sm" onClick={()=>setMerging(true)}><Users size={13}/> Merge</button>}
         </div>
       </div>
       <div style={{ borderBottom:"1px solid var(--hair)", marginBottom:18 }} />
 
       {merging && <MergeCustomersModal customer={c} state={state} dispatch={dispatch} onClose={()=>setMerging(false)} onMerged={onClose} />}
+      {markingOfficeSpace && <OfficeSpaceModal customer={c} dispatch={dispatch} onClose={()=>setMarkingOfficeSpace(false)} />}
 
       {creatingDeal && <NewDealModal state={state} dispatch={dispatch} userId={userId} initialCustomer={c.name} onClose={()=>setCreatingDeal(false)} onCreated={(deal)=>setQuoteFor(deal)} />}
       {quoteFor && <QuoteBuilderModal dealId={quoteFor.id} customerName={quoteFor.customer} defaultService={quoteFor.service} services={state.services} itemCatalog={state.itemCatalog} dispatch={dispatch} templates={state.quotationTemplates} subscriptionPlans={state.subscriptionPlans} subscriptions={state.subscriptions} role={role} employees={state.employees} defaultOwner={quoteFor.owner} onClose={()=>setQuoteFor(null)}
@@ -10812,7 +10867,11 @@ function CustomersReport({ state, range }) {
 // the moment it's set — no need to open each customer's own detail view first.
 function AuditingReport({ state, dispatch }) {
   const year = auditYearFor();
-  const rows = state.customers.filter(c => c.type === "Company")
+  // Defaults to the real client base, not every lead that ever auto-created a customer stub —
+  // most of those never became paying customers and just add noise here. Still switchable to
+  // "Others" or "All" for anyone who does need the full picture.
+  const [categoryFilter, setCategoryFilter] = useState("Address Gateway Customers");
+  const rows = state.customers.filter(c => c.type === "Company" && (!categoryFilter || c.category === categoryFilter))
     .map(c => ({ c, required: auditRequired(c, year), status: auditStatusFor(c, year) }))
     .sort((a,b) => {
       const rank = (r) => !r.c.crOpenedAt ? 0 : (r.required && r.status==="Pending") ? 1 : 2;
@@ -10824,6 +10883,12 @@ function AuditingReport({ state, dispatch }) {
 
   return (
     <div>
+      <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:12 }}>
+        <select value={categoryFilter} onChange={e=>setCategoryFilter(e.target.value)} style={{ maxWidth:240 }}>
+          <option value="">All customers</option>
+          {CUSTOMER_CATEGORIES.map(cat=><option key={cat} value={cat}>{cat}</option>)}
+        </select>
+      </div>
       <ReportKpis items={[
         { label:"Total companies", value: rows.length },
         { label:"CR opened date missing", value: missingCrDate },
