@@ -361,6 +361,19 @@ const CSS = `
   .theme-toggle:disabled { opacity: .6; cursor: default; }
   @keyframes agw-spin { to { transform: rotate(360deg); } }
   .agw-spin { animation: agw-spin 0.8s linear infinite; }
+
+  /* Collapsed "What's new" tab — sits closed against the right edge of the viewport until
+     clicked, rather than permanently occupying Dashboard space with an always-open card. */
+  .whats-new-tab { position: fixed; top: 50%; right: 0; transform: translateY(-50%) rotate(180deg);
+    writing-mode: vertical-rl; display: flex; align-items: center; gap: 6px; padding: 10px 7px;
+    background: var(--brand); color: #fff; border: none; border-radius: 10px 0 0 10px; cursor: pointer;
+    font-size: 12.5px; font-weight: 500; letter-spacing: .02em; box-shadow: var(--shadow-sm); z-index: 40; }
+  .whats-new-tab:hover { background: var(--brand-dark); }
+  .whats-new-dot { writing-mode: horizontal-tb; width: 7px; height: 7px; border-radius: 50%; background: var(--gold); flex-shrink: 0; }
+  .whats-new-panel { position: fixed; top: 0; right: 0; bottom: 0; width: 340px; max-width: calc(100vw - 32px);
+    background: var(--surface); box-shadow: var(--shadow-md); z-index: 55; padding: 18px; overflow-y: auto;
+    border-left: 1px solid var(--hair); }
+  .whats-new-backdrop { position: fixed; inset: 0; background: rgba(20,18,14,.3); z-index: 54; }
 `;
 
 /* ---------------------------------------------------------------------- */
@@ -1821,6 +1834,7 @@ function Dashboard({ state, dispatch, role, userId, setPage, onOpenExpiredCustom
   const canQuickAddLead = !isSalesRole(role) && role !== "viewer" && role !== "ops_manager" && role !== "ops_member" && role !== "pro_head" && role !== "pro";
   const [showQuickAddLead, setShowQuickAddLead] = useState(false);
   const [showPostUpdate, setShowPostUpdate] = useState(false);
+  const [whatsNewOpen, setWhatsNewOpen] = useState(false);
 
   // Operational, cross-service view of every Company Formation job card's progress — the people
   // who actually run that work (Ops Manager, PRO Head/PRO) plus oversight roles (Admin-tier,
@@ -1967,30 +1981,45 @@ function Dashboard({ state, dispatch, role, userId, setPage, onOpenExpiredCustom
         const whatsNew = state.notifications.filter(n => n.type === "system_update")
           .sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 5);
         const isAdmin = ADMIN_LIKE.includes(role);
+        const unread = whatsNew.filter(n => !n.read).length;
         if (!whatsNew.length && !isAdmin) return null;
         return (
-          <div className="agw-card" style={{ marginBottom: 20 }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: whatsNew.length ? 10 : 0 }}>
-              <strong style={{ fontSize:14 }}><Star size={14} style={{verticalAlign:-2,marginRight:6,color:"var(--gold)"}}/>What's new</strong>
-              <div style={{ display:"flex", gap:8 }}>
-                {isAdmin && <button className="btn btn-sm btn-ghost" onClick={()=>setShowPostUpdate(true)}><Plus size={13}/> Post update</button>}
-                {whatsNew.length > 0 && <button className="btn btn-sm btn-ghost" onClick={()=>setPage("notifications")}>View all</button>}
-              </div>
-            </div>
-            {whatsNew.length === 0
-              ? <div className="side-note" style={{ marginTop:0 }}>No updates posted yet.</div>
-              : whatsNew.map((n, i) => (
-                <div key={n.id} style={{ padding:"8px 0", borderBottom: i < whatsNew.length-1 ? "1px solid var(--hair)" : "none", cursor: n.read ? "default" : "pointer" }}
-                  onClick={()=>!n.read && dispatch({type:"MARK_NOTIF_READ", id:n.id})}>
-                  <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-                    {!n.read && <span style={{width:7,height:7,borderRadius:"50%",background:"var(--brand)",flexShrink:0}}/>}
-                    <span style={{ fontSize:13, fontWeight: n.read ? 400 : 600 }}>{n.title}</span>
+          <>
+            {/* Closed by default — a tab against the right edge, not a permanent card taking up
+                Dashboard space. Opens the panel below on click. */}
+            <button type="button" className="whats-new-tab" onClick={()=>setWhatsNewOpen(true)}>
+              <Star size={13}/> What's new
+              {unread > 0 && <span className="whats-new-dot" />}
+            </button>
+            {whatsNewOpen && (
+              <>
+                <div className="whats-new-backdrop" onClick={()=>setWhatsNewOpen(false)} />
+                <div className="whats-new-panel">
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: whatsNew.length ? 10 : 0 }}>
+                    <strong style={{ fontSize:14 }}><Star size={14} style={{verticalAlign:-2,marginRight:6,color:"var(--gold)"}}/>What's new</strong>
+                    <button className="btn btn-sm btn-ghost" style={{padding:4}} onClick={()=>setWhatsNewOpen(false)}><X size={15}/></button>
                   </div>
-                  {n.body && <div style={{ fontSize:12, color:"var(--ink-soft)", marginTop:2 }}>{n.body}</div>}
-                  <div style={{ fontSize:11, color:"var(--ink-soft)", marginTop:3 }}>{fmtDate(n.createdAt)}</div>
+                  <div style={{ display:"flex", gap:8, marginBottom: whatsNew.length ? 10 : 0 }}>
+                    {isAdmin && <button className="btn btn-sm btn-ghost" onClick={()=>setShowPostUpdate(true)}><Plus size={13}/> Post update</button>}
+                    {whatsNew.length > 0 && <button className="btn btn-sm btn-ghost" onClick={()=>{ setWhatsNewOpen(false); setPage("notifications"); }}>View all</button>}
+                  </div>
+                  {whatsNew.length === 0
+                    ? <div className="side-note" style={{ marginTop:0 }}>No updates posted yet.</div>
+                    : whatsNew.map((n, i) => (
+                      <div key={n.id} style={{ padding:"8px 0", borderBottom: i < whatsNew.length-1 ? "1px solid var(--hair)" : "none", cursor: n.read ? "default" : "pointer" }}
+                        onClick={()=>!n.read && dispatch({type:"MARK_NOTIF_READ", id:n.id})}>
+                        <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                          {!n.read && <span style={{width:7,height:7,borderRadius:"50%",background:"var(--brand)",flexShrink:0}}/>}
+                          <span style={{ fontSize:13, fontWeight: n.read ? 400 : 600 }}>{n.title}</span>
+                        </div>
+                        {n.body && <div style={{ fontSize:12, color:"var(--ink-soft)", marginTop:2 }}>{n.body}</div>}
+                        <div style={{ fontSize:11, color:"var(--ink-soft)", marginTop:3 }}>{fmtDate(n.createdAt)}</div>
+                      </div>
+                    ))}
                 </div>
-              ))}
-          </div>
+              </>
+            )}
+          </>
         );
       })()}
       {showPostUpdate && <PostUpdateModal dispatch={dispatch} onClose={()=>setShowPostUpdate(false)} />}
