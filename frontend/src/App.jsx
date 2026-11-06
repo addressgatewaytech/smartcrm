@@ -1820,6 +1820,7 @@ function Dashboard({ state, dispatch, role, userId, setPage, onOpenExpiredCustom
   // Dashboard quick-add would just be a second, redundant "add lead" entry point for them.
   const canQuickAddLead = !isSalesRole(role) && role !== "viewer" && role !== "ops_manager" && role !== "ops_member" && role !== "pro_head" && role !== "pro";
   const [showQuickAddLead, setShowQuickAddLead] = useState(false);
+  const [showPostUpdate, setShowPostUpdate] = useState(false);
 
   // Operational, cross-service view of every Company Formation job card's progress — the people
   // who actually run that work (Ops Manager, PRO Head/PRO) plus oversight roles (Admin-tier,
@@ -1958,6 +1959,41 @@ function Dashboard({ state, dispatch, role, userId, setPage, onOpenExpiredCustom
         </div>
       )}
       {showQuickAddLead && <LeadFormModal state={state} dispatch={dispatch} userId={userId} editLead={null} onClose={()=>setShowQuickAddLead(false)} />}
+
+      {(() => {
+        // state.notifications already arrives server-scoped to this account's audience (see
+        // myAudienceFilter, notifications.routes.js) — no extra role filtering needed here, just
+        // picking out the "system_update" type and showing the most recent few.
+        const whatsNew = state.notifications.filter(n => n.type === "system_update")
+          .sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 5);
+        const isAdmin = ADMIN_LIKE.includes(role);
+        if (!whatsNew.length && !isAdmin) return null;
+        return (
+          <div className="agw-card" style={{ marginBottom: 20 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: whatsNew.length ? 10 : 0 }}>
+              <strong style={{ fontSize:14 }}><Star size={14} style={{verticalAlign:-2,marginRight:6,color:"var(--gold)"}}/>What's new</strong>
+              <div style={{ display:"flex", gap:8 }}>
+                {isAdmin && <button className="btn btn-sm btn-ghost" onClick={()=>setShowPostUpdate(true)}><Plus size={13}/> Post update</button>}
+                {whatsNew.length > 0 && <button className="btn btn-sm btn-ghost" onClick={()=>setPage("notifications")}>View all</button>}
+              </div>
+            </div>
+            {whatsNew.length === 0
+              ? <div className="side-note" style={{ marginTop:0 }}>No updates posted yet.</div>
+              : whatsNew.map((n, i) => (
+                <div key={n.id} style={{ padding:"8px 0", borderBottom: i < whatsNew.length-1 ? "1px solid var(--hair)" : "none", cursor: n.read ? "default" : "pointer" }}
+                  onClick={()=>!n.read && dispatch({type:"MARK_NOTIF_READ", id:n.id})}>
+                  <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                    {!n.read && <span style={{width:7,height:7,borderRadius:"50%",background:"var(--brand)",flexShrink:0}}/>}
+                    <span style={{ fontSize:13, fontWeight: n.read ? 400 : 600 }}>{n.title}</span>
+                  </div>
+                  {n.body && <div style={{ fontSize:12, color:"var(--ink-soft)", marginTop:2 }}>{n.body}</div>}
+                  <div style={{ fontSize:11, color:"var(--ink-soft)", marginTop:3 }}>{fmtDate(n.createdAt)}</div>
+                </div>
+              ))}
+          </div>
+        );
+      })()}
+      {showPostUpdate && <PostUpdateModal dispatch={dispatch} onClose={()=>setShowPostUpdate(false)} />}
 
       {chartTab === "overview" && <>
       {role === "content_creator" && (
@@ -2417,6 +2453,33 @@ function Dashboard({ state, dispatch, role, userId, setPage, onOpenExpiredCustom
 /* ---------------------------------------------------------------------- */
 /* LEADS                                                                   */
 /* ---------------------------------------------------------------------- */
+
+// Admin-tier posts a short "what's new" announcement from the Dashboard — reuses the existing
+// notifications/notification_reads system (same bell, same per-user read tracking) rather than a
+// parallel changelog table, so it shows up everywhere a notification already does. Audience is
+// every role in ROLE_LABEL (see POST /notifications), i.e. the whole company.
+function PostUpdateModal({ dispatch, onClose }) {
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [saving, setSaving] = useState(false);
+  const save = async () => {
+    setSaving(true);
+    try {
+      await dispatch({ type:"POST_SYSTEM_UPDATE", payload: { title: title.trim(), body: body.trim() } });
+      onClose();
+    } finally { setSaving(false); }
+  };
+  return (
+    <Modal title="Post an update" sub="Shown to everyone on the Dashboard and in Notifications." onClose={onClose}>
+      <div className="field"><label>Title</label><input value={title} onChange={e=>setTitle(e.target.value)} placeholder="e.g. Office Space renewal tracking added" autoFocus /></div>
+      <div className="field"><label>Details (optional)</label><textarea rows={3} value={body} onChange={e=>setBody(e.target.value)} placeholder="A sentence or two on what changed." /></div>
+      <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop:16 }}>
+        <button className="btn" onClick={onClose}>Cancel</button>
+        <button className="btn btn-primary" disabled={!title.trim() || saving} onClick={save}>{saving ? "Posting…" : "Post update"}</button>
+      </div>
+    </Modal>
+  );
+}
 
 const LEAD_STATUSES = ["New","Contacted","Follow-up Scheduled","Interested","Not Interested","Qualified","Unqualified","Converted"];
 
@@ -10101,6 +10164,7 @@ function NotificationsPage({ state, dispatch, myNotifs }) {
     : type==="todo_reminder" ? { icon: Clock, tone:"warning" }
     : type==="cheque_deposit" ? { icon: Landmark, tone:"warning" }
     : type==="software_renewal" ? { icon: Landmark, tone:"info" }
+    : type==="system_update" ? { icon: Star, tone:"gold" }
     : { icon: Ban, tone:"danger" };
 
   const audienceLabel = (aud) => aud.map(a => ROLE_LABEL[a] || state.employees.find(e=>e.id===a)?.name || a).join(", ");

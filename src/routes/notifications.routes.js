@@ -1,6 +1,8 @@
 const express = require("express");
 const { query } = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
+const { requireRole, ROLE_LABEL } = require("../middleware/roles");
+const { nextId } = require("../utils/helpers");
 const { sendMail } = require("../utils/mailer");
 
 const router = express.Router();
@@ -20,6 +22,18 @@ router.get("/", async (req, res) => {
   const readRows = await query("SELECT notification_id FROM notification_reads WHERE user_id = ?", [req.user.id]);
   const readIds = new Set(readRows.map((r) => r.notification_id));
   res.json(mine.map((n) => ({ ...n, read_flag: readIds.has(n.id) ? 1 : 0 })));
+});
+
+// Admin-tier posts a "what's new" announcement to the whole company — surfaced on the Dashboard
+// and in Notifications like any other notification, just addressed to every role that exists
+// instead of one approval audience.
+router.post("/", requireRole(["admin_like"]), async (req, res) => {
+  const { title, body } = req.body;
+  if (!title || !title.trim()) return res.status(400).json({ error: "Title is required" });
+  const id = nextId("NT");
+  await query("INSERT INTO notifications (id, type, title, body, audience) VALUES (?, 'system_update', ?, ?, ?)",
+    [id, title.trim(), body || null, JSON.stringify(Object.keys(ROLE_LABEL))]);
+  res.status(201).json({ id });
 });
 
 router.post("/:id/read", async (req, res) => {

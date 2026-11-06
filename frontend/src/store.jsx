@@ -298,6 +298,7 @@ export function useApiStore(enabled) {
       case "DELETE_TODO": await api.todos.remove(action.id); return refresh(["todos"]);
 
       // --- Notifications -------------------------------------------------------------------
+      case "POST_SYSTEM_UPDATE": await api.notifications.create(action.payload); return refresh(["notifications"]);
       case "MARK_NOTIF_READ": await api.notifications.markRead(action.id); return refresh(["notifications"]);
       case "MARK_ALL_READ": await api.notifications.markAllRead(); return refresh(["notifications"]);
       case "MARK_NOTIF_EMAILED": await api.notifications.email(action.id, action.to, action.subject, action.body); return refresh(["notifications"]);

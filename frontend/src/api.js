@@ -359,6 +359,7 @@ export const api = {
   },
   notifications: {
     list: () => get("/notifications"),
+    create: (payload) => post("/notifications", payload),
     markRead: (id) => post(`/notifications/${id}/read`),
     markAllRead: () => post("/notifications/mark-all-read"),
     email: (id, to, subject, body) => post(`/notifications/${id}/email`, { to, subject, body }),
