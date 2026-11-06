@@ -38,7 +38,13 @@ router.get("/", async (req, res) => {
   const docs = await query("SELECT * FROM customer_docs");
   const staff = await query("SELECT * FROM customer_staff");
   const staffDocs = await query("SELECT * FROM customer_staff_docs");
-  const audits = await query("SELECT * FROM customer_audits");
+  // Tolerates customer_audits not existing yet on a DB that hasn't had this feature's migration
+  // applied — the whole customer list shouldn't 500 just because that one table is missing;
+  // auditing simply shows as "not required" everywhere until the migration runs.
+  const audits = await query("SELECT * FROM customer_audits").catch((err) => {
+    if (err.code === "ER_NO_SUCH_TABLE") return [];
+    throw err;
+  });
 
   // Computed, not stored — a customer only counts as an "Address Gateway Customer" once real
   // business exists (a Sales Order, Invoice, or Job Card), not merely from a lead/deal/quotation
