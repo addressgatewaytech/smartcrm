@@ -10252,7 +10252,7 @@ function SalesPeopleFilter({ people, selected, setSelected }) {
   );
 }
 
-function ReportsPage({ state, role, userId }) {
+function ReportsPage({ state, dispatch, role, userId }) {
   const [tab, setTab] = useState("volume");
   const [salesFilter, setSalesFilter] = useState([]);
   const { period, setPeriod, customFrom, setCustomFrom, customTo, setCustomTo, range } = usePeriod("month");
@@ -10307,7 +10307,7 @@ function ReportsPage({ state, role, userId }) {
       {tab === "salespeople" && <SalesPersonReport state={reportState} range={range} salesFilter={salesFilter} />}
       {tab === "collections" && <CollectionsReport state={reportState} range={range} />}
       {tab === "customers" && <CustomersReport state={reportState} range={range} />}
-      {tab === "auditing" && <AuditingReport state={reportState} />}
+      {tab === "auditing" && <AuditingReport state={reportState} dispatch={dispatch} />}
       {tab === "users" && <UsersReport state={reportState} range={range} />}
       {tab === "hr" && <AttendanceHRReport state={reportState} range={range} />}
       {tab === "incentives" && <IncentivesReport state={reportState} range={range} />}
@@ -10805,37 +10805,57 @@ function CustomersReport({ state, range }) {
   );
 }
 
-// Every existing Company customer whose CR was opened before 1 July of the current year — the
-// cutoff that makes an audit due for that year (see auditRequired) — regardless of status, so
-// staff can see Pending/Submitted/Not Required side by side, not just the ones still outstanding.
-function AuditingReport({ state }) {
+// Every Company customer, not just ones already flagged — CR opened date is a brand-new field
+// with nothing backfilled yet, so filtering down to "requires audit" first would show nobody
+// until someone had already gone customer-by-customer to fill it in. This is that fill-in tool:
+// the CR opened date is editable right in the row, and the required/status columns update live
+// the moment it's set — no need to open each customer's own detail view first.
+function AuditingReport({ state, dispatch }) {
   const year = auditYearFor();
-  const rows = state.customers.filter(c => auditRequired(c, year))
-    .map(c => ({ c, status: auditStatusFor(c, year) }))
-    .sort((a,b) => (a.status==="Pending"?0:1) - (b.status==="Pending"?0:1) || a.c.name.localeCompare(b.c.name));
-  const pendingCount = rows.filter(r => r.status === "Pending").length;
+  const rows = state.customers.filter(c => c.type === "Company")
+    .map(c => ({ c, required: auditRequired(c, year), status: auditStatusFor(c, year) }))
+    .sort((a,b) => {
+      const rank = (r) => !r.c.crOpenedAt ? 0 : (r.required && r.status==="Pending") ? 1 : 2;
+      return rank(a) - rank(b) || a.c.name.localeCompare(b.c.name);
+    });
+  const requiredCount = rows.filter(r => r.required).length;
+  const pendingCount = rows.filter(r => r.required && r.status === "Pending").length;
+  const missingCrDate = rows.filter(r => !r.c.crOpenedAt).length;
 
   return (
     <div>
       <ReportKpis items={[
-        { label:`Companies requiring a ${year} audit`, value: rows.length },
+        { label:"Total companies", value: rows.length },
+        { label:"CR opened date missing", value: missingCrDate },
+        { label:`Requiring a ${year} audit`, value: requiredCount },
         { label:"Still pending", value: pendingCount },
-        { label:"Submission window", value: auditWindowLabel(year) },
       ]} />
-      <ReportTableCard title={`Auditing required — ${year}`} empty={rows.length===0 ? "No company has a CR opened date on file that falls before this year's 1 July cutoff yet." : null} emptyIcon={UserCheck}
-        onExport={rows.length ? ()=>exportCSV(`auditing-required-${year}.csv`, ["Customer ID","Company","CR Opened","Audit Status","Contact","Phone","Email"],
-          rows.map(r=>[r.c.id, r.c.name, r.c.crOpenedAt, r.status, r.c.contact||"", r.c.phone||"", r.c.email||""])) : null}>
+      <div className="side-note" style={{ marginBottom:16 }}>
+        <AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>A company whose CR opened before 1 July {year} must submit an audit for {year} (window: {auditWindowLabel(year)}). Fill in each company's CR opened date below if it isn't set yet.
+      </div>
+      <ReportTableCard title={`All companies — auditing (${year})`} empty={rows.length===0 ? "No company customers yet." : null} emptyIcon={UserCheck}
+        onExport={rows.length ? ()=>exportCSV(`auditing-${year}.csv`, ["Customer ID","Company","CR Opened","Audit Required","Audit Status","Contact","Phone","Email"],
+          rows.map(r=>[r.c.id, r.c.name, r.c.crOpenedAt, r.required ? "Yes" : "No", r.required ? r.status : "—", r.c.contact||"", r.c.phone||"", r.c.email||""])) : null}>
         <table className="agw-table">
-          <thead><tr><th>Company</th><th>CR opened</th><th>Status</th><th>Contact</th><th>Phone</th><th>Email</th></tr></thead>
+          <thead><tr><th>Company</th><th>CR opened</th><th>Required</th><th>Status</th><th>Contact</th></tr></thead>
           <tbody>
             {rows.map(r => (
               <tr key={r.c.id}>
                 <td>{r.c.name}<div className="mono" style={{fontSize:11,color:"var(--ink-soft)"}}>{r.c.id}</div></td>
-                <td className="mono" style={{fontSize:12}}>{fmtDate(r.c.crOpenedAt)}</td>
-                <td><Stamp tone={r.status==="Pending"?"danger":r.status==="Submitted"?"success":"neutral"}>{r.status}</Stamp></td>
-                <td>{r.c.contact || "—"}</td>
-                <td className="mono" style={{fontSize:12}}>{r.c.phone || "—"}</td>
-                <td style={{fontSize:12.5}}>{r.c.email || "—"}</td>
+                <td>
+                  <input type="date" value={r.c.crOpenedAt || ""} style={{ fontSize:12, padding:"4px 6px" }}
+                    onChange={e=>dispatch({type:"UPDATE_CUSTOMER", id:r.c.id, payload:{crOpenedAt:e.target.value}})} />
+                </td>
+                <td>{!r.c.crOpenedAt ? <Stamp tone="neutral">Unknown</Stamp> : r.required ? <Stamp tone="warning">Yes</Stamp> : <Stamp tone="success">No</Stamp>}</td>
+                <td>
+                  {r.required ? (
+                    <select value={r.status} style={{ fontSize:12, padding:"4px 6px" }}
+                      onChange={e=>dispatch({type:"SET_CUSTOMER_AUDIT_STATUS", id:r.c.id, year, payload:{status:e.target.value}})}>
+                      <option>Pending</option><option>Submitted</option><option>Not Required</option>
+                    </select>
+                  ) : "—"}
+                </td>
+                <td style={{fontSize:12.5}}>{[r.c.contact, r.c.phone, r.c.email].filter(Boolean).join(" · ") || "—"}</td>
               </tr>
             ))}
           </tbody>
