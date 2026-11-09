@@ -5215,8 +5215,12 @@ function CustomerDetailModal({ customer: c, state, dispatch, role, userId, setPa
   const [auditSaveError, setAuditSaveError] = useState("");
   const blankDoc = { type: "Passport", number: "", expiry: daysFromNow(365) };
   const [doc, setDoc] = useState(blankDoc);
-  const [docEditingId, setDocEditingId] = useState(null);
   const [removeDoc, setRemoveDoc] = useState(null);
+  // Editing an existing document (CR/CP/EC/Office Space/Other) happens right in its table row —
+  // just the Number and Expiry, since the type is fixed once added and nothing here is a file
+  // upload. The "Add KYC document" card below stays add-only, no more doubling as an edit form.
+  const [inlineEditDocId, setInlineEditDocId] = useState(null);
+  const [inlineEditValues, setInlineEditValues] = useState({ number:"", expiry:"" });
 
   const [showAddEmp, setShowAddEmp] = useState(false);
   const [empForm, setEmpForm] = useState({ name:"", designation:"" });
@@ -5229,8 +5233,7 @@ function CustomerDetailModal({ customer: c, state, dispatch, role, userId, setPa
   const [empDoc, setEmpDoc] = useState(blankEmpDoc);
   const [removeEmpDoc, setRemoveEmpDoc] = useState(null);
 
-  const startEditDoc = (d) => { setDocEditingId(d.id); setDoc({ type:d.type, number:d.number, expiry:d.expiry }); };
-  const cancelEditDoc = () => { setDocEditingId(null); setDoc(blankDoc); };
+  const cancelEditDoc = () => { setDoc(blankDoc); };
   // CR/CL/EC need an expiry before they can be saved — a customer can't reach Active without one
   // (see PATCH /customers/:id) — everything else stays optional, same as before this existed.
   const isCompulsoryDocType = COMPULSORY_KYC_TYPES.includes(doc.type);
@@ -5238,9 +5241,17 @@ function CustomerDetailModal({ customer: c, state, dispatch, role, userId, setPa
   const canSaveDoc = doc.type.trim() && (!isCompulsoryDocType || doc.expiry);
   const saveDoc = () => {
     if (!canSaveDoc) return;
-    if (docEditingId) dispatch({ type:"UPDATE_KYC_DOC", customerId:c.id, docId:docEditingId, payload:doc });
-    else dispatch({ type:"ADD_KYC_DOC", customerId:c.id, doc });
+    dispatch({ type:"ADD_KYC_DOC", customerId:c.id, doc });
     cancelEditDoc();
+  };
+
+  const startInlineEditDoc = (d) => { setInlineEditDocId(d.id); setInlineEditValues({ number:d.number||"", expiry:d.expiry||"" }); };
+  const cancelInlineEditDoc = () => { setInlineEditDocId(null); };
+  const canSaveInlineEditDoc = (d) => !COMPULSORY_KYC_TYPES.includes(d.type) || inlineEditValues.expiry;
+  const saveInlineEditDoc = (d) => {
+    if (!canSaveInlineEditDoc(d)) return;
+    dispatch({ type:"UPDATE_KYC_DOC", customerId:c.id, docId:d.id, payload:{ type:d.type, number:inlineEditValues.number, expiry:inlineEditValues.expiry } });
+    cancelInlineEditDoc();
   };
 
   const startEditEmp = (emp) => { setEmpEditingId(emp.id); setEmpForm({ name:emp.name, designation:emp.designation||"" }); setShowAddEmp(true); };
@@ -5432,17 +5443,31 @@ function CustomerDetailModal({ customer: c, state, dispatch, role, userId, setPa
             // A compulsory type with no expiry yet is a still-empty placeholder, not literally
             // "Expired" — docState(null) would otherwise read that way (day-math against epoch).
             const st = d.expiry ? docState(d.expiry) : { label: "Missing", cls: "stamp-warning" };
+            if (inlineEditDocId === d.id) {
+              return <tr key={d.id}>
+                <td>{d.type}</td>
+                <td><input value={inlineEditValues.number} style={{ fontSize:13, padding:"5px 7px" }}
+                  onChange={e=>setInlineEditValues(v=>({...v, number:e.target.value}))} /></td>
+                <td><input type="date" value={inlineEditValues.expiry} style={{ fontSize:13, padding:"5px 7px" }}
+                  onChange={e=>setInlineEditValues(v=>({...v, expiry:e.target.value}))} /></td>
+                <td><Stamp tone={st.cls.replace("stamp-","")}>{st.label}</Stamp></td>
+                <td style={{ display:"flex", gap:2 }}>
+                  <button className="btn btn-sm btn-ghost" title="Save" disabled={!canSaveInlineEditDoc(d)} onClick={()=>saveInlineEditDoc(d)}><Check size={14}/></button>
+                  <button className="btn btn-sm btn-ghost" title="Cancel" onClick={cancelInlineEditDoc}><X size={14}/></button>
+                </td>
+              </tr>;
+            }
             return <tr key={d.id}>
               <td>{d.type}</td><td className="mono" style={{display:"flex",alignItems:"center",gap:4}}>{d.number}<CopyButton value={d.number} /></td><td className="mono" style={{fontSize:12}}>{d.expiry ? fmtDate(d.expiry) : "—"}</td>
               <td><Stamp tone={st.cls.replace("stamp-","")}>{st.label}</Stamp></td>
-              <td><RowActions onEdit={()=>startEditDoc(d)} onRemove={()=>setRemoveDoc(d)} /></td>
+              <td><RowActions onEdit={()=>startInlineEditDoc(d)} onRemove={()=>setRemoveDoc(d)} /></td>
             </tr>;
           })}
         </tbody>
       </table>
 
       <div className="agw-card" style={{ marginTop: 16 }}>
-        <strong style={{ fontSize: 13 }}>{docEditingId ? "Edit KYC document" : "Add KYC document"}</strong>
+        <strong style={{ fontSize: 13 }}>Add KYC document</strong>
         <div className="row3" style={{ marginTop: 10 }}>
           <div className="field"><label>Type</label>
             <select value={docTypeChoice} onChange={e=>setDoc({...doc, type: e.target.value==="Other" ? "" : e.target.value})}>
@@ -5469,8 +5494,7 @@ function CustomerDetailModal({ customer: c, state, dispatch, role, userId, setPa
           <div className="side-note" style={{ marginTop:0 }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>Set the renewal date to get a reminder starting one month before it's due.</div>
         )}
         <div style={{ display:"flex", gap:8 }}>
-          <button className="btn btn-primary btn-sm" disabled={!canSaveDoc} onClick={saveDoc}>{docEditingId ? "Save changes" : "Add document"}</button>
-          {docEditingId && <button className="btn btn-sm" onClick={cancelEditDoc}>Cancel</button>}
+          <button className="btn btn-primary btn-sm" disabled={!canSaveDoc} onClick={saveDoc}>Add document</button>
         </div>
       </div>
 
