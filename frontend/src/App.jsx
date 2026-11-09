@@ -5212,6 +5212,7 @@ function CustomerDetailModal({ customer: c, state, dispatch, role, userId, setPa
   const [quoteFor, setQuoteFor] = useState(null);
   const [merging, setMerging] = useState(false);
   const [markingOfficeSpace, setMarkingOfficeSpace] = useState(false);
+  const [auditSaveError, setAuditSaveError] = useState("");
   const blankDoc = { type: "Passport", number: "", expiry: daysFromNow(365) };
   const [doc, setDoc] = useState(blankDoc);
   const [docEditingId, setDocEditingId] = useState(null);
@@ -5360,28 +5361,39 @@ function CustomerDetailModal({ customer: c, state, dispatch, role, userId, setPa
         const canEditThese = isAdmin || role==="ops_manager" || role==="ops_member" || role==="pro_head" || role==="pro";
         const year = auditYearFor();
         const required = auditRequired(c, year);
+        // UPDATE_CUSTOMER/SET_CUSTOMER_AUDIT_STATUS were previously fire-and-forget here — a
+        // failed save (e.g. a pending DB migration) just silently reverted the field with no
+        // explanation. Surfacing the error is what would have made that immediately obvious.
+        const trySave = async (action) => {
+          setAuditSaveError("");
+          try { await dispatch(action); }
+          catch (err) { setAuditSaveError(err instanceof ApiError ? err.message : "Couldn't save — please try again."); }
+        };
         return (
-          <div className="agw-card" style={{ marginBottom: 16, display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:10 }}>
-            <div>
-              <strong style={{ fontSize:13.5 }}>Auditing — {year}</strong>
-              <div style={{ fontSize:11.5, color:"var(--ink-soft)", marginTop:2 }}>
-                {!c.crOpenedAt
-                  ? "CR opened date not on file — set it to determine whether an audit is required."
-                  : required
-                    ? `CR opened ${fmtDate(c.crOpenedAt)} — audit required for ${year}. Submission window: ${auditWindowLabel(year)}.`
-                    : `CR opened ${fmtDate(c.crOpenedAt)} — opened after the ${year} cutoff (1 Jul), no audit required yet.`}
+          <div className="agw-card" style={{ marginBottom: 16 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:10 }}>
+              <div>
+                <strong style={{ fontSize:13.5 }}>Auditing — {year}</strong>
+                <div style={{ fontSize:11.5, color:"var(--ink-soft)", marginTop:2 }}>
+                  {!c.crOpenedAt
+                    ? "CR opened date not on file — set it to determine whether an audit is required."
+                    : required
+                      ? `CR opened ${fmtDate(c.crOpenedAt)} — audit required for ${year}. Submission window: ${auditWindowLabel(year)}.`
+                      : `CR opened ${fmtDate(c.crOpenedAt)} — opened after the ${year} cutoff (1 Jul), no audit required yet.`}
+                </div>
+              </div>
+              <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
+                <input type="date" disabled={!canEditThese} value={c.crOpenedAt || ""} style={{ maxWidth:160 }}
+                  onChange={e=>trySave({type:"UPDATE_CUSTOMER", id:c.id, payload:{crOpenedAt:e.target.value}})} />
+                {required && (
+                  <select value={auditStatusFor(c, year)} disabled={!canEditThese} style={{ maxWidth:160 }}
+                    onChange={e=>trySave({type:"SET_CUSTOMER_AUDIT_STATUS", id:c.id, year, payload:{status:e.target.value}})}>
+                    <option>Pending</option><option>Submitted</option><option>Not Required</option>
+                  </select>
+                )}
               </div>
             </div>
-            <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
-              <input type="date" disabled={!canEditThese} value={c.crOpenedAt || ""} style={{ maxWidth:160 }}
-                onChange={e=>dispatch({type:"UPDATE_CUSTOMER", id:c.id, payload:{crOpenedAt:e.target.value}})} />
-              {required && (
-                <select value={auditStatusFor(c, year)} disabled={!canEditThese} style={{ maxWidth:160 }}
-                  onChange={e=>dispatch({type:"SET_CUSTOMER_AUDIT_STATUS", id:c.id, year, payload:{status:e.target.value}})}>
-                  <option>Pending</option><option>Submitted</option><option>Not Required</option>
-                </select>
-              )}
-            </div>
+            {auditSaveError && <div className="side-note" style={{ color:"var(--danger)", marginTop:10, marginBottom:0 }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{auditSaveError}</div>}
           </div>
         );
       })()}
@@ -10964,6 +10976,14 @@ function AuditingReport({ state, dispatch }) {
   // most of those never became paying customers and just add noise here. Still switchable to
   // "Others" or "All" for anyone who does need the full picture.
   const [categoryFilter, setCategoryFilter] = useState("Address Gateway Customers");
+  const [saveError, setSaveError] = useState("");
+  // Same reasoning as the identical helper in CustomerDetailModal's Auditing card — these were
+  // fire-and-forget, so a failed save (e.g. a pending DB migration) silently reverted the field.
+  const trySave = async (action) => {
+    setSaveError("");
+    try { await dispatch(action); }
+    catch (err) { setSaveError(err instanceof ApiError ? err.message : "Couldn't save — please try again."); }
+  };
   const rows = state.customers.filter(c => c.type === "Company" && (!categoryFilter || c.category === categoryFilter))
     .map(c => ({ c, required: auditRequired(c, year), status: auditStatusFor(c, year) }))
     .sort((a,b) => {
@@ -10991,6 +11011,7 @@ function AuditingReport({ state, dispatch }) {
       <div className="side-note" style={{ marginBottom:16 }}>
         <AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>A company whose CR opened before 1 July {year} must submit an audit for {year} (window: {auditWindowLabel(year)}). Fill in each company's CR opened date below if it isn't set yet.
       </div>
+      {saveError && <div className="side-note" style={{ color:"var(--danger)", marginTop:-6, marginBottom:16 }}><AlertTriangle size={13} style={{verticalAlign:-2,marginRight:4}}/>{saveError}</div>}
       <ReportTableCard title={`All companies — auditing (${year})`} empty={rows.length===0 ? "No company customers yet." : null} emptyIcon={UserCheck}
         onExport={rows.length ? ()=>exportCSV(`auditing-${year}.csv`, ["Customer ID","Company","CR Opened","Audit Required","Audit Status","Contact","Phone","Email"],
           rows.map(r=>[r.c.id, r.c.name, r.c.crOpenedAt, r.required ? "Yes" : "No", r.required ? r.status : "—", r.c.contact||"", r.c.phone||"", r.c.email||""])) : null}>
@@ -11002,13 +11023,13 @@ function AuditingReport({ state, dispatch }) {
                 <td>{r.c.name}<div className="mono" style={{fontSize:11,color:"var(--ink-soft)"}}>{r.c.id}</div></td>
                 <td>
                   <input type="date" value={r.c.crOpenedAt || ""} style={{ fontSize:12, padding:"4px 6px" }}
-                    onChange={e=>dispatch({type:"UPDATE_CUSTOMER", id:r.c.id, payload:{crOpenedAt:e.target.value}})} />
+                    onChange={e=>trySave({type:"UPDATE_CUSTOMER", id:r.c.id, payload:{crOpenedAt:e.target.value}})} />
                 </td>
                 <td>{!r.c.crOpenedAt ? <Stamp tone="neutral">Unknown</Stamp> : r.required ? <Stamp tone="warning">Yes</Stamp> : <Stamp tone="success">No</Stamp>}</td>
                 <td>
                   {r.required ? (
                     <select value={r.status} style={{ fontSize:12, padding:"4px 6px" }}
-                      onChange={e=>dispatch({type:"SET_CUSTOMER_AUDIT_STATUS", id:r.c.id, year, payload:{status:e.target.value}})}>
+                      onChange={e=>trySave({type:"SET_CUSTOMER_AUDIT_STATUS", id:r.c.id, year, payload:{status:e.target.value}})}>
                       <option>Pending</option><option>Submitted</option><option>Not Required</option>
                     </select>
                   ) : "—"}
