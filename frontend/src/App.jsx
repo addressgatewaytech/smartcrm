@@ -9,7 +9,7 @@ import {
   UserPlus, ShieldCheck, Ban, Clock, ArrowRight, Search, Mail, Phone,
   BadgeCheck, CalendarClock, Briefcase, Copy, Files, Link2, Pencil, Trash2, Repeat, BarChart3, Download, MoreHorizontal, ChevronsLeft, ChevronsRight, Camera, Star,
   Database, Upload, MessageCircle, ArchiveX, Settings as SettingsIcon,
-  Sun, Moon, BookOpen, Award, Landmark, Presentation, ExternalLink, KeyRound, BellOff, Maximize2
+  Sun, Moon, BookOpen, Award, Landmark, Presentation, ExternalLink, KeyRound, BellOff, Maximize2, Eye
 } from "lucide-react";
 import { money, fmtDate, fmtDateDMY, Stamp, statusTone, Rail, DonutChart, LineChart, BarChart, SalesPersonBars, ProgressRing, progressColor, Modal, Empty, ConfirmModal, RowActions, exportCSV, usePagination, PaginationBar, TableScrollHint, useConfirm, ADMIN_LIKE, ROLE_LABEL, isSalesRole, isAssignable } from "./ui.jsx";
 import { todayStr as salesTaskToday, firstOfWeekStr, firstOfMonthStr, userTaskSnapshot, dailyCompletionColor } from "./salesTasksHelpers";
@@ -374,6 +374,15 @@ const CSS = `
     background: var(--surface); box-shadow: var(--shadow-md); z-index: 55; padding: 18px; overflow-y: auto;
     border-left: 1px solid var(--hair); }
   .whats-new-backdrop { position: fixed; inset: 0; background: rgba(20,18,14,.3); z-index: 54; }
+
+  /* A just-approved quotation's row/button draws the eye until it's actually been acted on
+     (clicked open, download clicked) — not a permanent style, just an attention pulse. */
+  @keyframes quote-approved-blink { 0%, 100% { background: var(--gold-tint); } 50% { background: transparent; } }
+  .quote-row-approved { animation: quote-approved-blink 1.3s ease-in-out infinite; cursor: pointer; }
+  @keyframes btn-blink-glow { 0%, 100% { box-shadow: 0 0 0 0 rgba(232,121,30,.55); } 50% { box-shadow: 0 0 0 5px rgba(232,121,30,0); } }
+  .btn-blink { animation: btn-blink-glow 1.1s ease-in-out infinite; border-color: var(--gold) !important; }
+  .quote-id-link { background: none; border: none; padding: 0; font: inherit; color: var(--brand); cursor: pointer; text-decoration: none; }
+  .quote-id-link:hover { text-decoration: underline; }
 `;
 
 /* ---------------------------------------------------------------------- */
@@ -2178,6 +2187,35 @@ function Dashboard({ state, dispatch, role, userId, setPage, onOpenExpiredCustom
         </Modal>
       )}
 
+      {(() => {
+        // Personal, not company-wide — this is "your quotation just got approved, go send it",
+        // addressed only to the owner (see /:id/approve-discount), so it only ever shows up on
+        // the Dashboard of the person who actually needs to act on it.
+        const myApprovedQuotations = state.notifications.filter(n => n.type === "quotation_approved" && (n.createdAt||"").slice(0,10) === today);
+        if (!myApprovedQuotations.length) return null;
+        const goTo = (n) => {
+          const qId = (n.body || "").split(" ")[0];
+          if (!n.read) dispatch({type:"MARK_NOTIF_READ", id:n.id});
+          onViewQuotation?.(qId, true);
+          setPage("quotations");
+        };
+        return (
+          <div className="agw-card" style={{ marginBottom: 20, borderColor: "#F2C089" }}>
+            <strong style={{ fontSize: 14 }}>📋 Your quotations approved today</strong>
+            <div style={{ marginTop: 10 }}>
+              {myApprovedQuotations.map(n => (
+                <div key={n.id} className={!n.read ? "quote-row-approved" : undefined}
+                  style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 10px", borderRadius:8, cursor:"pointer", marginBottom:4 }}
+                  onClick={()=>goTo(n)}>
+                  <div style={{ fontSize:13 }}>{n.body}</div>
+                  <button className="btn btn-sm btn-ghost" onClick={(e)=>{ e.stopPropagation(); goTo(n); }}><Eye size={13}/> View</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
       {completedJobCompleters.length > 0 && (
         <div className="agw-card" style={{ marginBottom: 20, borderColor: "#BFD9CB" }}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 12, flexWrap:"wrap", gap:8 }}>
@@ -3842,9 +3880,21 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, autoOpenPd
         <table className="agw-table">
           <thead><tr><th>#</th><th></th><th>Quotation</th><th>Created</th><th>Customer</th><th>Service</th><th>Sales person</th><th>Lead type</th><th>Amount (QAR)</th><th>Professional fees (QAR)</th><th>Valid till</th><th>Status</th><th></th><th></th></tr></thead>
           <tbody>
-            {pg.pageRows.map((q, i) => (
+            {pg.pageRows.map((q, i) => {
+              // An unread "quotation_approved" notification addressed to this user and naming
+              // this exact quotation (body is written to start with the id — see
+              // /:id/approve-discount) — that's "this just got approved for you", not a stale
+              // Sent quotation from last month. Clicking anywhere on the row acknowledges it.
+              const approvalNotif = state.notifications.find(n => n.type === "quotation_approved" && !n.read && (n.body || "").startsWith(`${q.id} `));
+              const openThis = () => {
+                setOpenId(q.id);
+                if (highlightId) onHighlightHandled();
+                if (approvalNotif) dispatch({type:"MARK_NOTIF_READ", id:approvalNotif.id});
+              };
+              return (
               <tr key={q.id} id={`quote-row-${q.id}`}
-                onClick={()=>{ setOpenId(q.id); if (highlightId) onHighlightHandled(); }}
+                onClick={openThis}
+                className={approvalNotif ? "quote-row-approved" : undefined}
                 style={q.id === highlightId ? { background:"var(--gold-tint)", boxShadow:"inset 3px 0 0 var(--gold)" } : undefined}>
                 <td className="mono" style={{fontSize:12, color:"var(--ink-soft)"}}>{pg.start + i + 1}</td>
                 <td>
@@ -3853,7 +3903,7 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, autoOpenPd
                     <Star size={14} style={{ color: q.favorite ? "var(--gold)" : "var(--ink-soft)" }} fill={q.favorite ? "var(--gold)" : "none"} />
                   </button>
                 </td>
-                <td className="mono">{q.id}</td>
+                <td><button type="button" className="quote-id-link mono" onClick={(e)=>{ e.stopPropagation(); openThis(); }}>{q.id}</button></td>
                 <td className="mono" style={{fontSize:12}}>{fmtDate(q.createdAt)}</td>
                 <td><CustomerNameLink name={q.customer} state={state} onOpen={setViewingCustomer} /></td>
                 <td style={{maxWidth:180}}>{q.items[0]?.service || "—"}</td>
@@ -3863,14 +3913,18 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, autoOpenPd
                 <td className="mono">{money(profFees(q))}</td>
                 <td className="mono" style={{fontSize:12}}>{fmtDate(q.validTill)}</td>
                 <td><Stamp tone={statusTone(q.status)}>{quotationStatusLabel(q.status, role)}</Stamp></td>
-                <td><button className="btn btn-sm btn-ghost" title="Clone" onClick={(e)=>{ e.stopPropagation(); setCloneFor(q); }}><Copy size={13}/></button></td>
+                <td style={{display:"flex",gap:2}}>
+                  <button className="btn btn-sm btn-ghost" title="View" onClick={(e)=>{ e.stopPropagation(); openThis(); }}><Eye size={13}/> View</button>
+                  <button className="btn btn-sm btn-ghost" title="Clone" onClick={(e)=>{ e.stopPropagation(); setCloneFor(q); }}><Copy size={13}/></button>
+                </td>
                 <td onClick={e=>e.stopPropagation()}>
                   <RowActions
                     onEdit={["Draft","Pending Manager Approval"].includes(q.status) ? ()=>{ setOpenId(q.id); setOpenInEdit(true); if (highlightId) onHighlightHandled(); } : null}
                     onRemove={isAdmin ? ()=>setRemoveQuote(q) : null} />
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>)}
         <PaginationBar {...pg} />
@@ -3950,11 +4004,12 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
   // used to fire dispatch() without awaiting it and close the modal immediately regardless of
   // outcome — so a failed call (e.g. "create sales order" erroring) looked identical to a
   // successful one, with nothing left to show for it. Route them all through this instead.
-  const runAction = async (action, { keepOpen = false } = {}) => {
+  const runAction = async (action, { keepOpen = false, onSuccess } = {}) => {
     setActionBusy(true);
     setActionError("");
     try {
       const result = await dispatch(action);
+      onSuccess?.(result);
       if (!keepOpen) onClose();
       return result;
     } catch (err) {
@@ -3963,6 +4018,9 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
       setActionBusy(false);
     }
   };
+  // After Approve & send, stay on this quotation (instead of closing back to the list) and draw
+  // the eye to Download — that's the very next thing the approver needs to do with it.
+  const [justApproved, setJustApproved] = useState(false);
 
   // `content` is the committed (saved) copy; `draft` is the staged working copy while Visual edit
   // is active — `src` is whichever of the two is currently on screen.
@@ -4070,9 +4128,10 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
         {/* Locked until the quotation has actually been approved & sent — downloading a Draft
             risks it going out before pricing/discount sign-off is final — and while a Visual
             edit is staged but unsaved, so the file always matches what's actually on record. */}
-        <button className="btn btn-sm" disabled={editingNow || downloading || q.status === "Draft"}
+        <button className={`btn btn-sm ${justApproved ? "btn-blink" : ""}`} disabled={editingNow || downloading || q.status === "Draft"}
           title={editingNow ? "Save or cancel your changes first" : q.status === "Draft" ? "Approve & send (or submit for approval) first" : undefined}
           onClick={async ()=>{
+            setJustApproved(false);
             setDownloading(true);
             try {
               const blob = await api.quotations.downloadPdf(q.id);
@@ -4119,9 +4178,9 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
         {q.status === "Draft" && (hasDiscount || !canApprove) &&
           <button className="btn btn-primary" disabled={actionBusy} onClick={()=>runAction({type:"SUBMIT_QUOTATION_FOR_APPROVAL", id:q.id})}>Submit for approval</button>}
         {q.status === "Draft" && !hasDiscount && canApprove &&
-          <button className="btn btn-primary" disabled={actionBusy} onClick={()=>runAction({type:"SEND_QUOTATION", id:q.id})}><Check size={14}/> Approve & send</button>}
+          <button className="btn btn-primary" disabled={actionBusy} onClick={()=>runAction({type:"SEND_QUOTATION", id:q.id}, { keepOpen:true, onSuccess:()=>setJustApproved(true) })}><Check size={14}/> Approve & send</button>}
         {q.status === "Pending Manager Approval" && canApprove &&
-          <button className="btn btn-primary" disabled={actionBusy} onClick={()=>runAction({type:"APPROVE_QUOTATION_DISCOUNT", id:q.id, by:"Sales Manager"})}><Check size={14}/> Approve & send</button>}
+          <button className="btn btn-primary" disabled={actionBusy} onClick={()=>runAction({type:"APPROVE_QUOTATION_DISCOUNT", id:q.id, by:"Sales Manager"}, { keepOpen:true, onSuccess:()=>setJustApproved(true) })}><Check size={14}/> Approve & send</button>}
         {q.status === "Pending Manager Approval" && !canApprove &&
           <div className="side-note" style={{marginTop:0}}>Waiting on approval before this can be sent to the client.</div>}
         {q.status === "Sent" && <>

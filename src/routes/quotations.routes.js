@@ -218,7 +218,16 @@ router.post("/:id/submit-for-approval", async (req, res) => {
 // the Approval Process Workflow (Users & Roles) has assigned designations to "Quotation
 // Approval", anyone holding one of those designations can too.
 router.post("/:id/approve-discount", requireRoleOrApprovalTypeDesignation(["sales_manager", "admin_like"], "quotation_approval"), async (req, res) => {
-  await query("UPDATE quotations SET status = 'Sent' WHERE id = ? AND status = 'Pending Manager Approval'", [req.params.id]);
+  const [q] = await query("SELECT owner, customer FROM quotations WHERE id = ? AND status = 'Pending Manager Approval'", [req.params.id]);
+  if (!q) return res.status(404).json({ error: "Not found or not pending approval" });
+  await query("UPDATE quotations SET status = 'Sent' WHERE id = ?", [req.params.id]);
+  // Lets the owner's own Dashboard/Quotations list pick this out specifically (body starts with
+  // the exact quotation id, matched as a prefix on the frontend) — not just a generic "something
+  // changed" notice, since the whole point is to point them straight back at this one document.
+  if (q.owner) {
+    await query("INSERT INTO notifications (id, type, title, body, audience) VALUES (?, 'quotation_approved', ?, ?, ?)",
+      [nextId("NT"), "Quotation approved", `${req.params.id} for ${q.customer} was approved and sent to the client — download or email it now.`, JSON.stringify([q.owner])]);
+  }
   res.json({ ok: true });
 });
 
