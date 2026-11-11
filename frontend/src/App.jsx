@@ -1544,7 +1544,7 @@ export default function App() {
             </div>
           </div>
           <div className="agw-content">
-            {page === "dashboard" && <Dashboard {...ctx} setPage={setPage} onOpenExpiredCustomers={()=>setCustomersExpiryFilterRequest("expired")} />}
+            {page === "dashboard" && <Dashboard {...ctx} setPage={setPage} onOpenExpiredCustomers={()=>setCustomersExpiryFilterRequest("expired")} onViewQuotation={onViewQuotation} />}
             {page === "leads" && <LeadsPage {...ctx} setPage={setPage} onViewQuotation={onViewQuotation} />}
             {page === "deals" && <DealsPage {...ctx} setPage={setPage} onViewQuotation={onViewQuotation} />}
             {page === "quotations" && <QuotationsPage {...ctx} highlightId={highlightQuotationId} autoOpenPdf={autoOpenQuotationPdf} onHighlightHandled={()=>{ setHighlightQuotationId(null); setAutoOpenQuotationPdf(false); }}
@@ -1653,7 +1653,7 @@ export default function App() {
 /* DASHBOARD                                                               */
 /* ---------------------------------------------------------------------- */
 
-function Dashboard({ state, dispatch, role, userId, setPage, onOpenExpiredCustomers }) {
+function Dashboard({ state, dispatch, role, userId, setPage, onOpenExpiredCustomers, onViewQuotation }) {
   // This user's own Google Drive folder (set on their HR Profile) — moved here from the sidebar
   // so it sits next to the attendance sign-in button instead of taking up permanent sidebar space.
   const myCloudLink = state.employees.find(e => e.id === userId)?.cloudLink;
@@ -1739,16 +1739,24 @@ function Dashboard({ state, dispatch, role, userId, setPage, onOpenExpiredCustom
   // rep but actually sold by another attributes correctly. Same resolution the backend already
   // uses for a Sales Order/Invoice's own salesPerson: latest quotation's owner, falling back to
   // the deal's own owner only when it has no quotation yet.
-  const ownerForDeal = (d) => {
-    const dealQuotes = state.quotations.filter(q => q.dealId === d.id).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
-    return dealQuotes[0]?.owner || d.owner;
-  };
+  const dealQuotesFor = (d) => state.quotations.filter(q => q.dealId === d.id).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const ownerForDeal = (d) => dealQuotesFor(d)[0]?.owner || d.owner;
   const closedByOwner = {};
   todayWonDeals.forEach(d => { const uid = ownerForDeal(d); if (uid) (closedByOwner[uid] ||= []).push(d); });
   const closedOwners = Object.entries(closedByOwner)
     .map(([uid, deals]) => ({ employee: state.employees.find(e=>e.id===uid), deals }))
     .filter(x => x.employee)
     .sort((a,b) => b.deals.length - a.deals.length);
+  // Admin-tier + Sales Manager only — jumping straight from a closed-deal badge to its quotation
+  // is a management "go verify what was actually sold" action, not something every role needs.
+  const canJumpToQuotation = ADMIN_LIKE.includes(role) || role === "sales_manager";
+  const goToDealQuotation = (d) => {
+    const q = dealQuotesFor(d)[0];
+    if (!q) return;
+    onViewQuotation?.(q.id, true);
+    setPage("quotations");
+    setShowAllClosed(false);
+  };
 
   // Same model as today's closed deals above, but for Job Cards — a job card has no single
   // completedAt column (unlike a deal's wonAt), so "today" and "who" are read off its own
@@ -2130,7 +2138,9 @@ function Dashboard({ state, dispatch, role, userId, setPage, onOpenExpiredCustom
           </div>
           <div style={{ display:"flex", gap:12, flexWrap:"wrap" }}>
             {closedOwners.slice(0,3).map(({ employee: e, deals }) => (
-              <div key={e.id} style={{ display:"flex", alignItems:"center", gap:10, background:"var(--gold-tint)", borderRadius:12, padding:"8px 14px 8px 8px" }}>
+              <div key={e.id} style={{ display:"flex", alignItems:"center", gap:10, background:"var(--gold-tint)", borderRadius:12, padding:"8px 14px 8px 8px", cursor: canJumpToQuotation ? "pointer" : "default" }}
+                onClick={canJumpToQuotation ? () => (deals.length === 1 ? goToDealQuotation(deals[0]) : setShowAllClosed(true)) : undefined}
+                title={canJumpToQuotation ? (deals.length === 1 ? "Open this deal's quotation" : "View all — pick a deal to open its quotation") : undefined}>
                 {e.photoUrl ? <img src={e.photoUrl} alt={e.name} style={{ width:36, height:36, borderRadius:"50%", objectFit:"cover" }} /> : <span className="avatar" style={{ width:36, height:36 }}>{e.initials}</span>}
                 <div>
                   <div style={{ fontSize:13, fontWeight:600 }}>{e.name} 🏆</div>
@@ -2144,13 +2154,25 @@ function Dashboard({ state, dispatch, role, userId, setPage, onOpenExpiredCustom
       {showAllClosed && (
         <Modal title="🏆 Today's closed deals" sub={`${todayWonDeals.length} deal${todayWonDeals.length!==1?"s":""} closed across the team today`} onClose={()=>setShowAllClosed(false)}>
           {closedOwners.map(({ employee: e, deals }) => (
-            <div key={e.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 0", borderBottom:"1px solid var(--hair)" }}>
-              {e.photoUrl ? <img src={e.photoUrl} alt={e.name} style={{ width:36, height:36, borderRadius:"50%", objectFit:"cover", flexShrink:0 }} /> : <span className="avatar" style={{ width:36, height:36, flexShrink:0 }}>{e.initials}</span>}
-              <div style={{ flex:1, minWidth:0 }}>
-                <div style={{ fontSize:13, fontWeight:600 }}>{e.name} 🏆</div>
-                <div style={{ fontSize:11.5, color:"var(--ink-soft)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{deals.map(d=>d.customer).join(", ")}</div>
+            <div key={e.id} style={{ padding:"10px 0", borderBottom:"1px solid var(--hair)" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                {e.photoUrl ? <img src={e.photoUrl} alt={e.name} style={{ width:36, height:36, borderRadius:"50%", objectFit:"cover", flexShrink:0 }} /> : <span className="avatar" style={{ width:36, height:36, flexShrink:0 }}>{e.initials}</span>}
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:13, fontWeight:600 }}>{e.name} 🏆</div>
+                  {!canJumpToQuotation && <div style={{ fontSize:11.5, color:"var(--ink-soft)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{deals.map(d=>d.customer).join(", ")}</div>}
+                </div>
+                <Stamp tone="success">{deals.length}</Stamp>
               </div>
-              <Stamp tone="success">{deals.length}</Stamp>
+              {canJumpToQuotation && (
+                <div style={{ marginTop:6, marginLeft:46, display:"flex", flexDirection:"column", gap:2 }}>
+                  {deals.map(d => (
+                    <button key={d.id} type="button" className="btn btn-sm btn-ghost" style={{ justifyContent:"flex-start", fontWeight:400 }}
+                      onClick={()=>goToDealQuotation(d)} title="Open this deal's quotation">
+                      {d.customer} <ChevronRight size={12} style={{marginLeft:"auto"}}/>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
         </Modal>
