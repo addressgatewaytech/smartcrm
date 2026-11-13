@@ -9,7 +9,7 @@ import {
   UserPlus, ShieldCheck, Ban, Clock, ArrowRight, Search, Mail, Phone,
   BadgeCheck, CalendarClock, Briefcase, Copy, Files, Link2, Pencil, Trash2, Repeat, BarChart3, Download, MoreHorizontal, ChevronsLeft, ChevronsRight, Camera, Star,
   Database, Upload, MessageCircle, ArchiveX, Settings as SettingsIcon,
-  Sun, Moon, BookOpen, Award, Landmark, Presentation, ExternalLink, KeyRound, BellOff, Maximize2, Eye, Sparkles, Fingerprint
+  Sun, Moon, BookOpen, Award, Landmark, Presentation, ExternalLink, KeyRound, BellOff, Maximize2, Eye, Sparkles, Fingerprint, ChevronLeft
 } from "lucide-react";
 import { money, fmtDate, fmtDateDMY, Stamp, statusTone, Rail, DonutChart, LineChart, BarChart, SalesPersonBars, ProgressRing, progressColor, Modal, Empty, ConfirmModal, RowActions, exportCSV, usePagination, PaginationBar, TableScrollHint, useConfirm, ADMIN_LIKE, ROLE_LABEL, isSalesRole, isAssignable } from "./ui.jsx";
 import { todayStr as salesTaskToday, firstOfWeekStr, firstOfMonthStr, userTaskSnapshot, dailyCompletionColor } from "./salesTasksHelpers";
@@ -1535,6 +1535,11 @@ export default function App() {
   // Set when "View quotation" is clicked from Deals, so QuotationsPage can highlight and
   // scroll to that specific row instead of leaving the user to hunt for it in the full list.
   const [highlightQuotationId, setHighlightQuotationId] = useState(null);
+  // Clicking a customer name anywhere (a quotation's header, an invoice, a deal, ...) jumps
+  // straight to that customer's own detail view on the Customers page — never another modal
+  // stacked on top of whatever's already open. See onViewCustomer below and CustomersPage's own
+  // highlightId handling, which switches it from a list into that one customer's detail in place.
+  const [highlightCustomerId, setHighlightCustomerId] = useState(null);
   // True only right after Build quotation creates a new one — makes QuotationsPage open it
   // straight into the PDF preview tab instead of just scrolling the row into view (see
   // viewQuotationFor vs. the QuoteBuilderModal onCreated callback below, in DealsPage).
@@ -1623,12 +1628,17 @@ export default function App() {
   const flatNav = visibleNav.flatMap(g => g.items);
   const bottomExtra = flatNav.filter(i => i.key !== "dashboard" && i.key !== "notifications").slice(0, 2);
 
-  const ctx = { state, dispatch, role, userId, unreadCount, glassTheme };
   // Jumps to a quotation on the Quotations page and, when openPdf is set, opens it straight up
   // instead of just scrolling to it — passed to every screen that can create a quotation (Deals,
   // Leads, a Customer's own "Create quotation") so a freshly built one is never left to be found
   // by hand. Previously only Deals had this wired up.
   const onViewQuotation = (id, openPdf) => { setHighlightQuotationId(id); setAutoOpenQuotationPdf(!!openPdf); };
+  // Navigates straight to a customer's own detail view (replacing the Customers list in place,
+  // not a modal) — unlike onViewQuotation above, this always switches pages itself, since there's
+  // no case where you'd want a customer highlighted but still looking at something else.
+  const onViewCustomer = (id) => { setHighlightCustomerId(id); setPage("customersAll"); };
+
+  const ctx = { state, dispatch, role, userId, unreadCount, glassTheme, onViewCustomer };
 
   const titles = {
     dashboard: ["Dashboard", "Company-wide snapshot"],
@@ -1815,7 +1825,8 @@ export default function App() {
             {page === "quotationTemplates" && <QuotationTemplatesPage {...ctx} />}
             {page === "customersAddressGateway" && <CustomersPage {...ctx} setPage={setPage} onViewQuotation={onViewQuotation} initialCategoryFilter="Address Gateway Customers" expiryFilterRequest={customersExpiryFilterRequest} onExpiryFilterRequestHandled={()=>setCustomersExpiryFilterRequest(null)} />}
             {page === "customersOthers" && <CustomersPage {...ctx} setPage={setPage} onViewQuotation={onViewQuotation} initialCategoryFilter="Others" expiryFilterRequest={customersExpiryFilterRequest} onExpiryFilterRequestHandled={()=>setCustomersExpiryFilterRequest(null)} />}
-            {page === "customersAll" && <CustomersPage {...ctx} setPage={setPage} onViewQuotation={onViewQuotation} initialCategoryFilter="" expiryFilterRequest={customersExpiryFilterRequest} onExpiryFilterRequestHandled={()=>setCustomersExpiryFilterRequest(null)} />}
+            {page === "customersAll" && <CustomersPage {...ctx} setPage={setPage} onViewQuotation={onViewQuotation} initialCategoryFilter="" expiryFilterRequest={customersExpiryFilterRequest} onExpiryFilterRequestHandled={()=>setCustomersExpiryFilterRequest(null)}
+              highlightId={highlightCustomerId} onHighlightHandled={()=>setHighlightCustomerId(null)} />}
             {page === "onboardingTemplates" && <OnboardingTemplatesPage glassTheme={glassTheme} />}
             {page === "dataManager" && <DataManagerPage {...ctx} />}
             {page === "subscriptions" && <SubscriptionsPage {...ctx} />}
@@ -4106,7 +4117,7 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
 /* QUOTATIONS                                                              */
 /* ---------------------------------------------------------------------- */
 
-function QuotationsPage({ state, dispatch, role, userId, highlightId, autoOpenPdf=false, onHighlightHandled, setPage, onViewQuotation, onSalesOrderCreated, glassTheme }) {
+function QuotationsPage({ state, dispatch, role, userId, highlightId, autoOpenPdf=false, onHighlightHandled, setPage, onViewQuotation, onViewCustomer, onSalesOrderCreated, glassTheme }) {
   const [openId, setOpenId] = useState(null);
   // Set alongside openId when opened via the Edit action, so the modal jumps straight into Visual
   // edit — Draft/Pending Manager Approval quotations are editable regardless of role, but that was
@@ -4119,7 +4130,6 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, autoOpenPd
   const [cloneFor, setCloneFor] = useState(null);
   const [removeQuote, setRemoveQuote] = useState(null);
   const [favoritesOnly, setFavoritesOnly] = useState(false);
-  const [viewingCustomer, setViewingCustomer] = useState(null);
 
   const [query, setQuery] = useState("");
   const { period, setPeriod, customFrom, setCustomFrom, customTo, setCustomTo, range } = usePeriod("all");
@@ -4212,7 +4222,7 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, autoOpenPd
                 </td>
                 <td><button type="button" className="quote-id-link mono" onClick={(e)=>{ e.stopPropagation(); openThis(); }}>{q.id}</button></td>
                 <td className="mono" style={{fontSize:12}}>{fmtDate(q.createdAt)}</td>
-                <td><CustomerNameLink name={q.customer} state={state} onOpen={setViewingCustomer} /></td>
+                <td><CustomerNameLink name={q.customer} state={state} onOpen={(cust)=>onViewCustomer(cust.id)} /></td>
                 <td style={{maxWidth:180}}>{q.items[0]?.service || "—"}</td>
                 <td>{state.employees.find(t=>t.id===q.owner)?.name || "—"}</td>
                 <td><Stamp tone={originTone(quotationOrigin(state, q))}>{quotationOrigin(state, q)}</Stamp></td>
@@ -4237,12 +4247,11 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, autoOpenPd
         <PaginationBar {...pg} />
       </div>
       {open && <QuoteDetailModal quotation={open} state={state} dispatch={dispatch} role={role} userId={userId} customerOptions={customerOptions} templates={state.quotationTemplates} startInEdit={openInEdit} onClose={()=>{ setOpenId(null); setOpenInEdit(false); }}
-        setPage={setPage} onViewQuotation={onViewQuotation} onSalesOrderCreated={onSalesOrderCreated} />}
+        setPage={setPage} onViewQuotation={onViewQuotation} onViewCustomer={onViewCustomer} onSalesOrderCreated={onSalesOrderCreated} />}
       {cloneFor && <CloneQuoteModal quotation={cloneFor} customerOptions={customerOptions} dispatch={dispatch} onClose={()=>setCloneFor(null)} />}
       {removeQuote && <ConfirmModal title={`Remove ${removeQuote.id}?`} body={`${removeQuote.customer} — ${removeQuote.status}. This can't be undone. Blocked if it already has a Sales Order.`}
         onConfirm={async ()=>{ try { await dispatch({type:"DELETE_QUOTATION", id:removeQuote.id}); } catch (err) { alert(err instanceof ApiError ? err.message : "Couldn't delete — please try again."); } }}
         onClose={()=>setRemoveQuote(null)} />}
-      {viewingCustomer && <CustomerDetailModal customer={viewingCustomer} state={state} dispatch={dispatch} role={role} userId={userId} setPage={setPage} onViewQuotation={onViewQuotation} onClose={()=>setViewingCustomer(null)} />}
     </div>
   );
 }
@@ -4275,12 +4284,11 @@ function CloneQuoteModal({ quotation: q, customerOptions, dispatch, onClose, onC
   );
 }
 
-function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, customerOptions=[], templates={}, onClose, startInEdit=false, setPage, onViewQuotation, onSalesOrderCreated }) {
+function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, customerOptions=[], templates={}, onClose, startInEdit=false, setPage, onViewQuotation, onViewCustomer, onSalesOrderCreated }) {
   const [cloning, setCloning] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [emailing, setEmailing] = useState(false);
   const [revising, setRevising] = useState(false);
-  const [viewingCustomer, setViewingCustomer] = useState(null);
   const confirm = useConfirm();
   const editable = ["Draft","Pending Manager Approval"].includes(q.status);
   const isAdmin = ADMIN_LIKE.includes(role);
@@ -4370,7 +4378,7 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
   const updDraft = (field, val) => setDraft(d => ({ ...d, [field]: val }));
 
   return (
-    <Modal title={q.id} sub={<CustomerNameLink name={q.customer} state={state} onOpen={setViewingCustomer} />} onClose={onClose} width={960}>
+    <Modal title={q.id} sub={<CustomerNameLink name={q.customer} state={state} onOpen={(cust)=>{ onClose(); onViewCustomer(cust.id); }} />} onClose={onClose} width={960}>
       {/* Identity row: who's selling this, plus the two always-available icon actions. */}
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:8 }}>
         <div style={{ display:"flex", alignItems:"center", gap:6, fontSize:12.5, color:"var(--ink-soft)" }}>
@@ -4731,7 +4739,6 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
         </div>
         );
       })()}
-      {viewingCustomer && <CustomerDetailModal customer={viewingCustomer} state={state} dispatch={dispatch} role={role} userId={userId} setPage={setPage} onViewQuotation={onViewQuotation} onClose={()=>setViewingCustomer(null)} />}
     </Modal>
   );
 }
@@ -5286,12 +5293,19 @@ function OnboardingTemplatesPage({ glassTheme } = {}) {
   );
 }
 
-function CustomersPage({ state, dispatch, role, userId, expiryFilterRequest, onExpiryFilterRequestHandled, initialCategoryFilter, setPage, onViewQuotation, glassTheme }) {
+function CustomersPage({ state, dispatch, role, userId, expiryFilterRequest, onExpiryFilterRequestHandled, initialCategoryFilter, setPage, onViewQuotation, glassTheme, highlightId, onHighlightHandled }) {
   const [view, setView] = useState("table");
   const [openId, setOpenId] = useState(null);
   // Derived, not a frozen snapshot — see the identical fix on JobsPage/QuotationsPage: in-modal
   // actions (doc/employee edits) refresh state.customers, and the modal needs to reflect that live.
   const open = openId ? state.customers.find(c => c.id === openId) : null;
+  // Arriving here via onViewCustomer (a customer link clicked from a quotation, invoice, deal,
+  // ...) opens that customer's detail view directly, same as a row click would.
+  useEffect(() => {
+    if (!highlightId) return;
+    setOpenId(highlightId);
+    onHighlightHandled?.();
+  }, [highlightId]);
   const [query, setQuery] = useState("");
   const [sizeFilter, setSizeFilter] = useState("");
   const [expiryFilter, setExpiryFilter] = useState("");
@@ -5347,6 +5361,12 @@ function CustomersPage({ state, dispatch, role, userId, expiryFilterRequest, onE
 
   return (
     <div className={glassTheme ? "theme-glass-page" : undefined}>
+      {open ? (
+        // Opening a customer switches this page into a detail view in place of the list —
+        // never a modal stacked over whatever's already open (a quotation, another customer,
+        // ...). See onViewCustomer in App() for how other pages jump straight here.
+        <CustomerDetailModal customer={open} state={state} dispatch={dispatch} role={role} userId={userId} setPage={setPage} onViewQuotation={onViewQuotation} onClose={()=>setOpenId(null)} />
+      ) : (<>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:12, marginBottom: 14, flexWrap:"wrap" }}>
         <div style={{ display:"flex", gap:8, flex:1, flexWrap:"wrap" }}>
           <div style={{ position:"relative", maxWidth: 320, flex:1, minWidth:200 }}>
@@ -5511,7 +5531,8 @@ function CustomersPage({ state, dispatch, role, userId, expiryFilterRequest, onE
         {visibleCustomers.length===0 && <Empty icon={UserCheck} text="No customers yet — add one directly, or they'll appear once a quotation converts to a sales order." />}
       </div>
       )}
-      {open && <CustomerDetailModal customer={open} state={state} dispatch={dispatch} role={role} userId={userId} setPage={setPage} onViewQuotation={onViewQuotation} onClose={()=>setOpenId(null)} />}
+      </>
+      )}
       {editCustomer && <NewCustomerModal customer={editCustomer} dispatch={dispatch} onClose={()=>setEditCustomer(null)} />}
       {removeCustomer && <ConfirmModal title={`Remove ${removeCustomer.name}?`} body="This deletes the customer profile, their KYC documents, and any employee records on file. This can't be undone." onConfirm={()=>dispatch({type:"DELETE_CUSTOMER", id:removeCustomer.id})} onClose={()=>setRemoveCustomer(null)} />}
       {/* A brand-new customer has no Sales Order/Invoice/Job Card yet, so it computes as "Others" —
@@ -5714,8 +5735,15 @@ function CustomerDetailModal({ customer: c, state, dispatch, role, userId, setPa
   const [emailingCustomer, setEmailingCustomer] = useState(false);
 
   return (
-    <Modal title={c.name} sub={`ID: ${c.id} · Customer profile, KYC vault & account dashboard`} onClose={onClose} width={720}>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+    <div>
+      <div style={{ marginBottom: 16 }}>
+        <button type="button" className="btn btn-sm btn-ghost" onClick={onClose} style={{ paddingLeft: 4, marginBottom: 8 }}>
+          <ChevronLeft size={14}/> Back to customers
+        </button>
+        <h2 style={{ margin: 0, fontSize: 19 }}>{c.name}</h2>
+        <p className="modal-sub" style={{ marginTop: 4, marginBottom: 0 }}>{`ID: ${c.id} · Customer profile, KYC vault & account dashboard`}</p>
+      </div>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:10 }}>
         <div className="tabbar" style={{ marginBottom:0, borderBottom:"none" }}>
           <button className={`tab ${tab==="profile"?"active":""}`} onClick={()=>setTab("profile")}>Profile & KYC</button>
           <button className={`tab ${tab==="onboarding"?"active":""}`} onClick={()=>setTab("onboarding")}>Onboarding Form</button>
@@ -6005,7 +6033,7 @@ function CustomerDetailModal({ customer: c, state, dispatch, role, userId, setPa
       {removeEmpDoc && <ConfirmModal title={`Remove ${removeEmpDoc.doc.type}?`} body="This document will be removed from the employee's record." onConfirm={()=>dispatch({type:"DELETE_CUSTOMER_EMPLOYEE_DOC", customerId:c.id, employeeId:removeEmpDoc.empId, docId:removeEmpDoc.doc.id})} onClose={()=>setRemoveEmpDoc(null)} />}
       </>
       )}
-    </Modal>
+    </div>
   );
 }
 
