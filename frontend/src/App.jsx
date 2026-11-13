@@ -9,11 +9,12 @@ import {
   UserPlus, ShieldCheck, Ban, Clock, ArrowRight, Search, Mail, Phone,
   BadgeCheck, CalendarClock, Briefcase, Copy, Files, Link2, Pencil, Trash2, Repeat, BarChart3, Download, MoreHorizontal, ChevronsLeft, ChevronsRight, Camera, Star,
   Database, Upload, MessageCircle, ArchiveX, Settings as SettingsIcon,
-  Sun, Moon, BookOpen, Award, Landmark, Presentation, ExternalLink, KeyRound, BellOff, Maximize2, Eye, Sparkles
+  Sun, Moon, BookOpen, Award, Landmark, Presentation, ExternalLink, KeyRound, BellOff, Maximize2, Eye, Sparkles, Fingerprint
 } from "lucide-react";
 import { money, fmtDate, fmtDateDMY, Stamp, statusTone, Rail, DonutChart, LineChart, BarChart, SalesPersonBars, ProgressRing, progressColor, Modal, Empty, ConfirmModal, RowActions, exportCSV, usePagination, PaginationBar, TableScrollHint, useConfirm, ADMIN_LIKE, ROLE_LABEL, isSalesRole, isAssignable } from "./ui.jsx";
 import { todayStr as salesTaskToday, firstOfWeekStr, firstOfMonthStr, userTaskSnapshot, dailyCompletionColor } from "./salesTasksHelpers";
 import { CONTENT_STAGES, contentStageSnapshot } from "./contentStagesHelpers";
+import { isMobileOrTablet, isBiometricAvailable, isFaceLockEnabled, enableFaceLock, disableFaceLock, verifyFaceLock, dismissFaceLockPrompt, faceLockPromptDismissed } from "./faceLock";
 import { TasksPage } from "./pages/tasks.jsx";
 import { AttendanceSignButton, AttendancePage } from "./pages/attendance.jsx";
 import { LeadAssignmentManagerPage } from "./pages/leadAssignment.jsx";
@@ -1105,6 +1106,53 @@ function LoadingScreen() {
   );
 }
 
+// Gates an already-valid session on this device behind Face ID / fingerprint — see faceLock.js
+// for why the unlock itself never talks to the server. Shown instead of the app shell whenever
+// App()'s `locked` state is true (set on mount when this device has it enabled), so the user
+// still has to unlock on every fresh load/reopen, not just once per install.
+function FaceLockScreen({ user, onUnlock, onLogout }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const unlock = async () => {
+    setBusy(true); setError("");
+    try {
+      await verifyFaceLock(user.id);
+      onUnlock();
+    } catch (err) {
+      setError(err?.message || "Couldn't verify — please try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Prompt automatically on arrival — one less tap for the common case of actually having your
+  // face/finger ready, while the button below still covers a cancelled or failed first attempt.
+  useEffect(() => { unlock(); }, []);
+
+  return (
+    <div className="agw" style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--page)" }}>
+      <style>{CSS}</style>
+      <div className="agw-card" style={{ width: 340, padding: "32px 26px", textAlign: "center" }}>
+        <div style={{ marginBottom: 18, display:"flex", justifyContent:"center" }}><BrandLogo scale={1.05} /></div>
+        <div style={{ width:64, height:64, borderRadius:"50%", background:"var(--brand-tint)", color:"var(--brand)",
+          display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 16px" }}>
+          <Fingerprint size={30} />
+        </div>
+        <h3 style={{ marginBottom: 4 }}>Welcome back, {user.name?.split(" ")[0] || "there"}</h3>
+        <p className="modal-sub">Unlock with Face ID or your fingerprint to continue.</p>
+        {error && <div className="side-note" style={{ borderColor:"var(--danger)", color:"var(--danger)" }}>{error}</div>}
+        <button className="btn btn-primary" disabled={busy} onClick={unlock} style={{ width: "100%", justifyContent: "center", marginTop: 14 }}>
+          {busy ? "Verifying…" : "Unlock"}
+        </button>
+        <button type="button" className="btn btn-ghost btn-sm" style={{ width: "100%", justifyContent: "center", marginTop: 10 }} onClick={onLogout}>
+          Log out instead
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function Login({ onLogin }) {
   const [mode, setMode] = useState("login"); // "login" | "forgot-email" | "forgot-reset" | "forgot-done"
   const [email, setEmail] = useState("");
@@ -1354,17 +1402,49 @@ export default function App() {
     if (currentUser?.id) localStorage.setItem(activeRoleKey(currentUser.id), r);
   };
 
+  // Face ID / fingerprint app lock (mobile/tablet only) — re-gates an already-valid session on
+  // each fresh load/reopen; see faceLock.js for why this stays entirely client-side. `locked`
+  // blocks the whole app behind FaceLockScreen until verifyFaceLock() succeeds; `faceLockPrompt`
+  // is the one-time "want to turn this on?" offer, shown after a token check or a fresh login
+  // succeeds, only on mobile/tablet, only when the device actually has a platform authenticator,
+  // and only if the user hasn't already enabled it or dismissed the offer before.
+  const [locked, setLocked] = useState(false);
+  const [faceLockPrompt, setFaceLockPrompt] = useState(false);
+  const [faceLockBusy, setFaceLockBusy] = useState(false);
+  const [faceLockError, setFaceLockError] = useState("");
+  const maybeOfferFaceLock = async (user) => {
+    if (!isMobileOrTablet() || isFaceLockEnabled(user.id) || faceLockPromptDismissed(user.id)) return;
+    if (await isBiometricAvailable()) setFaceLockPrompt(true);
+  };
+  const confirmEnableFaceLock = async () => {
+    setFaceLockBusy(true); setFaceLockError("");
+    try {
+      await enableFaceLock(currentUser.id, currentUser.name);
+      setFaceLockPrompt(false);
+    } catch (err) {
+      setFaceLockError(err?.message || "Couldn't set up Face ID / fingerprint unlock on this device.");
+    } finally {
+      setFaceLockBusy(false);
+    }
+  };
+  const declineFaceLockPrompt = () => { dismissFaceLockPrompt(currentUser.id); setFaceLockPrompt(false); };
+
   // On load, if a token is already stored, verify it's still valid before showing the app.
   useEffect(() => {
     if (!getToken()) { setAuthChecked(true); return; }
-    api.auth.me().then((me) => { setCurrentUser(me); setActiveRole(pickActiveRole(me)); }).catch(() => setToken(null)).finally(() => setAuthChecked(true));
+    api.auth.me().then((me) => {
+      setCurrentUser(me);
+      setActiveRole(pickActiveRole(me));
+      if (isMobileOrTablet() && isFaceLockEnabled(me.id)) setLocked(true);
+      else maybeOfferFaceLock(me);
+    }).catch(() => setToken(null)).finally(() => setAuthChecked(true));
   }, []);
 
-  const handleLogin = (user) => { setCurrentUser(user); setActiveRole(pickActiveRole(user)); };
+  const handleLogin = (user) => { setCurrentUser(user); setActiveRole(pickActiveRole(user)); maybeOfferFaceLock(user); };
   // Fired (and awaited, so it still carries the still-valid token) before clearing it — records
   // the sign-out in the audit log. A failed call shouldn't block the user from actually logging
   // out, so the client-side cleanup always runs regardless.
-  const handleLogout = () => { api.auth.logout().catch(() => {}).finally(() => { clearAllTokens(); setCurrentUser(null); }); };
+  const handleLogout = () => { api.auth.logout().catch(() => {}).finally(() => { clearAllTokens(); setCurrentUser(null); setLocked(false); setFaceLockPrompt(false); }); };
 
   // Real impersonation (not a cosmetic relabel) — the admin gets an actual token for the target
   // user, so the whole app (nav, data, every permission check) reflects exactly what that user's
@@ -1443,6 +1523,7 @@ export default function App() {
 
   if (!authChecked) return <LoadingScreen />;
   if (!currentUser) return <Login onLogin={handleLogin} />;
+  if (locked) return <FaceLockScreen user={currentUser} onUnlock={() => setLocked(false)} onLogout={handleLogout} />;
   if (dataLoading) return <LoadingScreen />;
 
   const viewingUser = state.employees.find(e => e.id === currentUser.id) || currentUser;
@@ -1533,6 +1614,19 @@ export default function App() {
       <style>{CSS}</style>
       <link rel="preconnect" href="https://fonts.googleapis.com" />
       <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+      {faceLockPrompt && (
+        <Modal title="Enable Face ID / fingerprint unlock?" sub="Skip typing your password on this device next time — just Face ID or your fingerprint." onClose={declineFaceLockPrompt}>
+          {faceLockError && <div className="side-note" style={{ borderColor:"var(--danger)", color:"var(--danger)", marginTop:0 }}>{faceLockError}</div>}
+          <div style={{ display:"flex", gap:8, marginTop: faceLockError ? 10 : 0 }}>
+            <button type="button" className="btn btn-ghost" style={{ flex:1, justifyContent:"center" }} onClick={declineFaceLockPrompt}>Not now</button>
+            <button type="button" className="btn btn-primary" style={{ flex:1, justifyContent:"center" }} disabled={faceLockBusy} onClick={confirmEnableFaceLock}>
+              {faceLockBusy ? "Setting up…" : "Enable"}
+            </button>
+          </div>
+          <p className="modal-sub" style={{ marginTop:12, marginBottom:0 }}>You can turn this off anytime in Settings.</p>
+        </Modal>
+      )}
 
       <div className={`agw-shell ${glassTheme ? "theme-glass" : ""}`}>
         <aside className={`agw-sidebar ${sidebarCollapsed ? "collapsed" : ""}`}>
@@ -10519,10 +10613,32 @@ function NotificationsPage({ state, dispatch, myNotifs, glassTheme }) {
 /* SETTINGS                                                                */
 /* ---------------------------------------------------------------------- */
 
-function SettingsPage({ state, dispatch, setPage, glassTheme }) {
+function SettingsPage({ state, dispatch, setPage, glassTheme, userId }) {
   const enabled = state.appSettings.emailNotificationsEnabled;
   const [backingUp, setBackingUp] = useState(false);
   const [backupError, setBackupError] = useState("");
+
+  // Face ID / fingerprint unlock — per-device, not a server setting (see faceLock.js), so this
+  // reads/writes this browser's own localStorage rather than dispatching to the backend.
+  const me = state.employees.find(e => e.id === userId);
+  const [faceLockOn, setFaceLockOn] = useState(() => isFaceLockEnabled(userId));
+  const [faceLockBusy, setFaceLockBusy] = useState(false);
+  const [faceLockError, setFaceLockError] = useState("");
+  const [biometricSupported, setBiometricSupported] = useState(null);
+  useEffect(() => { isBiometricAvailable().then(setBiometricSupported); }, []);
+  const toggleFaceLock = async () => {
+    setFaceLockError("");
+    if (faceLockOn) { disableFaceLock(userId); setFaceLockOn(false); return; }
+    setFaceLockBusy(true);
+    try {
+      await enableFaceLock(userId, me?.name);
+      setFaceLockOn(true);
+    } catch (err) {
+      setFaceLockError(err?.message || "Couldn't set up Face ID / fingerprint unlock on this device.");
+    } finally {
+      setFaceLockBusy(false);
+    }
+  };
 
   const handleBackup = async () => {
     setBackingUp(true);
@@ -10547,6 +10663,20 @@ function SettingsPage({ state, dispatch, setPage, glassTheme }) {
         </label>
         <div className="side-note" style={{ marginTop:10 }}>
           Turning this off stops all outgoing emails except password-reset codes — those always send, so nobody ever gets locked out of their account.
+        </div>
+      </div>
+
+      <div className="agw-card">
+        <strong style={{ fontSize:14 }}><Fingerprint size={14} style={{verticalAlign:-2,marginRight:6}}/>Face ID / fingerprint unlock</strong>
+        <label style={{ display:"flex", alignItems:"center", gap:8, fontSize:13, marginTop:10 }}>
+          <input type="checkbox" checked={faceLockOn} disabled={faceLockBusy || biometricSupported === false} onChange={toggleFaceLock} />
+          {faceLockBusy ? "Setting up…" : "Skip the password on this device — unlock with Face ID or your fingerprint instead"}
+        </label>
+        {faceLockError && <div className="side-note" style={{ borderColor:"var(--danger)", color:"var(--danger)", marginTop:10 }}>{faceLockError}</div>}
+        <div className="side-note" style={{ marginTop:10 }}>
+          {biometricSupported === false
+            ? "This browser/device doesn't support Face ID or fingerprint unlock."
+            : "This only applies to this device and browser — set it up again on any other phone or tablet you sign in from. Your password still works everywhere, and you can turn this off anytime."}
         </div>
       </div>
 
