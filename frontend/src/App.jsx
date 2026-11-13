@@ -384,28 +384,43 @@ const CSS = `
   .quote-id-link { background: none; border: none; padding: 0; font: inherit; color: var(--brand); cursor: pointer; text-decoration: none; }
   .quote-id-link:hover { text-decoration: underline; }
 
-  /* --- Dashboard "glass" theme ------------------------------------------------------------
-     Opt-in via the "Try new theme" toggle on the Dashboard page only (see Dashboard component) —
-     a per-browser preference, not a global app theme like light/dark above. Scoped entirely
-     under .dash-glass, a class on the Dashboard's own root, so no other page is touched. */
-  .agw .dash-glass { margin: -24px; padding: 24px; min-height: calc(100% + 48px);
+  /* --- "Glass" theme -----------------------------------------------------------------------
+     Opt-in via the Sparkles toggle in the topbar — a per-browser preference, not a global app
+     theme like light/dark above. Two independent scopes: .agw-shell.theme-glass restyles the
+     shared sidebar/topbar chrome (every page gets this once the toggle is on), while
+     .theme-glass-page is added by each converted page to its own root — only Dashboard, Leads
+     and Deals opt into it today, so an unconverted page's content stays classic underneath the
+     glass chrome until it's converted too. */
+  .agw-shell.theme-glass .agw-sidebar { background: linear-gradient(165deg, #0E3350 0%, #0A253B 100%); box-shadow: 4px 0 24px rgba(14,51,80,.2); }
+  .agw-shell.theme-glass .agw-nav-item.active { background: linear-gradient(135deg,#0F99B3,#0B7E93); border-radius: 14px; box-shadow: 0 6px 16px rgba(15,153,179,.35); }
+  .agw-shell.theme-glass .agw-topbar { background: linear-gradient(135deg,#E8791E,#C05F0F); }
+  .agw-shell.theme-glass .theme-toggle.active { background: rgba(255,255,255,.35); }
+
+  .agw .theme-glass-page { margin: -24px; padding: 24px; min-height: calc(100% + 48px);
     background: linear-gradient(135deg, #E3F6F8 0%, #EAF3F2 32%, #FBF1E6 68%, #FDEADA 100%); }
-  .agw .dash-glass .agw-card { background: rgba(255,255,255,.58); backdrop-filter: blur(22px) saturate(180%);
+  .agw .theme-glass-page .agw-card { background: rgba(255,255,255,.58); backdrop-filter: blur(22px) saturate(180%);
     -webkit-backdrop-filter: blur(22px) saturate(180%); border: 1px solid rgba(255,255,255,.9); border-radius: 20px;
     box-shadow: inset 0 1px 0 rgba(255,255,255,.95), 0 10px 30px rgba(14,51,80,.1), 0 1px 2px rgba(14,51,80,.05); }
-  .agw .dash-glass .kpi-value { color: #0E3350; }
-  .agw .dash-glass .kpi-label { color: #6B7B87; }
-  .agw .dash-glass .btn-primary { background: linear-gradient(135deg,#0F99B3,#0B7E93); border-color: transparent;
+  .agw .theme-glass-page .kpi-value { color: #0E3350; }
+  .agw .theme-glass-page .kpi-label { color: #6B7B87; }
+  .agw .theme-glass-page .btn-primary { background: linear-gradient(135deg,#0F99B3,#0B7E93); border-color: transparent;
     box-shadow: 0 8px 20px rgba(15,153,179,.35); }
-  .agw .dash-glass .btn-primary:hover { background: linear-gradient(135deg,#0B7E93,#0F99B3); }
-  .agw .dash-glass .tabbar { border-bottom: none; gap: 6px; }
-  .agw .dash-glass .tab { border-radius: 12px; border-bottom: none; }
-  .agw .dash-glass .tab.active { background: linear-gradient(135deg,#0F99B3,#0B7E93); color: #fff; border-bottom: none; }
-  .agw .dash-glass .avatar { background: linear-gradient(135deg,#0F99B3,#0E3350); color: #fff; }
-  .agw .dash-glass .btn-ghost:hover { background: rgba(15,153,179,.1); }
-  .agw .dash-glass .side-note { background: rgba(255,255,255,.5); border: 1px dashed rgba(14,51,80,.15); }
+  .agw .theme-glass-page .btn-primary:hover { background: linear-gradient(135deg,#0B7E93,#0F99B3); }
+  .agw .theme-glass-page .tabbar { border-bottom: none; gap: 6px; }
+  .agw .theme-glass-page .tab { border-radius: 12px; border-bottom: none; }
+  .agw .theme-glass-page .tab.active { background: linear-gradient(135deg,#0F99B3,#0B7E93); color: #fff; border-bottom: none; }
+  .agw .theme-glass-page .avatar { background: linear-gradient(135deg,#0F99B3,#0E3350); color: #fff; }
+  .agw .theme-glass-page .btn-ghost:hover { background: rgba(15,153,179,.1); }
+  .agw .theme-glass-page .side-note { background: rgba(255,255,255,.5); border: 1px dashed rgba(14,51,80,.15); }
+  .agw .theme-glass-page .board-col { background: rgba(255,255,255,.45); backdrop-filter: blur(16px) saturate(160%);
+    -webkit-backdrop-filter: blur(16px) saturate(160%); border: 1px solid rgba(255,255,255,.7); border-radius: 16px; }
+  .agw .theme-glass-page .job-card { background: rgba(255,255,255,.72); border: 1px solid rgba(255,255,255,.9);
+    border-radius: 14px; box-shadow: 0 6px 16px rgba(14,51,80,.08); }
+  .agw .theme-glass-page .agw-table thead th { background: rgba(255,255,255,.4); }
+  .agw .theme-glass-page .agw-table tbody tr:hover { background: rgba(15,153,179,.08); }
+  .agw .theme-glass-page .pill { background: rgba(15,153,179,.12); color: #0B7E93; }
   @media (max-width: 860px) {
-    .agw .dash-glass { margin: -14px; padding: 14px; min-height: calc(100% + 28px); }
+    .agw .theme-glass-page { margin: -14px; padding: 14px; min-height: calc(100% + 28px); }
   }
 `;
 
@@ -1255,6 +1270,20 @@ export default function App() {
   }, [theme]);
   const toggleTheme = () => setTheme((t) => (t === "dark" ? "light" : "dark"));
 
+  // Opt-in "glass" look — a separate, per-browser preference from light/dark above, not applied
+  // app-wide yet: only the sidebar/topbar chrome and the pages that have been converted so far
+  // (Dashboard, Leads, Deals — each opts in via the "theme-glass-page" class on its own root) pick
+  // it up. Everything else keeps the classic look regardless, so it can keep rolling out page by
+  // page without ever being a half-styled surprise.
+  const [glassTheme, setGlassTheme] = useState(() => {
+    try { return localStorage.getItem("agw_dash_theme") === "glass"; } catch { return false; }
+  });
+  const toggleGlassTheme = () => setGlassTheme((g) => {
+    const next = !g;
+    try { localStorage.setItem("agw_dash_theme", next ? "glass" : "classic"); } catch { /* storage unavailable: choice just won't persist */ }
+    return next;
+  });
+
   // Browsers change a focused <input type=number>'s value on mouse-wheel scroll by default — no
   // opt-out attribute exists, so anyone scrolling the page while the cursor happens to be over a
   // Qty/Rate/Fee field silently mutates it. Blurring on wheel is the standard workaround; typing
@@ -1433,7 +1462,7 @@ export default function App() {
   const flatNav = visibleNav.flatMap(g => g.items);
   const bottomExtra = flatNav.filter(i => i.key !== "dashboard" && i.key !== "notifications").slice(0, 2);
 
-  const ctx = { state, dispatch, role, userId, unreadCount };
+  const ctx = { state, dispatch, role, userId, unreadCount, glassTheme };
   // Jumps to a quotation on the Quotations page and, when openPdf is set, opens it straight up
   // instead of just scrolling to it — passed to every screen that can create a quotation (Deals,
   // Leads, a Customer's own "Create quotation") so a freshly built one is never left to be found
@@ -1479,7 +1508,7 @@ export default function App() {
       <link rel="preconnect" href="https://fonts.googleapis.com" />
       <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
 
-      <div className="agw-shell">
+      <div className={`agw-shell ${glassTheme ? "theme-glass" : ""}`}>
         <aside className={`agw-sidebar ${sidebarCollapsed ? "collapsed" : ""}`}>
           <button className="agw-collapse-btn" onClick={() => setSidebarCollapsed(v => !v)} title={sidebarCollapsed ? "Expand menu" : "Collapse menu"}>
             {sidebarCollapsed ? <ChevronsRight size={14}/> : <ChevronsLeft size={14}/>}
@@ -1557,6 +1586,10 @@ export default function App() {
               </button>
               <button className="theme-toggle" onClick={toggleTheme} title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}>
                 {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+              </button>
+              <button className={`theme-toggle ${glassTheme ? "active" : ""}`} onClick={toggleGlassTheme}
+                title={glassTheme ? "Switch back to the classic look (Dashboard, Leads, Deals + menu)" : "Try the new glass look — Dashboard, Leads, Deals + menu, just for you"}>
+                <Sparkles size={16} />
               </button>
               <button className="agw-bell" onClick={() => setPage("notifications")}>
                 <Bell size={17} />
@@ -1689,7 +1722,7 @@ export default function App() {
 /* DASHBOARD                                                               */
 /* ---------------------------------------------------------------------- */
 
-function Dashboard({ state, dispatch, role, userId, setPage, onOpenExpiredCustomers, onViewQuotation }) {
+function Dashboard({ state, dispatch, role, userId, setPage, onOpenExpiredCustomers, onViewQuotation, glassTheme }) {
   // This user's own Google Drive folder (set on their HR Profile) — moved here from the sidebar
   // so it sits next to the attendance sign-in button instead of taking up permanent sidebar space.
   const myCloudLink = state.employees.find(e => e.id === userId)?.cloudLink;
@@ -1880,18 +1913,6 @@ function Dashboard({ state, dispatch, role, userId, setPage, onOpenExpiredCustom
   const [showPostUpdate, setShowPostUpdate] = useState(false);
   const [whatsNewOpen, setWhatsNewOpen] = useState(false);
 
-  // Opt-in "glass" look for this page only — a per-browser preference (not a global app theme
-  // like light/dark above), so trying it never touches any other page. Starts off for everyone;
-  // once picked, it's remembered for next time.
-  const [glassTheme, setGlassTheme] = useState(() => {
-    try { return localStorage.getItem("agw_dash_theme") === "glass"; } catch { return false; }
-  });
-  const toggleGlassTheme = () => setGlassTheme((g) => {
-    const next = !g;
-    try { localStorage.setItem("agw_dash_theme", next ? "glass" : "classic"); } catch { /* storage unavailable: choice just won't persist */ }
-    return next;
-  });
-
   // Operational, cross-service view of every Company Formation job card's progress — the people
   // who actually run that work (Ops Manager, PRO Head/PRO) plus oversight roles (Admin-tier,
   // Viewer). Everyone else already gets their own Dashboard tabs and doesn't need this one.
@@ -2001,7 +2022,7 @@ function Dashboard({ state, dispatch, role, userId, setPage, onOpenExpiredCustom
   };
 
   return (
-    <div className={glassTheme ? "dash-glass" : undefined}>
+    <div className={glassTheme ? "theme-glass-page" : undefined}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 16, flexWrap:"wrap", gap:10 }}>
         <div className="tabbar" style={{ marginBottom:0 }}>
           <button className={`tab ${chartTab==="overview"?"active":""}`} onClick={()=>setChartTab("overview")}>Overview</button>
@@ -2009,10 +2030,6 @@ function Dashboard({ state, dispatch, role, userId, setPage, onOpenExpiredCustom
           {canSeeFormations && <button className={`tab ${chartTab==="formations"?"active":""}`} onClick={()=>setChartTab("formations")}>Formations status</button>}
         </div>
         <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-          <button type="button" className={`btn btn-sm ${glassTheme ? "btn-primary" : "btn-ghost"}`} onClick={toggleGlassTheme}
-            title={glassTheme ? "Switch this Dashboard back to the classic look" : "Preview a new glass look for this Dashboard — just for you, switch back anytime"}>
-            <Sparkles size={13}/> {glassTheme ? "Classic view" : "Try new theme"}
-          </button>
           {canQuickAddLead && <button className="btn btn-primary" onClick={()=>setShowQuickAddLead(true)}><Plus size={15}/> Log a lead</button>}
           {myCloudLink && (
             <a href={myCloudLink} target="_blank" rel="noreferrer" className="btn btn-sm" style={{ textDecoration:"none" }}>
@@ -2680,7 +2697,7 @@ function LeadFormModal({ state, dispatch, userId, editLead, onClose }) {
   );
 }
 
-function LeadsPage({ state, dispatch, userId, role, setPage, onViewQuotation }) {
+function LeadsPage({ state, dispatch, userId, role, setPage, onViewQuotation, glassTheme }) {
   const [view, setView] = useState("kanban");
   const [draggedLeadId, setDraggedLeadId] = useState(null);
   const [dragOverStatus, setDragOverStatus] = useState(null);
@@ -2724,7 +2741,7 @@ function LeadsPage({ state, dispatch, userId, role, setPage, onViewQuotation }) 
   const openEdit = (l) => setEditLead(l);
 
   return (
-    <div>
+    <div className={glassTheme ? "theme-glass-page" : undefined}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 14, flexWrap:"wrap", gap:10 }}>
         <div className="tabbar" style={{ marginBottom:0, borderBottom:"none" }}>
           <button className={`tab ${view==="kanban"?"active":""}`} onClick={()=>setView("kanban")}>Kanban</button>
@@ -3028,7 +3045,7 @@ function LeadsPage({ state, dispatch, userId, role, setPage, onViewQuotation }) 
 /* DEALS                                                                   */
 /* ---------------------------------------------------------------------- */
 
-function DealsPage({ state, dispatch, setPage, onViewQuotation, role, userId }) {
+function DealsPage({ state, dispatch, setPage, onViewQuotation, role, userId, glassTheme }) {
   const [view, setView] = useState("kanban");
   const viewQuotationFor = (d) => { onViewQuotation(state.quotations.find(q=>q.dealId===d.id)?.id); setPage("quotations"); };
   // Highlights the row just created via "New deal" — local to this page since creation and
@@ -3062,7 +3079,7 @@ function DealsPage({ state, dispatch, setPage, onViewQuotation, role, userId }) 
   const assignableEmployees = state.employees.filter(isAssignable);
 
   return (
-    <div>
+    <div className={glassTheme ? "theme-glass-page" : undefined}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 14, flexWrap:"wrap", gap:10 }}>
         <div className="tabbar" style={{ marginBottom:0, borderBottom:"none" }}>
           <button className={`tab ${view==="kanban"?"active":""}`} onClick={()=>setView("kanban")}>Kanban</button>
