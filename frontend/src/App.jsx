@@ -9,7 +9,7 @@ import {
   UserPlus, ShieldCheck, Ban, Clock, ArrowRight, Search, Mail, Phone,
   BadgeCheck, CalendarClock, Briefcase, Copy, Files, Link2, Pencil, Trash2, Repeat, BarChart3, Download, MoreHorizontal, ChevronsLeft, ChevronsRight, Camera, Star,
   Database, Upload, MessageCircle, ArchiveX, Settings as SettingsIcon,
-  Sun, Moon, BookOpen, Award, Landmark, Presentation, ExternalLink, KeyRound, BellOff, Maximize2, Eye
+  Sun, Moon, BookOpen, Award, Landmark, Presentation, ExternalLink, KeyRound, BellOff, Maximize2, Eye, Sparkles
 } from "lucide-react";
 import { money, fmtDate, fmtDateDMY, Stamp, statusTone, Rail, DonutChart, LineChart, BarChart, SalesPersonBars, ProgressRing, progressColor, Modal, Empty, ConfirmModal, RowActions, exportCSV, usePagination, PaginationBar, TableScrollHint, useConfirm, ADMIN_LIKE, ROLE_LABEL, isSalesRole, isAssignable } from "./ui.jsx";
 import { todayStr as salesTaskToday, firstOfWeekStr, firstOfMonthStr, userTaskSnapshot, dailyCompletionColor } from "./salesTasksHelpers";
@@ -383,6 +383,30 @@ const CSS = `
   .btn-blink { animation: btn-blink-glow 1.1s ease-in-out infinite; border-color: var(--gold) !important; }
   .quote-id-link { background: none; border: none; padding: 0; font: inherit; color: var(--brand); cursor: pointer; text-decoration: none; }
   .quote-id-link:hover { text-decoration: underline; }
+
+  /* --- Dashboard "glass" theme ------------------------------------------------------------
+     Opt-in via the "Try new theme" toggle on the Dashboard page only (see Dashboard component) —
+     a per-browser preference, not a global app theme like light/dark above. Scoped entirely
+     under .dash-glass, a class on the Dashboard's own root, so no other page is touched. */
+  .agw .dash-glass { margin: -24px; padding: 24px; min-height: calc(100% + 48px);
+    background: linear-gradient(135deg, #E3F6F8 0%, #EAF3F2 32%, #FBF1E6 68%, #FDEADA 100%); }
+  .agw .dash-glass .agw-card { background: rgba(255,255,255,.58); backdrop-filter: blur(22px) saturate(180%);
+    -webkit-backdrop-filter: blur(22px) saturate(180%); border: 1px solid rgba(255,255,255,.9); border-radius: 20px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.95), 0 10px 30px rgba(14,51,80,.1), 0 1px 2px rgba(14,51,80,.05); }
+  .agw .dash-glass .kpi-value { color: #0E3350; }
+  .agw .dash-glass .kpi-label { color: #6B7B87; }
+  .agw .dash-glass .btn-primary { background: linear-gradient(135deg,#0F99B3,#0B7E93); border-color: transparent;
+    box-shadow: 0 8px 20px rgba(15,153,179,.35); }
+  .agw .dash-glass .btn-primary:hover { background: linear-gradient(135deg,#0B7E93,#0F99B3); }
+  .agw .dash-glass .tabbar { border-bottom: none; gap: 6px; }
+  .agw .dash-glass .tab { border-radius: 12px; border-bottom: none; }
+  .agw .dash-glass .tab.active { background: linear-gradient(135deg,#0F99B3,#0B7E93); color: #fff; border-bottom: none; }
+  .agw .dash-glass .avatar { background: linear-gradient(135deg,#0F99B3,#0E3350); color: #fff; }
+  .agw .dash-glass .btn-ghost:hover { background: rgba(15,153,179,.1); }
+  .agw .dash-glass .side-note { background: rgba(255,255,255,.5); border: 1px dashed rgba(14,51,80,.15); }
+  @media (max-width: 860px) {
+    .agw .dash-glass { margin: -14px; padding: 14px; min-height: calc(100% + 28px); }
+  }
 `;
 
 /* ---------------------------------------------------------------------- */
@@ -1856,6 +1880,18 @@ function Dashboard({ state, dispatch, role, userId, setPage, onOpenExpiredCustom
   const [showPostUpdate, setShowPostUpdate] = useState(false);
   const [whatsNewOpen, setWhatsNewOpen] = useState(false);
 
+  // Opt-in "glass" look for this page only — a per-browser preference (not a global app theme
+  // like light/dark above), so trying it never touches any other page. Starts off for everyone;
+  // once picked, it's remembered for next time.
+  const [glassTheme, setGlassTheme] = useState(() => {
+    try { return localStorage.getItem("agw_dash_theme") === "glass"; } catch { return false; }
+  });
+  const toggleGlassTheme = () => setGlassTheme((g) => {
+    const next = !g;
+    try { localStorage.setItem("agw_dash_theme", next ? "glass" : "classic"); } catch { /* storage unavailable: choice just won't persist */ }
+    return next;
+  });
+
   // Operational, cross-service view of every Company Formation job card's progress — the people
   // who actually run that work (Ops Manager, PRO Head/PRO) plus oversight roles (Admin-tier,
   // Viewer). Everyone else already gets their own Dashboard tabs and doesn't need this one.
@@ -1965,7 +2001,7 @@ function Dashboard({ state, dispatch, role, userId, setPage, onOpenExpiredCustom
   };
 
   return (
-    <div>
+    <div className={glassTheme ? "dash-glass" : undefined}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 16, flexWrap:"wrap", gap:10 }}>
         <div className="tabbar" style={{ marginBottom:0 }}>
           <button className={`tab ${chartTab==="overview"?"active":""}`} onClick={()=>setChartTab("overview")}>Overview</button>
@@ -1973,6 +2009,10 @@ function Dashboard({ state, dispatch, role, userId, setPage, onOpenExpiredCustom
           {canSeeFormations && <button className={`tab ${chartTab==="formations"?"active":""}`} onClick={()=>setChartTab("formations")}>Formations status</button>}
         </div>
         <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+          <button type="button" className={`btn btn-sm ${glassTheme ? "btn-primary" : "btn-ghost"}`} onClick={toggleGlassTheme}
+            title={glassTheme ? "Switch this Dashboard back to the classic look" : "Preview a new glass look for this Dashboard — just for you, switch back anytime"}>
+            <Sparkles size={13}/> {glassTheme ? "Classic view" : "Try new theme"}
+          </button>
           {canQuickAddLead && <button className="btn btn-primary" onClick={()=>setShowQuickAddLead(true)}><Plus size={15}/> Log a lead</button>}
           {myCloudLink && (
             <a href={myCloudLink} target="_blank" rel="noreferrer" className="btn btn-sm" style={{ textDecoration:"none" }}>
