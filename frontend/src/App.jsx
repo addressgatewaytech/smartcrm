@@ -418,7 +418,6 @@ const CSS = `
   .agw-shell.theme-glass .agw-nav-item.active { background: linear-gradient(135deg,#0F99B3,#0B7E93); border-radius: 14px; box-shadow: 0 6px 16px rgba(15,153,179,.35); }
   .agw-shell.theme-glass .agw-userbox { border-top-color: var(--sidebar-line); }
   .agw-shell.theme-glass .agw-userbox select { background: rgba(255,255,255,.7); color: #0E3350; }
-  .agw-shell.theme-glass .agw-collapse-btn { background: rgba(255,255,255,.85); }
   .agw-shell.theme-glass .agw-topbar { border-radius: 18px; margin-bottom: 20px; border-bottom: none;
     background: rgba(255,255,255,.56); backdrop-filter: blur(24px) saturate(180%); -webkit-backdrop-filter: blur(24px) saturate(180%);
     border: 1px solid rgba(255,255,255,.9); box-shadow: inset 0 1px 0 rgba(255,255,255,.95), 0 10px 30px rgba(14,51,80,.1), 0 1px 2px rgba(14,51,80,.05);
@@ -480,6 +479,54 @@ const CSS = `
   .agw .theme-glass-page .pill { background: rgba(15,153,179,.12); color: #0B7E93; }
   @media (max-width: 860px) {
     .agw .theme-glass-page { margin: -14px; padding: 14px; min-height: calc(100% + 28px); }
+  }
+
+  /* --- Glass theme, dark mode ---------------------------------------------------------------
+     Every glass surface above is a flat white rgba() — fine on its own, but it means toggling
+     dark mode while glass is on changed nothing anyone could see (dark mode's own --ink/--page/
+     --surface tokens never touch a hardcoded rgba(255,255,255,...)), which read as "the toggle
+     doesn't work". Re-themes each one to a dark, translucent equivalent instead, reusing the
+     dark-mode --ink/--ink-soft tokens already defined above wherever possible so the two systems
+     stay in sync automatically rather than drifting apart again later. */
+  html.dark .agw-shell.theme-glass,
+  html.dark .agw .theme-glass-page {
+    background: linear-gradient(135deg, #0D2429 0%, #13201B 32%, #231B10 68%, #2A1709 100%);
+  }
+  html.dark .agw-shell.theme-glass .agw-sidebar {
+    background: rgba(22,28,34,.62); border-color: rgba(255,255,255,.08);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 10px 36px rgba(0,0,0,.35);
+    --sidebar: rgba(255,255,255,.06); --sidebar-line: rgba(255,255,255,.12); --sidebar-text: var(--ink); --sidebar-text-dim: var(--ink-soft); }
+  html.dark .agw-shell.theme-glass .agw-nav-item:hover { background: rgba(15,153,179,.18); color: var(--ink); }
+  html.dark .agw-shell.theme-glass .agw-userbox select { background: rgba(255,255,255,.08); color: var(--ink); }
+  html.dark .agw-shell.theme-glass .agw-topbar {
+    background: rgba(22,28,34,.62); border-color: rgba(255,255,255,.08);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 10px 30px rgba(0,0,0,.35);
+    --topbar-ink: var(--ink); --topbar-ink-dim: var(--ink-soft); --topbar-divider: rgba(255,255,255,.14); --topbar-avatar-bg: rgba(15,153,179,.22); }
+  html.dark .agw-shell.theme-glass .agw-topbar .theme-toggle { background: rgba(255,255,255,.08); color: var(--ink); }
+  html.dark .agw-shell.theme-glass .agw-topbar .agw-bell { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.14); color: var(--ink); }
+  html.dark .agw .theme-glass-page .agw-card {
+    background: rgba(27,33,40,.65); border-color: rgba(255,255,255,.08);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.05), 0 10px 30px rgba(0,0,0,.3); }
+  html.dark .agw .theme-glass-page .kpi-value { color: var(--ink); }
+  html.dark .agw .theme-glass-page .kpi-label { color: var(--ink-soft); }
+  html.dark .agw .theme-glass-page .btn-ghost:hover { background: rgba(15,153,179,.16); }
+  html.dark .agw .theme-glass-page .side-note { background: rgba(255,255,255,.05); border-color: rgba(255,255,255,.15); }
+  html.dark .agw .theme-glass-page .board-col { background: rgba(255,255,255,.04); border-color: rgba(255,255,255,.1); }
+  html.dark .agw .theme-glass-page .job-card { background: rgba(27,33,40,.78); border-color: rgba(255,255,255,.1); box-shadow: none; }
+  html.dark .agw .theme-glass-page .agw-table thead th { background: rgba(255,255,255,.04); }
+  html.dark .agw .theme-glass-page .agw-table tbody tr:hover { background: rgba(15,153,179,.12); }
+  html.dark .agw .theme-glass-page .pill { background: rgba(15,153,179,.2); color: #7FD4E3; }
+  @media (max-width: 860px) {
+    html.dark .agw-bottom-nav.theme-glass {
+      background: rgba(22,28,34,.72); border-color: rgba(255,255,255,.08);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 10px 30px rgba(0,0,0,.35); }
+    html.dark .agw-bottom-nav.theme-glass .agw-bottom-item .dot { border-color: rgba(255,255,255,.2); }
+    html.dark .agw.theme-glass .agw-more-panel {
+      background: rgba(22,28,34,.88); border-color: rgba(255,255,255,.08);
+      box-shadow: 0 -10px 30px rgba(0,0,0,.35);
+      --sidebar: rgba(255,255,255,.06); --sidebar-line: rgba(255,255,255,.12); --sidebar-text: var(--ink); --sidebar-text-dim: var(--ink-soft); }
+    html.dark .agw.theme-glass .agw-more-panel .agw-nav-item:hover { background: rgba(15,153,179,.18); color: var(--ink); }
+    html.dark .agw.theme-glass .agw-more-panel .agw-userbox select { background: rgba(255,255,255,.08); color: var(--ink); }
   }
 `;
 
@@ -1703,10 +1750,10 @@ export default function App() {
                 <span className="disp" style={{ fontSize:13, fontWeight:500, color:"var(--gold)" }}>AG</span>
               </div>
             ) : glassTheme ? (
-              // Matches the glass prototype: Smart CRM is the sidebar's own brand (the navy
-              // variant, since the white logo file disappears on this light glass panel), with
-              // Address Gateway reduced to the "Powered by" credit near the bottom instead.
-              <img src="/logo-smart-crm-dark.png" alt="Smart CRM" style={{ display: "block", height: 40, width: "auto" }} />
+              // Matches the glass prototype: Smart CRM is the sidebar's own brand. The navy
+              // variant reads on the light glass panel; dark mode turns that panel dark again,
+              // so it switches back to the original white logo file there.
+              <img src={theme === "dark" ? "/logo-smart-crm.png" : "/logo-smart-crm-dark.png"} alt="Smart CRM" style={{ display: "block", height: 40, width: "auto" }} />
             ) : (
               <>
                 <div className="agw-brand-wordmark"><BrandLogo scale={0.92} onDark /></div>
@@ -1880,7 +1927,7 @@ export default function App() {
             <div className="agw-more-handle" />
             <div style={{ padding: "0 12px 14px" }}>
               {glassTheme
-                ? <img src="/logo-smart-crm-dark.png" alt="Smart CRM" style={{ display: "block", height: 34, width: "auto" }} />
+                ? <img src={theme === "dark" ? "/logo-smart-crm.png" : "/logo-smart-crm-dark.png"} alt="Smart CRM" style={{ display: "block", height: 34, width: "auto" }} />
                 : <BrandLogo scale={0.85} onDark />}
             </div>
             <nav className="agw-nav" style={{ padding: "0 8px", overflow: "visible" }}>
