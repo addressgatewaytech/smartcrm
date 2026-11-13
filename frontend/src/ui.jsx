@@ -332,17 +332,22 @@ export function SalesPersonBars({ rows }) {
 }
 
 export function Modal({ title, sub, onClose, children, width }) {
+  // Header stays fixed and only the body scrolls — not the whole card — so long content never
+  // drifts the rounded card around inside the backdrop or lets a scrollbar render past its
+  // border-radius; see the .modal/.modal-head/.modal-body CSS in App.jsx for the full reasoning.
   return (
     <div className="modal-backdrop">
       <div className="modal" style={width ? { maxWidth: width } : undefined}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-          <div>
-            <h3>{title}</h3>
-            {sub && <p className="modal-sub">{sub}</p>}
+        <div className="modal-head">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div>
+              <h3>{title}</h3>
+              {sub && <p className="modal-sub">{sub}</p>}
+            </div>
+            <button className="btn btn-ghost btn-sm" onClick={onClose}><X size={16} /></button>
           </div>
-          <button className="btn btn-ghost btn-sm" onClick={onClose}><X size={16} /></button>
         </div>
-        {children}
+        <div className="modal-body">{children}</div>
       </div>
     </div>
   );

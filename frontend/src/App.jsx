@@ -129,7 +129,9 @@ const CSS = `
     .row2, .row3 { grid-template-columns: 1fr !important; }
     .agw-table { min-width: 560px; }
     .modal-backdrop { padding: 14px 10px; align-items: center; }
-    .modal { padding: 16px 14px 18px; max-height: calc(100vh - 28px); }
+    .modal { max-height: calc(100vh - 28px); }
+    .modal-head { padding: 16px 14px 12px; }
+    .modal-body { padding: 0 14px 18px; }
     .doc-paper { padding: 18px 16px; }
 
     .agw-bottom-nav { display: flex; position: fixed; left: 0; right: 0; bottom: 0; height: 62px;
@@ -213,8 +215,18 @@ const CSS = `
   .rail-line.done { background: var(--success); }
 
   .modal-backdrop { position: fixed; inset: 0; background: rgba(20,18,14,.4); display: flex;
-    align-items: center; justify-content: center; padding: 40px 20px; z-index: 50; overflow-y:auto; }
-  .modal { background: var(--surface); border-radius: var(--radius-lg); width: 100%; max-width: 620px; padding: 22px 24px 24px; max-height: calc(100vh - 80px); overflow-y: auto; box-shadow: var(--shadow-md); }
+    align-items: center; justify-content: center; padding: 40px 20px; z-index: 50; }
+  /* The backdrop itself never scrolls — only .modal-body does, bounded by the modal's own
+     max-height. Having both the backdrop and the card independently scrollable (as this used to)
+     let the whole rounded card drift around inside the backdrop as you scrolled, instead of just
+     its content moving within a fixed card — content would visibly slide past the rounded corner.
+     Splitting the card into a fixed .modal-head and a scrolling .modal-body (rather than letting
+     the whole card scroll) also sidesteps a browser quirk where a scrollbar can render past a
+     container's own border-radius: the card itself (where the radius lives) never scrolls, so
+     there's nothing for a scrollbar to poke out of. */
+  .modal { background: var(--surface); border-radius: var(--radius-lg); width: 100%; max-width: 620px; max-height: calc(100vh - 80px); overflow: hidden; box-shadow: var(--shadow-md); display: flex; flex-direction: column; }
+  .modal-head { padding: 22px 24px 18px; flex-shrink: 0; }
+  .modal-body { padding: 0 24px 24px; overflow-y: auto; min-height: 0; }
   /* Any table sitting directly inside a modal (several PDF/document preview modals render one
      without their own overflow wrapper) scrolls horizontally instead of blowing out the modal's
      width on a narrow screen. */
@@ -237,6 +249,8 @@ const CSS = `
   }
   .modal h3 { font-family:'Space Grotesk', sans-serif; font-size: 16.5px; margin: 0 0 4px; font-weight: 500; }
   .modal-sub { font-size: 12.5px; color: var(--ink-soft); margin-bottom: 18px; }
+  /* .modal-head already carries its own bottom padding for this gap — avoids doubling it up. */
+  .modal-head .modal-sub { margin-bottom: 0; }
   .field { margin-bottom: 12px; }
   .field label { display: block; font-size: 12px; color: var(--ink-soft); margin-bottom: 5px; }
   .field input, .field select, .field textarea { width: 100%; border: 1px solid var(--hair); border-radius: var(--radius-sm);
