@@ -386,14 +386,17 @@ const CSS = `
 
   /* --- "Glass" theme -----------------------------------------------------------------------
      Opt-in via the Sparkles toggle in the topbar — a per-browser preference, not a global app
-     theme like light/dark above. Two independent scopes: .agw-shell.theme-glass restyles the
-     shared sidebar/topbar chrome (every page gets this once the toggle is on), while
-     .theme-glass-page is added by each converted page to its own root — only Dashboard, Leads
-     and Deals opt into it today, so an unconverted page's content stays classic underneath the
-     glass chrome until it's converted too. */
-  .agw-shell.theme-glass .agw-sidebar { background: linear-gradient(165deg, #0E3350 0%, #0A253B 100%); box-shadow: 4px 0 24px rgba(14,51,80,.2); }
+     theme like light/dark above. Two scopes: .agw-shell.theme-glass restyles the shared
+     sidebar/topbar chrome (every page gets this once the toggle is on), while .theme-glass-page
+     is added by each page to its own root (every page has it now). The shell itself carries the
+     same soft gradient every page's content already paints, so the sidebar/topbar — translucent,
+     blurred — have something colorful behind them to actually look like glass, not just tinted. */
+  .agw-shell.theme-glass { background: linear-gradient(135deg, #E3F6F8 0%, #EAF3F2 32%, #FBF1E6 68%, #FDEADA 100%); background-attachment: fixed; }
+  .agw-shell.theme-glass .agw-sidebar { background: rgba(14,51,80,.78); backdrop-filter: blur(24px) saturate(160%); -webkit-backdrop-filter: blur(24px) saturate(160%);
+    border-right: 1px solid rgba(255,255,255,.08); box-shadow: 4px 0 30px rgba(14,51,80,.18); }
   .agw-shell.theme-glass .agw-nav-item.active { background: linear-gradient(135deg,#0F99B3,#0B7E93); border-radius: 14px; box-shadow: 0 6px 16px rgba(15,153,179,.35); }
-  .agw-shell.theme-glass .agw-topbar { background: linear-gradient(135deg,#E8791E,#C05F0F); }
+  .agw-shell.theme-glass .agw-topbar { background: linear-gradient(135deg, rgba(232,121,30,.85), rgba(192,95,15,.85)); backdrop-filter: blur(24px) saturate(160%); -webkit-backdrop-filter: blur(24px) saturate(160%);
+    border-bottom: 1px solid rgba(255,255,255,.18); }
   .agw-shell.theme-glass .theme-toggle.active { background: rgba(255,255,255,.35); }
 
   .agw .theme-glass-page { margin: -24px; padding: 24px; min-height: calc(100% + 48px);
@@ -1270,11 +1273,10 @@ export default function App() {
   }, [theme]);
   const toggleTheme = () => setTheme((t) => (t === "dark" ? "light" : "dark"));
 
-  // Opt-in "glass" look — a separate, per-browser preference from light/dark above, not applied
-  // app-wide yet: only the sidebar/topbar chrome and the pages that have been converted so far
-  // (Dashboard, Leads, Deals — each opts in via the "theme-glass-page" class on its own root) pick
-  // it up. Everything else keeps the classic look regardless, so it can keep rolling out page by
-  // page without ever being a half-styled surprise.
+  // Opt-in "glass" look — a separate, per-browser preference from light/dark above. Every page
+  // opts in via the "theme-glass-page" class on its own root, and the shared sidebar/topbar
+  // chrome via "theme-glass" on .agw-shell; see the CSS block for both. Classic stays the
+  // default everywhere until this is turned on.
   const [glassTheme, setGlassTheme] = useState(() => {
     try { return localStorage.getItem("agw_dash_theme") === "glass"; } catch { return false; }
   });
@@ -1588,7 +1590,7 @@ export default function App() {
                 {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
               </button>
               <button className={`theme-toggle ${glassTheme ? "active" : ""}`} onClick={toggleGlassTheme}
-                title={glassTheme ? "Switch back to the classic look (Dashboard, Leads, Deals + menu)" : "Try the new glass look — Dashboard, Leads, Deals + menu, just for you"}>
+                title={glassTheme ? "Switch back to the classic look" : "Try the new glass look — just for you, switch back anytime"}>
                 <Sparkles size={16} />
               </button>
               <button className="agw-bell" onClick={() => setPage("notifications")}>
