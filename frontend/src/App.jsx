@@ -1571,7 +1571,7 @@ export default function App() {
             ))}
           </nav>
           {glassTheme && !sidebarCollapsed && (
-            <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:6, padding:"0 12px 10px" }}>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:6, padding:"14px 12px" }}>
               <span style={{ fontSize:9.5, color:"var(--sidebar-text-dim)", letterSpacing:".06em", textTransform:"uppercase" }}>Powered by</span>
               <img src="/logo-address-gateway.png" alt="Address Gateway Business Services" style={{ height:18, width:"auto", display:"block" }} />
             </div>
