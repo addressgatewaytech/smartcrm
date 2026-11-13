@@ -106,9 +106,10 @@ const CSS = `
 
   .agw-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
   .agw-topbar { height: 60px; flex-shrink: 0; border-bottom: 1px solid var(--gold-dark); display: flex;
-    align-items: center; justify-content: space-between; padding: 0 24px; background: var(--gold); }
-  .agw-topbar h1 { font-family: 'Space Grotesk', sans-serif; font-size: 18px; font-weight: 500; margin: 0; color: #fff; }
-  .agw-topbar-sub { font-size: 12.5px; color: rgba(255,255,255,.8); margin-top: 1px; }
+    align-items: center; justify-content: space-between; padding: 0 24px; background: var(--gold);
+    --topbar-ink: #fff; --topbar-ink-dim: rgba(255,255,255,.82); --topbar-divider: rgba(255,255,255,.35); --topbar-avatar-bg: rgba(255,255,255,.25); }
+  .agw-topbar h1 { font-family: 'Space Grotesk', sans-serif; font-size: 18px; font-weight: 500; margin: 0; color: var(--topbar-ink); }
+  .agw-topbar-sub { font-size: 12.5px; color: var(--topbar-ink-dim); margin-top: 1px; }
   .agw-content { flex: 1; overflow-y: auto; padding: 24px; }
 
   /* Bottom tab bar — hidden on desktop, shown below the responsive breakpoint */
@@ -394,16 +395,29 @@ const CSS = `
      Matching the original prototype means more than recoloring: there, the sidebar and topbar are
      floating rounded glass panels inset from the window edges (like any other glass card), not
      flush edge-to-edge bars — so the shell itself gets padding+gap here, and both get border-radius
-     instead of a hard edge/border-bottom. */
+     instead of a hard edge/border-bottom. The prototype's sidebar/topbar are also light — white
+     glass like every card, not a dark/tinted panel — so nav text flips to dark ink here too (via
+     the --sidebar-* custom properties already used throughout the sidebar's own CSS and the
+     --topbar-* ones just added above), and the brand swaps to the navy Smart CRM logo (see
+     Dashboard's sidebar JSX) since the white logo file disappears on a light background. */
   .agw-shell.theme-glass { background: linear-gradient(135deg, #E3F6F8 0%, #EAF3F2 32%, #FBF1E6 68%, #FDEADA 100%); background-attachment: fixed;
     padding: 20px; gap: 20px; box-sizing: border-box; }
-  .agw-shell.theme-glass .agw-sidebar { border-radius: 24px; background: rgba(14,51,80,.78); backdrop-filter: blur(24px) saturate(160%); -webkit-backdrop-filter: blur(24px) saturate(160%);
-    border: 1px solid rgba(255,255,255,.08); box-shadow: 0 10px 36px rgba(14,51,80,.22); }
+  .agw-shell.theme-glass .agw-sidebar { border-radius: 24px; background: rgba(255,255,255,.56); backdrop-filter: blur(24px) saturate(180%); -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border: 1px solid rgba(255,255,255,.9); box-shadow: inset 0 1px 0 rgba(255,255,255,.95), 0 10px 36px rgba(14,51,80,.1), 0 1px 2px rgba(14,51,80,.05);
+    --sidebar: rgba(255,255,255,.7); --sidebar-line: rgba(14,51,80,.12); --sidebar-text: #3F4A54; --sidebar-text-dim: #8DA0AC; }
+  .agw-shell.theme-glass .agw-brand { border-bottom-color: var(--sidebar-line); }
+  .agw-shell.theme-glass .agw-nav-item:hover { background: rgba(15,153,179,.1); color: #0E3350; }
   .agw-shell.theme-glass .agw-nav-item.active { background: linear-gradient(135deg,#0F99B3,#0B7E93); border-radius: 14px; box-shadow: 0 6px 16px rgba(15,153,179,.35); }
+  .agw-shell.theme-glass .agw-userbox { border-top-color: var(--sidebar-line); }
+  .agw-shell.theme-glass .agw-userbox select { background: rgba(255,255,255,.7); color: #0E3350; }
+  .agw-shell.theme-glass .agw-collapse-btn { background: rgba(255,255,255,.85); }
   .agw-shell.theme-glass .agw-topbar { border-radius: 18px; margin-bottom: 20px; border-bottom: none;
-    background: linear-gradient(135deg, rgba(232,121,30,.85), rgba(192,95,15,.85)); backdrop-filter: blur(24px) saturate(160%); -webkit-backdrop-filter: blur(24px) saturate(160%);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.3), 0 10px 30px rgba(14,51,80,.12); }
-  .agw-shell.theme-glass .theme-toggle.active { background: rgba(255,255,255,.35); }
+    background: rgba(255,255,255,.56); backdrop-filter: blur(24px) saturate(180%); -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border: 1px solid rgba(255,255,255,.9); box-shadow: inset 0 1px 0 rgba(255,255,255,.95), 0 10px 30px rgba(14,51,80,.1), 0 1px 2px rgba(14,51,80,.05);
+    --topbar-ink: #0E3350; --topbar-ink-dim: #6B7B87; --topbar-divider: rgba(14,51,80,.14); --topbar-avatar-bg: rgba(15,153,179,.15); }
+  .agw-shell.theme-glass .agw-topbar .theme-toggle { background: rgba(14,51,80,.06); color: #0E3350; }
+  .agw-shell.theme-glass .agw-topbar .theme-toggle.active { background: rgba(15,153,179,.18); }
+  .agw-shell.theme-glass .agw-topbar .agw-bell { background: rgba(14,51,80,.06); border-color: rgba(14,51,80,.14); color: #0E3350; }
   @media (max-width: 860px) {
     .agw-shell.theme-glass { padding: 10px; gap: 10px; }
     .agw-shell.theme-glass .agw-topbar { margin-bottom: 10px; }
@@ -1530,6 +1544,11 @@ export default function App() {
               <div style={{ width:34, height:34, borderRadius:"50%", border:"1.5px solid var(--gold)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
                 <span className="disp" style={{ fontSize:13, fontWeight:500, color:"var(--gold)" }}>AG</span>
               </div>
+            ) : glassTheme ? (
+              // Matches the glass prototype: Smart CRM is the sidebar's own brand (the navy
+              // variant, since the white logo file disappears on this light glass panel), with
+              // Address Gateway reduced to the "Powered by" credit near the bottom instead.
+              <img src="/logo-smart-crm-dark.png" alt="Smart CRM" style={{ display: "block", height: 40, width: "auto" }} />
             ) : (
               <>
                 <div className="agw-brand-wordmark"><BrandLogo scale={0.92} onDark /></div>
@@ -1551,6 +1570,12 @@ export default function App() {
               </div>
             ))}
           </nav>
+          {glassTheme && !sidebarCollapsed && (
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:6, padding:"0 12px 10px" }}>
+              <span style={{ fontSize:9.5, color:"var(--sidebar-text-dim)", letterSpacing:".06em", textTransform:"uppercase" }}>Powered by</span>
+              <img src="/logo-address-gateway.png" alt="Address Gateway Business Services" style={{ height:18, width:"auto", display:"block" }} />
+            </div>
+          )}
           {sidebarCollapsed ? (
             <div className="agw-userbox">
               <button onClick={() => setSidebarCollapsed(false)} title={`Logged in as ${currentUser.name} — click to expand`}
@@ -1607,18 +1632,18 @@ export default function App() {
                 <Bell size={17} />
                 {unreadCount > 0 && <span className="dot" />}
               </button>
-              <div style={{ display:"flex", alignItems:"center", gap:9, paddingLeft:14, borderLeft:"1px solid rgba(255,255,255,.35)" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:9, paddingLeft:14, borderLeft:"1px solid var(--topbar-divider)" }}>
                 {viewingUser.photoUrl ? (
                   <img src={viewingUser.photoUrl} alt={viewingUser.name} style={{ width:34, height:34, borderRadius:"50%", objectFit:"cover", flexShrink:0 }} />
                 ) : (
-                  <div style={{ width:34, height:34, borderRadius:"50%", background:"rgba(255,255,255,.25)", color:"#fff",
+                  <div style={{ width:34, height:34, borderRadius:"50%", background:"var(--topbar-avatar-bg)", color:"var(--topbar-ink)",
                     display:"flex", alignItems:"center", justifyContent:"center", fontSize:12.5, fontWeight:600, flexShrink:0 }}>
                     {viewingUser.initials}
                   </div>
                 )}
                 <div className="agw-profile-name" style={{ lineHeight:1.25, whiteSpace:"nowrap" }}>
-                  <div style={{ fontSize:13, fontWeight:600, color:"#fff" }}>{viewingUser.name}</div>
-                  <div style={{ fontSize:11, color:"rgba(255,255,255,.82)" }}>{viewingUser.designation}</div>
+                  <div style={{ fontSize:13, fontWeight:600, color:"var(--topbar-ink)" }}>{viewingUser.name}</div>
+                  <div style={{ fontSize:11, color:"var(--topbar-ink-dim)" }}>{viewingUser.designation}</div>
                 </div>
               </div>
             </div>
