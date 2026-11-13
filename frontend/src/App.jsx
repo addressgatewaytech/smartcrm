@@ -9,7 +9,7 @@ import {
   UserPlus, ShieldCheck, Ban, Clock, ArrowRight, Search, Mail, Phone,
   BadgeCheck, CalendarClock, Briefcase, Copy, Files, Link2, Pencil, Trash2, Repeat, BarChart3, Download, MoreHorizontal, ChevronsLeft, ChevronsRight, Camera, Star,
   Database, Upload, MessageCircle, ArchiveX, Settings as SettingsIcon,
-  Sun, Moon, BookOpen, Award, Landmark, Presentation, ExternalLink, KeyRound, BellOff, Maximize2, Eye, Sparkles, Fingerprint, ChevronLeft
+  Sun, Moon, BookOpen, Award, Landmark, Presentation, ExternalLink, KeyRound, BellOff, Maximize2, Eye, Sparkles, Fingerprint, ChevronLeft, SlidersHorizontal
 } from "lucide-react";
 import { money, fmtDate, fmtDateDMY, Stamp, statusTone, Rail, DonutChart, LineChart, BarChart, SalesPersonBars, ProgressRing, progressColor, Modal, Empty, ConfirmModal, RowActions, exportCSV, usePagination, PaginationBar, TableScrollHint, useConfirm, ADMIN_LIKE, ROLE_LABEL, isSalesRole, isAssignable } from "./ui.jsx";
 import { todayStr as salesTaskToday, firstOfWeekStr, firstOfMonthStr, userTaskSnapshot, dailyCompletionColor } from "./salesTasksHelpers";
@@ -5311,6 +5311,9 @@ function CustomersPage({ state, dispatch, role, userId, expiryFilterRequest, onE
   const [expiryFilter, setExpiryFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [letterFilter, setLetterFilter] = useState("");
+  // Collapsed by default — the dropdown filters and A-Z row stay out of the way until asked for,
+  // rather than permanently taking up a row above the list.
+  const [showFilters, setShowFilters] = useState(false);
   // One-shot: arriving here from the Dashboard's expiry watchlist "View all customers" applies
   // its Expired filter, then clears the request so it doesn't reapply on a later, unrelated visit.
   useEffect(() => {
@@ -5358,6 +5361,9 @@ function CustomersPage({ state, dispatch, role, userId, expiryFilterRequest, onE
   const pg = usePagination(filtered);
   const kycDocOf = (c, type) => c.docs.find(d => d.type === type);
   const customerStatusTone = { Active:"success", "Administrative Block":"warning", "Scarified/Closed":"danger", Pending:"neutral" };
+  // Category isn't counted here — it always starts on a real value (the sidebar entry clicked to
+  // get here), not "no filter", so counting it would make the badge show 1 even freshly arrived.
+  const activeFilterCount = [sizeFilter, expiryFilter, statusFilter, salesPersonFilter, letterFilter].filter(Boolean).length;
 
   return (
     <div className={glassTheme ? "theme-glass-page" : undefined}>
@@ -5374,27 +5380,9 @@ function CustomersPage({ state, dispatch, role, userId, expiryFilterRequest, onE
             <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search customers by name, contact, phone or email"
               style={{ width:"100%", border:"1px solid var(--hair)", borderRadius:10, padding:"9px 12px 9px 34px", fontSize:13.5, background:"var(--surface)" }} />
           </div>
-          <select value={sizeFilter} onChange={e=>setSizeFilter(e.target.value)} style={{ maxWidth:190 }}>
-            <option value="">All company sizes</option>
-            {COMPANY_SIZES.map(s=><option key={s}>{s}</option>)}
-          </select>
-          <select value={expiryFilter} onChange={e=>setExpiryFilter(e.target.value)} style={{ maxWidth:210 }}>
-            {EXPIRY_FILTERS.map(f=><option key={f.key} value={f.key}>{f.label}</option>)}
-          </select>
-          <select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)} style={{ maxWidth:190 }}>
-            <option value="">All statuses</option>
-            {CUSTOMER_STATUSES.map(s=><option key={s} value={s}>{s}</option>)}
-          </select>
-          <select value={categoryFilter} onChange={e=>setCategoryFilter(e.target.value)} style={{ maxWidth:220 }}>
-            <option value="">All customers</option>
-            {CUSTOMER_CATEGORIES.map(c=><option key={c} value={c}>{c}</option>)}
-          </select>
-          {canSeeAllCustomers && (
-            <select value={salesPersonFilter} onChange={e=>setSalesPersonFilter(e.target.value)} style={{ maxWidth:200 }}>
-              <option value="">All sales persons</option>
-              {salesPersonOptions.map(sp=><option key={sp} value={sp}>{sp}</option>)}
-            </select>
-          )}
+          <button type="button" className={`btn btn-sm ${showFilters || activeFilterCount>0 ? "btn-primary" : ""}`} onClick={()=>setShowFilters(v=>!v)}>
+            <SlidersHorizontal size={13}/> Filters{activeFilterCount>0 ? ` (${activeFilterCount})` : ""}
+          </button>
         </div>
         <div style={{ display:"flex", gap:8 }}>
           <button className="btn btn-sm" onClick={()=>exportCSV("customers-kyc.csv",
@@ -5417,6 +5405,31 @@ function CustomersPage({ state, dispatch, role, userId, expiryFilterRequest, onE
         </div>
       </div>
 
+      {showFilters && (<>
+      <div style={{ display:"flex", gap:8, marginBottom: 14, flexWrap:"wrap" }}>
+        <select value={sizeFilter} onChange={e=>setSizeFilter(e.target.value)} style={{ maxWidth:190 }}>
+          <option value="">All company sizes</option>
+          {COMPANY_SIZES.map(s=><option key={s}>{s}</option>)}
+        </select>
+        <select value={expiryFilter} onChange={e=>setExpiryFilter(e.target.value)} style={{ maxWidth:210 }}>
+          {EXPIRY_FILTERS.map(f=><option key={f.key} value={f.key}>{f.label}</option>)}
+        </select>
+        <select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)} style={{ maxWidth:190 }}>
+          <option value="">All statuses</option>
+          {CUSTOMER_STATUSES.map(s=><option key={s} value={s}>{s}</option>)}
+        </select>
+        <select value={categoryFilter} onChange={e=>setCategoryFilter(e.target.value)} style={{ maxWidth:220 }}>
+          <option value="">All customers</option>
+          {CUSTOMER_CATEGORIES.map(c=><option key={c} value={c}>{c}</option>)}
+        </select>
+        {canSeeAllCustomers && (
+          <select value={salesPersonFilter} onChange={e=>setSalesPersonFilter(e.target.value)} style={{ maxWidth:200 }}>
+            <option value="">All sales persons</option>
+            {salesPersonOptions.map(sp=><option key={sp} value={sp}>{sp}</option>)}
+          </select>
+        )}
+      </div>
+
       <div style={{ display:"flex", gap:4, marginBottom: 14, flexWrap:"wrap" }}>
         <button className={`pill ${!letterFilter?"active":""}`} style={{ cursor:"pointer", border:"1px solid var(--hair)", background: !letterFilter?"var(--brand)":"var(--surface)", color: !letterFilter?"#fff":"var(--ink)" }} onClick={()=>setLetterFilter("")}>All</button>
         {"ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").map(l => (
@@ -5425,6 +5438,7 @@ function CustomersPage({ state, dispatch, role, userId, expiryFilterRequest, onE
             onClick={()=>setLetterFilter(letterFilter===l?"":l)}>{l}</button>
         ))}
       </div>
+      </>)}
 
       <div className="tabbar" style={{ marginBottom: 14 }}>
         <button className={`tab ${view==="table"?"active":""}`} onClick={()=>setView("table")}>Table</button>
