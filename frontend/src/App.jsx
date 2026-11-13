@@ -1429,6 +1429,29 @@ export default function App() {
   };
   const declineFaceLockPrompt = () => { dismissFaceLockPrompt(currentUser.id); setFaceLockPrompt(false); };
 
+  // The on/off switch itself lives in the sidebar's userbox (and its mobile "More sheet" twin)
+  // rather than the admin-only Settings page, so every role — not just admin/super_admin, who
+  // are the only roles with a Settings nav item at all — has somewhere to turn this on, check its
+  // state, or turn it back off, regardless of whether they ever saw (or dismissed) the one-time
+  // prompt above.
+  const [faceLockOn, setFaceLockOn] = useState(false);
+  useEffect(() => { if (currentUser) setFaceLockOn(isFaceLockEnabled(currentUser.id)); }, [currentUser]);
+  const [faceLockToggleBusy, setFaceLockToggleBusy] = useState(false);
+  const [faceLockToggleError, setFaceLockToggleError] = useState("");
+  const toggleFaceLockDevice = async () => {
+    setFaceLockToggleError("");
+    if (faceLockOn) { disableFaceLock(currentUser.id); setFaceLockOn(false); return; }
+    setFaceLockToggleBusy(true);
+    try {
+      await enableFaceLock(currentUser.id, currentUser.name);
+      setFaceLockOn(true);
+    } catch (err) {
+      setFaceLockToggleError(err?.message || "Couldn't set up Face ID / fingerprint unlock on this device.");
+    } finally {
+      setFaceLockToggleBusy(false);
+    }
+  };
+
   // On load, if a token is already stored, verify it's still valid before showing the app.
   useEffect(() => {
     if (!getToken()) { setAuthChecked(true); return; }
@@ -1700,6 +1723,16 @@ export default function App() {
               {isImpersonating() && (
                 <button className="btn btn-sm" style={{ width: "100%", marginTop: 8, justifyContent: "center" }} onClick={returnToMyAccount}>Return to my account</button>
               )}
+              {isMobileOrTablet() && (
+                <>
+                  <button type="button" className="btn btn-sm" disabled={faceLockToggleBusy}
+                    style={{ width: "100%", marginTop: 10, justifyContent: "center" }} onClick={toggleFaceLockDevice}>
+                    <Fingerprint size={13} style={{ marginRight: 6 }} />
+                    {faceLockToggleBusy ? "Setting up…" : faceLockOn ? "Turn off Face ID unlock" : "Turn on Face ID unlock"}
+                  </button>
+                  {faceLockToggleError && <div className="side-note" style={{ borderColor:"var(--danger)", color:"var(--danger)", marginTop:8 }}>{faceLockToggleError}</div>}
+                </>
+              )}
               <button className="btn btn-sm" style={{ width: "100%", marginTop: 10, justifyContent: "center" }} onClick={handleLogout}>Log out</button>
             </div>
           )}
@@ -1838,6 +1871,16 @@ export default function App() {
               )}
               {isImpersonating() && (
                 <button className="btn btn-sm" style={{ width: "100%", marginTop: 8, justifyContent: "center" }} onClick={returnToMyAccount}>Return to my account</button>
+              )}
+              {isMobileOrTablet() && (
+                <>
+                  <button type="button" className="btn btn-sm" disabled={faceLockToggleBusy}
+                    style={{ width: "100%", marginTop: 10, justifyContent: "center" }} onClick={toggleFaceLockDevice}>
+                    <Fingerprint size={13} style={{ marginRight: 6 }} />
+                    {faceLockToggleBusy ? "Setting up…" : faceLockOn ? "Turn off Face ID unlock" : "Turn on Face ID unlock"}
+                  </button>
+                  {faceLockToggleError && <div className="side-note" style={{ borderColor:"var(--danger)", color:"var(--danger)", marginTop:8 }}>{faceLockToggleError}</div>}
+                </>
               )}
               <button className="btn btn-sm" style={{ width: "100%", marginTop: 10, justifyContent: "center" }} onClick={() => { handleLogout(); setShowMore(false); }}>Log out</button>
             </div>
