@@ -5739,7 +5739,7 @@ function OfficeSpaceModal({ customer: c, dispatch, onClose }) {
 
 function CustomerDetailModal({ customer: c, state, dispatch, role, userId, setPage, onViewQuotation, onClose }) {
   const isAdmin = ADMIN_LIKE.includes(role);
-  const [tab, setTab] = useState("profile");
+  const [tab, setTab] = useState("dashboard");
   const [creatingDeal, setCreatingDeal] = useState(false);
   const [quoteFor, setQuoteFor] = useState(null);
   const [merging, setMerging] = useState(false);
@@ -5820,9 +5820,9 @@ function CustomerDetailModal({ customer: c, state, dispatch, role, userId, setPa
       </div>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:10 }}>
         <div className="tabbar" style={{ marginBottom:0, borderBottom:"none" }}>
+          <button className={`tab ${tab==="dashboard"?"active":""}`} onClick={()=>setTab("dashboard")}>Dashboard</button>
           <button className={`tab ${tab==="profile"?"active":""}`} onClick={()=>setTab("profile")}>Profile & KYC</button>
           <button className={`tab ${tab==="onboarding"?"active":""}`} onClick={()=>setTab("onboarding")}>Onboarding Form</button>
-          <button className={`tab ${tab==="dashboard"?"active":""}`} onClick={()=>setTab("dashboard")}>Dashboard</button>
         </div>
         <div style={{ display:"flex", gap:8 }}>
           <button className="btn btn-sm" onClick={()=>setCreatingDeal(true)}><Handshake size={13}/> Create deal</button>
