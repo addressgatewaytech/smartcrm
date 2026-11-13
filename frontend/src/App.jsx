@@ -390,14 +390,24 @@ const CSS = `
      sidebar/topbar chrome (every page gets this once the toggle is on), while .theme-glass-page
      is added by each page to its own root (every page has it now). The shell itself carries the
      same soft gradient every page's content already paints, so the sidebar/topbar — translucent,
-     blurred — have something colorful behind them to actually look like glass, not just tinted. */
-  .agw-shell.theme-glass { background: linear-gradient(135deg, #E3F6F8 0%, #EAF3F2 32%, #FBF1E6 68%, #FDEADA 100%); background-attachment: fixed; }
-  .agw-shell.theme-glass .agw-sidebar { background: rgba(14,51,80,.78); backdrop-filter: blur(24px) saturate(160%); -webkit-backdrop-filter: blur(24px) saturate(160%);
-    border-right: 1px solid rgba(255,255,255,.08); box-shadow: 4px 0 30px rgba(14,51,80,.18); }
+     blurred — have something colorful behind them to actually look like glass, not just tinted.
+     Matching the original prototype means more than recoloring: there, the sidebar and topbar are
+     floating rounded glass panels inset from the window edges (like any other glass card), not
+     flush edge-to-edge bars — so the shell itself gets padding+gap here, and both get border-radius
+     instead of a hard edge/border-bottom. */
+  .agw-shell.theme-glass { background: linear-gradient(135deg, #E3F6F8 0%, #EAF3F2 32%, #FBF1E6 68%, #FDEADA 100%); background-attachment: fixed;
+    padding: 20px; gap: 20px; box-sizing: border-box; }
+  .agw-shell.theme-glass .agw-sidebar { border-radius: 24px; background: rgba(14,51,80,.78); backdrop-filter: blur(24px) saturate(160%); -webkit-backdrop-filter: blur(24px) saturate(160%);
+    border: 1px solid rgba(255,255,255,.08); box-shadow: 0 10px 36px rgba(14,51,80,.22); }
   .agw-shell.theme-glass .agw-nav-item.active { background: linear-gradient(135deg,#0F99B3,#0B7E93); border-radius: 14px; box-shadow: 0 6px 16px rgba(15,153,179,.35); }
-  .agw-shell.theme-glass .agw-topbar { background: linear-gradient(135deg, rgba(232,121,30,.85), rgba(192,95,15,.85)); backdrop-filter: blur(24px) saturate(160%); -webkit-backdrop-filter: blur(24px) saturate(160%);
-    border-bottom: 1px solid rgba(255,255,255,.18); }
+  .agw-shell.theme-glass .agw-topbar { border-radius: 18px; margin-bottom: 20px; border-bottom: none;
+    background: linear-gradient(135deg, rgba(232,121,30,.85), rgba(192,95,15,.85)); backdrop-filter: blur(24px) saturate(160%); -webkit-backdrop-filter: blur(24px) saturate(160%);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.3), 0 10px 30px rgba(14,51,80,.12); }
   .agw-shell.theme-glass .theme-toggle.active { background: rgba(255,255,255,.35); }
+  @media (max-width: 860px) {
+    .agw-shell.theme-glass { padding: 10px; gap: 10px; }
+    .agw-shell.theme-glass .agw-topbar { margin-bottom: 10px; }
+  }
 
   .agw .theme-glass-page { margin: -24px; padding: 24px; min-height: calc(100% + 48px);
     background: linear-gradient(135deg, #E3F6F8 0%, #EAF3F2 32%, #FBF1E6 68%, #FDEADA 100%); }
