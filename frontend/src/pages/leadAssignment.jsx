@@ -25,7 +25,7 @@ function slaState(lead) {
   return { label: "Pending", tone: "warning" };
 }
 
-export function LeadAssignmentManagerPage({ state, dispatch, role }) {
+export function LeadAssignmentManagerPage({ state, dispatch, role, glassTheme }) {
   const [query, setQuery] = useState("");
   const [assignFor, setAssignFor] = useState(null);
   const [newLead, setNewLead] = useState(false);
@@ -64,7 +64,7 @@ export function LeadAssignmentManagerPage({ state, dispatch, role }) {
   }));
 
   return (
-    <div>
+    <div className={glassTheme ? "theme-glass-page" : undefined}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
         <div style={{ position: "relative", maxWidth: 280 }}>
           <Search size={15} style={{ position: "absolute", left: 12, top: 9, color: "var(--ink-soft)" }} />

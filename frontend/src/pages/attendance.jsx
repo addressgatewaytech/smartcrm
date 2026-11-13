@@ -113,7 +113,7 @@ export function AttendanceSignButton() {
 // Self-service history for a regular employee; a team-wide monthly hours/lateness report for
 // Admin-tier/HR. Both are the same table shape, driven by the same backend endpoint — it self-
 // scopes to the caller unless the requester is admin/hr, matching every other report in this app.
-export function AttendancePage({ role, state }) {
+export function AttendancePage({ role, state, glassTheme }) {
   const isAdmin = canSeeAllAttendance(role);
   const [from, setFrom] = useState(monthStartStr());
   const [to, setTo] = useState(todayStr());
@@ -137,7 +137,7 @@ export function AttendancePage({ role, state }) {
   const deptOf = (uid) => state.employees.find((e) => e.id === uid)?.dept || "";
 
   return (
-    <div>
+    <div className={glassTheme ? "theme-glass-page" : undefined}>
       {!isAdmin && <div style={{ marginBottom: 14 }}><AttendanceWidget /></div>}
       <div className="agw-card">
         <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>

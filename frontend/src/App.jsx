@@ -1621,7 +1621,7 @@ export default function App() {
             {page === "customersAddressGateway" && <CustomersPage {...ctx} setPage={setPage} onViewQuotation={onViewQuotation} initialCategoryFilter="Address Gateway Customers" expiryFilterRequest={customersExpiryFilterRequest} onExpiryFilterRequestHandled={()=>setCustomersExpiryFilterRequest(null)} />}
             {page === "customersOthers" && <CustomersPage {...ctx} setPage={setPage} onViewQuotation={onViewQuotation} initialCategoryFilter="Others" expiryFilterRequest={customersExpiryFilterRequest} onExpiryFilterRequestHandled={()=>setCustomersExpiryFilterRequest(null)} />}
             {page === "customersAll" && <CustomersPage {...ctx} setPage={setPage} onViewQuotation={onViewQuotation} initialCategoryFilter="" expiryFilterRequest={customersExpiryFilterRequest} onExpiryFilterRequestHandled={()=>setCustomersExpiryFilterRequest(null)} />}
-            {page === "onboardingTemplates" && <OnboardingTemplatesPage />}
+            {page === "onboardingTemplates" && <OnboardingTemplatesPage glassTheme={glassTheme} />}
             {page === "dataManager" && <DataManagerPage {...ctx} />}
             {page === "subscriptions" && <SubscriptionsPage {...ctx} />}
             {page === "orders" && <OrdersPage {...ctx} setPage={setPage} highlightId={highlightSalesOrderId} onHighlightHandled={()=>setHighlightSalesOrderId(null)}
@@ -1629,7 +1629,7 @@ export default function App() {
             {page === "invoices" && <InvoicesPage {...ctx} setPage={setPage} highlightId={highlightInvoiceId} onHighlightHandled={()=>setHighlightInvoiceId(null)}
               onJobCardTarget={setHighlightJobCardId} />}
             {page === "companyFinance" && <CompanyFinancePage {...ctx} />}
-            {page === "bankAccountDetails" && <BankAccountDetailsPage />}
+            {page === "bankAccountDetails" && <BankAccountDetailsPage glassTheme={glassTheme} />}
             {page === "tenants" && <TenantManagementPage {...ctx} />}
             {page === "jobs" && <JobsPage {...ctx} highlightId={highlightJobCardId} onHighlightHandled={()=>setHighlightJobCardId(null)} />}
             {page === "tasks" && <TasksPage {...ctx} />}
@@ -1637,8 +1637,8 @@ export default function App() {
             {page === "hr" && <HrPage {...ctx} />}
             {page === "attendance" && <AttendancePage {...ctx} />}
             {page === "leadAssignment" && <LeadAssignmentManagerPage {...ctx} />}
-            {page === "knowledgeBase" && <KnowledgeBasePage />}
-            {page === "activityFinder" && <ActivityFinderPage />}
+            {page === "knowledgeBase" && <KnowledgeBasePage glassTheme={glassTheme} />}
+            {page === "activityFinder" && <ActivityFinderPage glassTheme={glassTheme} />}
             {page === "users" && <UsersPage {...ctx} />}
             {page === "templates" && <TemplatesPage {...ctx} />}
             {page === "emailTemplates" && <EmailTemplatesPage {...ctx} />}
@@ -3859,7 +3859,7 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
 /* QUOTATIONS                                                              */
 /* ---------------------------------------------------------------------- */
 
-function QuotationsPage({ state, dispatch, role, userId, highlightId, autoOpenPdf=false, onHighlightHandled, setPage, onViewQuotation, onSalesOrderCreated }) {
+function QuotationsPage({ state, dispatch, role, userId, highlightId, autoOpenPdf=false, onHighlightHandled, setPage, onViewQuotation, onSalesOrderCreated, glassTheme }) {
   const [openId, setOpenId] = useState(null);
   // Set alongside openId when opened via the Edit action, so the modal jumps straight into Visual
   // edit — Draft/Pending Manager Approval quotations are editable regardless of role, but that was
@@ -3906,7 +3906,7 @@ function QuotationsPage({ state, dispatch, role, userId, highlightId, autoOpenPd
   }, [highlightId, autoOpenPdf]);
 
   return (
-    <div>
+    <div className={glassTheme ? "theme-glass-page" : undefined}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 14, flexWrap:"wrap", gap:10 }}>
         <label style={{ display:"flex", alignItems:"center", gap:8, fontSize:13, cursor:"pointer" }}>
           <input type="checkbox" checked={favoritesOnly} onChange={e=>setFavoritesOnly(e.target.checked)} />
@@ -4493,11 +4493,11 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
 /* QUOTATION TEMPLATES (ADMIN / SALES MANAGER)                             */
 /* ---------------------------------------------------------------------- */
 
-function QuotationTemplatesPage({ state, dispatch, role }) {
+function QuotationTemplatesPage({ state, dispatch, role, glassTheme }) {
   const [tab, setTab] = useState("templates");
   const isAdmin = ADMIN_LIKE.includes(role);
   return (
-    <div>
+    <div className={glassTheme ? "theme-glass-page" : undefined}>
       <div className="tabbar" style={{ marginBottom: 16 }}>
         <button className={`tab ${tab==="templates"?"active":""}`} onClick={()=>setTab("templates")}>Templates</button>
         <button className={`tab ${tab==="catalog"?"active":""}`} onClick={()=>setTab("catalog")}>Items catalog</button>
@@ -4995,7 +4995,7 @@ function matchesExpiryFilter(customer, filterKey) {
 // list toolbar — a blank, customer-independent Data Collection Form, for printing and collecting
 // a prospect's details by hand before they're even entered in the CRM (the old paper-form use
 // case this whole feature replaces). Click either card to download that type's blank PDF.
-function OnboardingTemplatesPage() {
+function OnboardingTemplatesPage({ glassTheme } = {}) {
   const [downloading, setDownloading] = useState(null);
 
   const download = async (formType) => {
@@ -5015,7 +5015,7 @@ function OnboardingTemplatesPage() {
   ];
 
   return (
-    <div>
+    <div className={glassTheme ? "theme-glass-page" : undefined}>
       <p className="modal-sub" style={{ marginTop:0, marginBottom:16 }}>
         A blank Data Collection Form — no customer record needed. Click a card below to download and print it, ready to fill in by hand with a prospect before they're even entered in the CRM.
       </p>
@@ -5039,7 +5039,7 @@ function OnboardingTemplatesPage() {
   );
 }
 
-function CustomersPage({ state, dispatch, role, userId, expiryFilterRequest, onExpiryFilterRequestHandled, initialCategoryFilter, setPage, onViewQuotation }) {
+function CustomersPage({ state, dispatch, role, userId, expiryFilterRequest, onExpiryFilterRequestHandled, initialCategoryFilter, setPage, onViewQuotation, glassTheme }) {
   const [view, setView] = useState("table");
   const [openId, setOpenId] = useState(null);
   // Derived, not a frozen snapshot — see the identical fix on JobsPage/QuotationsPage: in-modal
@@ -5099,7 +5099,7 @@ function CustomersPage({ state, dispatch, role, userId, expiryFilterRequest, onE
   const customerStatusTone = { Active:"success", "Administrative Block":"warning", "Scarified/Closed":"danger", Pending:"neutral" };
 
   return (
-    <div>
+    <div className={glassTheme ? "theme-glass-page" : undefined}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:12, marginBottom: 14, flexWrap:"wrap" }}>
         <div style={{ display:"flex", gap:8, flex:1, flexWrap:"wrap" }}>
           <div style={{ position:"relative", maxWidth: 320, flex:1, minWidth:200 }}>
@@ -6045,7 +6045,7 @@ function subTransactionsUsed(sub, state) {
   }).length;
 }
 
-function SubscriptionsPage({ state, dispatch, role, userId }) {
+function SubscriptionsPage({ state, dispatch, role, userId, glassTheme }) {
   const [tab, setTab] = useState("subscriptions");
   const [newSub, setNewSub] = useState(false);
   const [detailFor, setDetailFor] = useState(null);
@@ -6067,7 +6067,7 @@ function SubscriptionsPage({ state, dispatch, role, userId }) {
   const annualValue = visibleSubs.filter(s => s.status !== "Cancelled").reduce((a,s)=>a+s.annualFee,0);
 
   return (
-    <div>
+    <div className={glassTheme ? "theme-glass-page" : undefined}>
       <div className="agw-grid" style={{ gridTemplateColumns: "repeat(4,1fr)", marginBottom: 18 }}>
         <div className="agw-card"><div className="kpi-label">Active subscriptions</div><div className="kpi-value disp">{activeCount}</div></div>
         <div className="agw-card"><div className="kpi-label">Expiring within 30 days</div><div className="kpi-value disp">{expiringCount}</div></div>
@@ -6617,7 +6617,7 @@ function RenewSubscriptionModal({ subscription: sub, dispatch, onClose }) {
 /* SALES ORDERS                                                            */
 /* ---------------------------------------------------------------------- */
 
-function OrdersPage({ state, dispatch, role, highlightId, onHighlightHandled, setPage, onInvoiceCreated }) {
+function OrdersPage({ state, dispatch, role, highlightId, onHighlightHandled, setPage, onInvoiceCreated, glassTheme }) {
   // This backend onboards a sales order in one atomic step (creates the invoice AND the first
   // job card together — see /api/sales-orders/:id/onboard) rather than the prototype's separate
   // "Confirmed -> Invoiced -> Client Onboarded" stages, and sales_orders itself has no status
@@ -6650,7 +6650,7 @@ function OrdersPage({ state, dispatch, role, highlightId, onHighlightHandled, se
     if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [highlightId, rows.length]);
   return (
-    <div>
+    <div className={glassTheme ? "theme-glass-page" : undefined}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 14, flexWrap:"wrap", gap:8 }}>
         <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
           <PeriodFilter period={period} setPeriod={setPeriod} customFrom={customFrom} setCustomFrom={setCustomFrom} customTo={customTo} setCustomTo={setCustomTo} />
@@ -6846,7 +6846,7 @@ function SalesOrderPdfModal({ salesOrder: so, onboarded, items=[], role, onClose
 /* INVOICES                                                                */
 /* ---------------------------------------------------------------------- */
 
-function InvoicesPage({ state, dispatch, role, highlightId, onHighlightHandled, setPage, onJobCardTarget }) {
+function InvoicesPage({ state, dispatch, role, highlightId, onHighlightHandled, setPage, onJobCardTarget, glassTheme }) {
   const [pay, setPay] = useState(null);
   const [amount, setAmount] = useState(0);
   const [mode, setMode] = useState("Bank Transfer");
@@ -6880,7 +6880,7 @@ function InvoicesPage({ state, dispatch, role, highlightId, onHighlightHandled, 
   }, [highlightId, rows.length]);
 
   return (
-    <div>
+    <div className={glassTheme ? "theme-glass-page" : undefined}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 14, flexWrap:"wrap", gap:8 }}>
         <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
           <PeriodFilter period={period} setPeriod={setPeriod} customFrom={customFrom} setCustomFrom={setCustomFrom} customTo={customTo} setCustomTo={setCustomTo} />
@@ -7220,10 +7220,10 @@ function dueState(dateStr) {
   return { label: "Upcoming", cls: "stamp-success" };
 }
 
-function CompanyFinancePage({ state, dispatch }) {
+function CompanyFinancePage({ state, dispatch, glassTheme }) {
   const [tab, setTab] = useState("cheques");
   return (
-    <div>
+    <div className={glassTheme ? "theme-glass-page" : undefined}>
       <div className="tabbar" style={{ marginBottom: 14 }}>
         <button className={`tab ${tab==="cheques"?"active":""}`} onClick={()=>setTab("cheques")}>Cheques</button>
         <button className={`tab ${tab==="software"?"active":""}`} onClick={()=>setTab("software")}>Software Subscriptions</button>
@@ -7277,9 +7277,9 @@ function BankAccountCard({ title, sub, rows }) {
     </div>
   );
 }
-function BankAccountDetailsPage() {
+function BankAccountDetailsPage({ glassTheme } = {}) {
   return (
-    <div className="agw-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))" }}>
+    <div className={`agw-grid ${glassTheme ? "theme-glass-page" : ""}`} style={{ gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))" }}>
       <BankAccountCard title="Main Customer Payment Account" sub="Default account for customer payments." rows={[
         { label:"Account Name", value:"ADDRESS GATEWAY BUSINESS SERVICES" },
         { label:"Account Number", value:"021513170010010010000", copy:true },
@@ -7315,7 +7315,7 @@ const tenantMonthLabel = (m) => {
   return new Date(Number(y), Number(mo) - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
 };
 
-function TenantManagementPage({ state, dispatch, role }) {
+function TenantManagementPage({ state, dispatch, role, glassTheme }) {
   const isAdmin = ADMIN_LIKE.includes(role);
   const [showNew, setShowNew] = useState(false);
   const [openId, setOpenId] = useState(null);
@@ -7326,7 +7326,7 @@ function TenantManagementPage({ state, dispatch, role }) {
   const open = openId ? tenants.find(t => t.id === openId) : null;
 
   return (
-    <div>
+    <div className={glassTheme ? "theme-glass-page" : undefined}>
       <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:14 }}>
         <button className="btn btn-primary" onClick={()=>setShowNew(true)}><Plus size={15}/> Add room / tenant</button>
       </div>
@@ -7859,7 +7859,7 @@ function SoftwareSubscriptionModal({ subscription: s, dispatch, onClose }) {
 /* JOB CARDS                                                               */
 /* ---------------------------------------------------------------------- */
 
-function JobsPage({ state, dispatch, role, userId, highlightId, onHighlightHandled }) {
+function JobsPage({ state, dispatch, role, userId, highlightId, onHighlightHandled, glassTheme }) {
   const [view, setView] = useState("kanban");
   const [assignFor, setAssignFor] = useState(null);
   const [detailId, setDetailId] = useState(null);
@@ -7933,7 +7933,7 @@ function JobsPage({ state, dispatch, role, userId, highlightId, onHighlightHandl
   };
 
   return (
-    <div>
+    <div className={glassTheme ? "theme-glass-page" : undefined}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 14, flexWrap:"wrap", gap:10 }}>
         <div className="tabbar" style={{ marginBottom:0, borderBottom:"none" }}>
           <button className={`tab ${view==="kanban"?"active":""}`} onClick={()=>setView("kanban")}>Kanban</button>
@@ -8539,7 +8539,7 @@ function computeIncentive(emp, state) {
   return total;
 }
 
-function IncentivesPage({ state, dispatch, role, userId }) {
+function IncentivesPage({ state, dispatch, role, userId, glassTheme }) {
   const isAdmin = ADMIN_LIKE.includes(role);
   const [tab, setTab] = useState(isAdmin ? "rules" : "mine");
 
@@ -8568,7 +8568,7 @@ function IncentivesPage({ state, dispatch, role, userId }) {
   });
 
   return (
-    <div>
+    <div className={glassTheme ? "theme-glass-page" : undefined}>
       <div className="tabbar">
         <button className={`tab ${tab==="mine"?"active":""}`} onClick={()=>setTab("mine")}>My incentives</button>
         {isAdmin && <button className={`tab ${tab==="rules"?"active":""}`} onClick={()=>setTab("rules")}>Rules & payout report</button>}
@@ -8673,7 +8673,7 @@ function IncentiveRulesAdmin({ state, dispatch }) {
 const ATTENDANCE_STATUSES = ["Present","Absent","Half Day","Leave","Vacation"];
 const attendanceTone = (status) => status === "Present" ? "success" : status === "Absent" ? "danger" : status === "Half Day" ? "warning" : status === "Leave" ? "info" : status === "Vacation" ? "gold" : "neutral";
 
-function HrPage({ state, dispatch, role, userId }) {
+function HrPage({ state, dispatch, role, userId, glassTheme }) {
   const isAdmin = ADMIN_LIKE.includes(role) || role === "hr";
   const [tab, setTab] = useState(isAdmin ? "team" : "me");
   const [teamView, setTeamView] = useState("table");
@@ -8709,7 +8709,7 @@ function HrPage({ state, dispatch, role, userId }) {
   const expiringDocsCount = state.employees.flatMap(e=>e.docs).filter(d => docState(d.expiry).label !== "Valid").length;
 
   return (
-    <div>
+    <div className={glassTheme ? "theme-glass-page" : undefined}>
       {isAdmin && (
         <div className="agw-grid" style={{ gridTemplateColumns: "repeat(5,1fr)", marginBottom: 18 }}>
           <div className="agw-card"><div className="kpi-label">Team members</div><div className="kpi-value disp">{state.employees.length}</div></div>
@@ -9163,7 +9163,7 @@ function searchActivities(items, rawQuery, category, list) {
   return matches.sort((a, b) => b.score - a.score || a.item.code.localeCompare(b.item.code));
 }
 
-function ActivityFinderPage() {
+function ActivityFinderPage({ glassTheme } = {}) {
   const [items, setItems] = useState(null);
   const [loadError, setLoadError] = useState("");
   const [query, setQuery] = useState("");
@@ -9212,7 +9212,7 @@ function ActivityFinderPage() {
   }, [results]);
 
   return (
-    <div>
+    <div className={glassTheme ? "theme-glass-page" : undefined}>
       {items && lists.length > 1 && (
         <div className="tabbar">
           <button className={`tab ${!list?"active":""}`} onClick={()=>selectList("")}>All</button>
@@ -9308,10 +9308,10 @@ function ActivityFinderPage() {
   );
 }
 
-function KnowledgeBasePage() {
+function KnowledgeBasePage({ glassTheme } = {}) {
   const goTo = (id) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
   return (
-    <div>
+    <div className={glassTheme ? "theme-glass-page" : undefined}>
       <div className="agw-card" style={{ marginBottom: 18 }}>
         <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
           <BookOpen size={18} />
@@ -9953,7 +9953,7 @@ function StaffDocsModal({ employee: e, dispatch, onClose }) {
 /* USERS & ROLES (ADMIN)                                                   */
 /* ---------------------------------------------------------------------- */
 
-function UsersPage({ state, dispatch, role }) {
+function UsersPage({ state, dispatch, role, glassTheme }) {
   const [tab, setTab] = useState("users");
   const blank = { name:"", email:"", password:"", roles:["sales_exec"], dept:"Sales", initials:"", joinedDate: daysFromNow(0), dateOfBirth:"", designation:"", category:"Staff" };
   const [showAdd, setShowAdd] = useState(false);
@@ -9992,7 +9992,7 @@ function UsersPage({ state, dispatch, role }) {
   };
 
   return (
-    <div>
+    <div className={glassTheme ? "theme-glass-page" : undefined}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 14, flexWrap:"wrap", gap:10 }}>
         <div className="tabbar" style={{ marginBottom:0, borderBottom:"none" }}>
           <button className={`tab ${tab==="users"?"active":""}`} onClick={()=>setTab("users")}>Users</button>
@@ -10282,7 +10282,7 @@ function ModuleAccessPage({ state, dispatch }) {
 /* CHECKLIST TEMPLATES (ADMIN)                                             */
 /* ---------------------------------------------------------------------- */
 
-function TemplatesPage({ state, dispatch }) {
+function TemplatesPage({ state, dispatch, glassTheme }) {
   const [service, setService] = useState(SERVICES[0]);
   const [steps, setSteps] = useState(state.checklistTemplates[SERVICES[0]] || []);
   const [newStep, setNewStep] = useState("");
@@ -10292,7 +10292,7 @@ function TemplatesPage({ state, dispatch }) {
   const switchService = (s) => { setService(s); setSteps(state.checklistTemplates[s] || []); };
 
   return (
-    <div className="agw-grid" style={{ gridTemplateColumns: "220px 1fr" }}>
+    <div className={`agw-grid ${glassTheme ? "theme-glass-page" : ""}`} style={{ gridTemplateColumns: "220px 1fr" }}>
       <div className="agw-card" style={{ padding: 8 }}>
         {state.services.map(s => (
           <button key={s} className={`agw-nav-item`} style={{ color: s===service?"var(--brand)":"var(--ink)", background: s===service?"var(--brand-tint)":"transparent", marginBottom: 4 }} onClick={()=>switchService(s)}>{s}</button>
@@ -10336,11 +10336,11 @@ function TemplatesPage({ state, dispatch }) {
 // Every email the app sends or helps compose, in one editable place — the fully automated
 // reminders (no human in the loop, sent straight by a cron job) and the staff-composed defaults
 // (pre-fill a modal/mailto link a person reviews before actually sending) alike.
-function EmailTemplatesPage({ state, dispatch }) {
+function EmailTemplatesPage({ state, dispatch, glassTheme }) {
   const automated = state.emailTemplates.filter(t => AUTOMATED_EMAIL_KEYS.includes(t.key));
   const staffComposed = state.emailTemplates.filter(t => !AUTOMATED_EMAIL_KEYS.includes(t.key));
   return (
-    <div>
+    <div className={glassTheme ? "theme-glass-page" : undefined}>
       <p className="modal-sub" style={{ marginBottom: 18 }}>
         {"{{placeholder}}"} tokens get filled in automatically when each email actually sends — leave them exactly as shown if you want that value included.
       </p>
@@ -10403,7 +10403,7 @@ function EmailTemplateCard({ tpl, dispatch }) {
 /* NOTIFICATIONS                                                           */
 /* ---------------------------------------------------------------------- */
 
-function NotificationsPage({ state, dispatch, myNotifs }) {
+function NotificationsPage({ state, dispatch, myNotifs, glassTheme }) {
   const [emailFor, setEmailFor] = useState(null);
   const [permission, setPermission] = useState(typeof Notification !== "undefined" ? Notification.permission : "unsupported");
   const iconFor = (type) => type==="expiry" ? { icon: CalendarClock, tone:"warning" }
@@ -10424,6 +10424,7 @@ function NotificationsPage({ state, dispatch, myNotifs }) {
   const audienceLabel = (aud) => aud.map(a => ROLE_LABEL[a] || state.employees.find(e=>e.id===a)?.name || a).join(", ");
 
   return (
+    <div className={glassTheme ? "theme-glass-page" : undefined}>
     <div className="agw-card">
       {permission === "default" && (
         <div className="side-note" style={{ marginTop:0, display:"flex", justifyContent:"space-between", alignItems:"center", gap:10, flexWrap:"wrap" }}>
@@ -10473,6 +10474,7 @@ function NotificationsPage({ state, dispatch, myNotifs }) {
         </Modal>
       )}
     </div>
+    </div>
   );
 }
 
@@ -10480,7 +10482,7 @@ function NotificationsPage({ state, dispatch, myNotifs }) {
 /* SETTINGS                                                                */
 /* ---------------------------------------------------------------------- */
 
-function SettingsPage({ state, dispatch, setPage }) {
+function SettingsPage({ state, dispatch, setPage, glassTheme }) {
   const enabled = state.appSettings.emailNotificationsEnabled;
   const [backingUp, setBackingUp] = useState(false);
   const [backupError, setBackupError] = useState("");
@@ -10499,7 +10501,7 @@ function SettingsPage({ state, dispatch, setPage }) {
   };
 
   return (
-    <div style={{ display:"flex", flexDirection:"column", gap:18, maxWidth: 560 }}>
+    <div className={glassTheme ? "theme-glass-page" : undefined} style={{ display:"flex", flexDirection:"column", gap:18, maxWidth: 560 }}>
       <div className="agw-card">
         <strong style={{ fontSize:14 }}>Email sending</strong>
         <label style={{ display:"flex", alignItems:"center", gap:8, fontSize:13, marginTop:10 }}>
@@ -10625,7 +10627,7 @@ function SalesPeopleFilter({ people, selected, setSelected }) {
   );
 }
 
-function ReportsPage({ state, dispatch, role, userId }) {
+function ReportsPage({ state, dispatch, role, userId, glassTheme }) {
   const [tab, setTab] = useState("volume");
   const [salesFilter, setSalesFilter] = useState([]);
   const { period, setPeriod, customFrom, setCustomFrom, customTo, setCustomTo, range } = usePeriod("month");
@@ -10656,7 +10658,7 @@ function ReportsPage({ state, dispatch, role, userId }) {
   })();
 
   return (
-    <div>
+    <div className={glassTheme ? "theme-glass-page" : undefined}>
       <div className="side-note" style={{ marginTop:0, marginBottom:16 }}>
         <AlertTriangle size={13} style={{verticalAlign:-2, marginRight:4}}/>All figures are based on Professional Fee quotations and invoices only — Government Fee amounts are pass-through and excluded from every report below.
       </div>
@@ -11700,7 +11702,7 @@ function todayDataActivity(emp, state) {
 }
 const minutesSince = (iso) => iso ? (Date.now() - new Date(iso).getTime()) / 60000 : Infinity;
 
-function DataManagerPage({ state, dispatch, role, userId }) {
+function DataManagerPage({ state, dispatch, role, userId, glassTheme }) {
   const [, forceTick] = useState(0);
   useEffect(() => { const t = setInterval(() => forceTick(x => x+1), 15000); return () => clearInterval(t); }, []);
   const canManage = role === "data_manager" || ADMIN_LIKE.includes(role);
@@ -11711,7 +11713,7 @@ function DataManagerPage({ state, dispatch, role, userId }) {
     : [{key:"my",label:"My Data"},{key:"add",label:"Add Data"}];
 
   return (
-    <div>
+    <div className={glassTheme ? "theme-glass-page" : undefined}>
       <div className="tabbar" style={{ marginBottom: 16 }}>
         {tabs.map(t => <button key={t.key} className={`tab ${tab===t.key?"active":""}`} onClick={()=>setTab(t.key)}>{t.label}</button>)}
       </div>
@@ -11730,6 +11732,9 @@ function DataManagerPage({ state, dispatch, role, userId }) {
 }
 
 function MyDataTab({ state, dispatch, role, userId }) {
+  // No glassTheme prop here — this is a sub-component nested inside DataManagerPage's own
+  // root, which already carries the "theme-glass-page" class when it's on, so the glass CSS
+  // cascades down to this tab's .agw-card/.agw-grid content without needing its own className.
   const me = state.employees.find(e => e.id === userId);
   const settings = state.dataSettings;
   const act = todayDataActivity(me, state);

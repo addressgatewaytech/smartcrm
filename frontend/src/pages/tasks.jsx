@@ -25,7 +25,7 @@ function downloadBlob(filename, blob) {
   URL.revokeObjectURL(url);
 }
 
-export function TasksPage({ state, dispatch, role, userId }) {
+export function TasksPage({ state, dispatch, role, userId, glassTheme }) {
   const [view, setView] = useState("kanban");
   const [query, setQuery] = useState("");
   const [detailId, setDetailId] = useState(null);
@@ -60,7 +60,7 @@ export function TasksPage({ state, dispatch, role, userId }) {
   };
 
   return (
-    <div>
+    <div className={glassTheme ? "theme-glass-page" : undefined}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
         <div className="tabbar" style={{ marginBottom: 0, borderBottom: "none" }}>
           <button className={`tab ${view === "kanban" ? "active" : ""}`} onClick={() => setView("kanban")}>Kanban</button>
