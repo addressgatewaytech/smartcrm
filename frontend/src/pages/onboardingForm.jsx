@@ -28,6 +28,7 @@ const padTo = (arr, n, blank) => {
 
 export function normalizeOnboardingForm(data) {
   return {
+    formType: data.formType === "E-commerce License" ? "E-commerce License" : "Company Formation",
     companyNamesEn: padTo((data.companyNamesEn || []).map((v) => ({ v })), ROW_COUNTS.companyNames, { v: "" }).map((r) => r.v),
     companyNamesAr: padTo((data.companyNamesAr || []).map((v) => ({ v })), ROW_COUNTS.companyNames, { v: "" }).map((r) => r.v),
     activities: padTo(data.activities, ROW_COUNTS.activities, { en: "", ar: "", number: "" }),
@@ -116,6 +117,7 @@ export function OnboardingFormFields({ form, setForm, readOnly }) {
         ))}
       </div>
 
+      {form.formType !== "E-commerce License" && (
       <div>
         <strong style={{ fontSize: 13 }}>Visa details</strong>
         <div style={{ overflowX: "auto" }}>
@@ -139,6 +141,7 @@ export function OnboardingFormFields({ form, setForm, readOnly }) {
           </table>
         </div>
       </div>
+      )}
     </div>
   );
 }
@@ -212,7 +215,7 @@ function OnboardingFormCard({ api, customerId, form, onSaved }) {
           <Stamp tone={form.status === "Submitted" ? "success" : "neutral"}>{form.status}</Stamp>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 12.5, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{firstName || form.id}</div>
-            <div className="mono" style={{ fontSize: 11, color: "var(--ink-soft)" }}>{form.id} · Created {fmtDate(form.createdAt)}{form.legalStatus ? ` · ${form.legalStatus}` : ""}</div>
+            <div className="mono" style={{ fontSize: 11, color: "var(--ink-soft)" }}>{form.id} · {form.formType || "Company Formation"} · Created {fmtDate(form.createdAt)}{form.legalStatus ? ` · ${form.legalStatus}` : ""}</div>
           </div>
         </div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -266,10 +269,10 @@ export function OnboardingFormTab({ api, customerId }) {
 
   useEffect(() => { load(); }, [customerId]);
 
-  const newForm = async () => {
-    setCreating(true); setError("");
+  const newForm = async (formType) => {
+    setCreating(formType); setError("");
     try {
-      await api.customers.createOnboarding(customerId);
+      await api.customers.createOnboarding(customerId, formType);
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't create a new form — please try again.");
@@ -284,9 +287,12 @@ export function OnboardingFormTab({ api, customerId }) {
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
         <p className="modal-sub" style={{ margin: 0 }}>
-          Company-formation data collection — a customer can have several forms over time (e.g. repeat company formations); each is kept as its own record.
+          Data collection — a customer can have several forms over time (e.g. repeat company formations); each is kept as its own record. Create one blank and download it straight away for manual/offline collection, or generate a link for the client to fill in themselves.
         </p>
-        <button className="btn btn-primary btn-sm" disabled={creating} onClick={newForm}><Plus size={14} /> {creating ? "Creating…" : "New Form"}</button>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button className="btn btn-sm" disabled={!!creating} onClick={()=>newForm("Company Formation")}><Plus size={14} /> {creating === "Company Formation" ? "Creating…" : "New Company Formation"}</button>
+          <button className="btn btn-sm" disabled={!!creating} onClick={()=>newForm("E-commerce License")}><Plus size={14} /> {creating === "E-commerce License" ? "Creating…" : "New E-commerce License"}</button>
+        </div>
       </div>
 
       {error && <div className="side-note" style={{ borderColor: "#EFC3BC", background: "var(--danger-tint)", marginBottom: 14 }}>{error}</div>}
@@ -355,7 +361,7 @@ export function PublicOnboardingPage({ token }) {
   return (
     <div style={pageStyle}>
       <div style={cardStyle}>
-        <h2 style={{ margin: "0 0 4px" }}>Company Formation — Data Collection Form</h2>
+        <h2 style={{ margin: "0 0 4px" }}>{form.formType || "Company Formation"} — Data Collection Form</h2>
         <p className="modal-sub" style={{ marginTop: 0, marginBottom: 20 }}>{customerName}</p>
 
         {submitted ? (

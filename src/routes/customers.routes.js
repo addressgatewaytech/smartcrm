@@ -391,6 +391,7 @@ router.get("/:id/statement/pdf", async (req, res) => {
 // for the unauthenticated counterpart of GET/PATCH below.
 const mapOnboardingForm = (row) => ({
   id: row.id,
+  formType: row.form_type || "Company Formation",
   companyNamesEn: row.company_names_en || [], companyNamesAr: row.company_names_ar || [],
   activities: row.activities || [], capitalAmount: row.capital_amount,
   legalStatus: row.legal_status || "WLL", partners: row.partners || [], visas: row.visas || [],
@@ -405,12 +406,24 @@ router.get("/:id/onboarding", async (req, res) => {
 router.post("/:id/onboarding", async (req, res) => {
   const [customer] = await query("SELECT id FROM customers WHERE id = ?", [req.params.id]);
   if (!customer) return res.status(404).json({ error: "Not found" });
+  const formType = req.body?.formType === "E-commerce License" ? "E-commerce License" : "Company Formation";
   const id = nextId("OB");
   const token = crypto.randomBytes(24).toString("hex");
-  await query(
-    `INSERT INTO onboarding_forms (id, customer_id, token, company_names_en, company_names_ar, activities, partners, visas, created_by) VALUES (?,?,?,'[]','[]','[]','[]','[]',?)`,
-    [id, req.params.id, token, req.user.id]
-  );
+  // Tolerates form_type not existing yet on a DB that hasn't had this feature's migration applied
+  // — falls back to creating a plain (always "Company Formation") form instead of a 500, same
+  // reasoning as the customer_audits fallback in GET /customers above.
+  try {
+    await query(
+      `INSERT INTO onboarding_forms (id, customer_id, token, form_type, company_names_en, company_names_ar, activities, partners, visas, created_by) VALUES (?,?,?,?,'[]','[]','[]','[]','[]',?)`,
+      [id, req.params.id, token, formType, req.user.id]
+    );
+  } catch (err) {
+    if (err.code !== "ER_BAD_FIELD_ERROR") throw err;
+    await query(
+      `INSERT INTO onboarding_forms (id, customer_id, token, company_names_en, company_names_ar, activities, partners, visas, created_by) VALUES (?,?,?,'[]','[]','[]','[]','[]',?)`,
+      [id, req.params.id, token, req.user.id]
+    );
+  }
   const [row] = await query("SELECT * FROM onboarding_forms WHERE id = ?", [id]);
   res.status(201).json(mapOnboardingForm(row));
 });

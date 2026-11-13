@@ -76,7 +76,8 @@ function generateOnboardingFormPdf(form, customerName, res) {
   doc.moveTo(MARGIN, y).lineTo(right, y).strokeColor(ACCENT).lineWidth(2).stroke();
   y += 14;
 
-  doc.font("Inter-Bold").fontSize(19).fillColor(INK).text("COMPANY FORMATION", MARGIN, y);
+  const formType = form.form_type || "Company Formation";
+  doc.font("Inter-Bold").fontSize(19).fillColor(INK).text(formType.toUpperCase(), MARGIN, y);
   y = doc.y;
   doc.font("Inter-Bold").fontSize(19).fillColor(ACCENT).text("DATA COLLECTION FORM", MARGIN, y);
   y = doc.y + 6;
@@ -164,8 +165,10 @@ function generateOnboardingFormPdf(form, customerName, res) {
     y += 4;
   }
 
-  // 05 — Visa details
-  const visas = (form.visas || []).filter((v) => v.nationality || v.qty || v.occupation);
+  // 05 — Visa details — not part of an E-commerce License application at all, regardless of
+  // whatever happens to be sitting in the visas column (e.g. a leftover from before the form's
+  // type was fixed at creation).
+  const visas = formType === "E-commerce License" ? [] : (form.visas || []).filter((v) => v.nationality || v.qty || v.occupation);
   if (visas.length) {
     ensureRoom(40);
     y = sectionHeading(doc, "05", "Visa Details", MARGIN, y, width);

@@ -692,6 +692,9 @@ CREATE TABLE IF NOT EXISTS onboarding_forms (
   id                VARCHAR(20) PRIMARY KEY,
   customer_id       VARCHAR(20) NOT NULL,
   token             VARCHAR(64) NOT NULL UNIQUE,
+  -- Set once at creation, fixed for the form's lifetime — an E-commerce License form has no Visa
+  -- Details section at all (see OnboardingFormFields), since visas aren't part of that process.
+  form_type         ENUM('Company Formation','E-commerce License') NOT NULL DEFAULT 'Company Formation',
   company_names_en  JSON,
   company_names_ar  JSON,
   activities        JSON,

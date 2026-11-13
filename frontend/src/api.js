@@ -202,7 +202,7 @@ export const api = {
     removeEmployeeDoc: (id, empId, docId) => del(`/customers/${id}/employees/${empId}/docs/${docId}`),
     dashboard: (id) => get(`/customers/${id}/dashboard`),
     listOnboarding: (id) => get(`/customers/${id}/onboarding`),
-    createOnboarding: (id) => post(`/customers/${id}/onboarding`),
+    createOnboarding: (id, formType) => post(`/customers/${id}/onboarding`, { formType }),
     saveOnboarding: (id, formId, payload) => patch(`/customers/${id}/onboarding/${formId}`, payload),
     generateOnboardingLink: (id, formId) => post(`/customers/${id}/onboarding/${formId}/link`),
     // Same reasoning as quotations.downloadPdf: needs the Bearer auth header a plain <a href>

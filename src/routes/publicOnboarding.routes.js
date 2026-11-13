@@ -45,6 +45,7 @@ router.get("/:token", async (req, res) => {
   if (!row) return res.status(404).json({ error: "This form link is invalid." });
   res.json({
     customerName: row.customer_name,
+    formType: row.form_type || "Company Formation",
     companyNamesEn: row.company_names_en || [], companyNamesAr: row.company_names_ar || [],
     activities: row.activities || [], capitalAmount: row.capital_amount,
     legalStatus: row.legal_status || "WLL", partners: row.partners || [], visas: row.visas || [],
