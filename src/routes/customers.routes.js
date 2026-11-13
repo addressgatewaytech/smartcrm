@@ -385,6 +385,20 @@ router.get("/:id/statement/pdf", async (req, res) => {
 });
 
 // --- Onboarding Form (company-formation data collection) -----------------------------------
+// A completely blank template — no customer, no DB record — for grabbing a printable form
+// straight from the Customer & KYC list before a prospect is even entered in the CRM yet (the
+// exact paper-form use case this whole feature replaces). Placed ahead of the dynamic /:id
+// routes below only for readability; the path shapes never actually collide.
+router.get("/onboarding-template/pdf", (req, res) => {
+  const formType = req.query.formType === "E-commerce License" ? "E-commerce License" : "Company Formation";
+  generateOnboardingFormPdf({
+    id: "TEMPLATE", form_type: formType,
+    company_names_en: [], company_names_ar: [], activities: [],
+    capital_amount: null, legal_status: "WLL", partners: [], visas: [],
+    status: "Draft", created_at: new Date(),
+  }, "", res);
+});
+
 // A customer can have several forms over time (e.g. repeat company formations) — each its own
 // permanent record. Staff can view/fill one directly here, or generate a public link (a random
 // token, unique per form) so the client fills it in themselves — see publicOnboarding.routes.js

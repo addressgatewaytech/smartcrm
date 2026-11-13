@@ -4931,6 +4931,44 @@ function matchesExpiryFilter(customer, filterKey) {
   });
 }
 
+// A blank, customer-independent Data Collection Form — for printing before a prospect is even a
+// customer record in the CRM yet. Same dropdown pattern as SalesPeopleFilter below.
+function BlankOnboardingFormButton() {
+  const [open, setOpen] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+
+  const download = async (formType) => {
+    setOpen(false);
+    setDownloading(true);
+    try {
+      const blob = await api.customers.downloadOnboardingTemplate(formType);
+      downloadBlob(`${formType.replace(/[^a-z0-9]+/gi, "-")}-Blank-Form.pdf`, blob);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  return (
+    <div ref={ref} style={{ position:"relative" }}>
+      <button type="button" className="btn btn-sm" disabled={downloading} onClick={()=>setOpen(o=>!o)}>
+        <FileText size={13}/> {downloading ? "Generating…" : "Blank form"} <ChevronDown size={13}/>
+      </button>
+      {open && (
+        <div className="agw-card" style={{ position:"absolute", top:"100%", left:0, marginTop:4, zIndex:50, width:220, padding:6 }}>
+          <button type="button" className="btn btn-sm btn-ghost" style={{ width:"100%", justifyContent:"flex-start" }} onClick={()=>download("Company Formation")}>Company Formation</button>
+          <button type="button" className="btn btn-sm btn-ghost" style={{ width:"100%", justifyContent:"flex-start", marginTop:2 }} onClick={()=>download("E-commerce License")}>E-commerce License</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CustomersPage({ state, dispatch, role, userId, expiryFilterRequest, onExpiryFilterRequestHandled, initialCategoryFilter, setPage, onViewQuotation }) {
   const [view, setView] = useState("table");
   const [openId, setOpenId] = useState(null);
@@ -5038,6 +5076,7 @@ function CustomersPage({ state, dispatch, role, userId, expiryFilterRequest, onE
             <Download size={13}/> Export
           </button>
           {isAdmin && <button className="btn btn-sm" onClick={()=>setShowDuplicates(true)}><Copy size={13}/> Check duplicates</button>}
+          <BlankOnboardingFormButton />
           {role !== "viewer" && <button className="btn btn-primary" onClick={()=>setShowAdd(true)}><Plus size={15}/> New customer</button>}
         </div>
       </div>

@@ -17,6 +17,10 @@ const SMARTCRM_ASPECT = 294 / 157;
 
 const DISCLAIMER = "This document is issued solely for company-onboarding / data-collection purposes and carries no legal or financial effect on its own.";
 
+// Mirrors ROW_COUNTS in frontend/src/pages/onboardingForm.jsx — how many blank rows a printed
+// template shows per section (matches the old paper form this replaces).
+const ROW_COUNTS = { companyNames: 4, activities: 5, partners: 5, visas: 10 };
+
 /** Address Gateway wordmark + address, right-aligned — same block used on every other PDF. */
 function drawBrandHeader(doc, rightX, y) {
   const logoHeight = 30;
@@ -62,7 +66,8 @@ function generateOnboardingFormPdf(form, customerName, res) {
   const doc = new PDFDocument({ size: "A4", margin: MARGIN, bufferPages: true });
   registerFonts(doc);
   res.setHeader("Content-Type", "application/pdf");
-  res.setHeader("Content-Disposition", `attachment; filename="Onboarding-${form.id}.pdf"`);
+  const fileSlug = (form.form_type || "Company Formation").replace(/[^a-z0-9]+/gi, "-");
+  res.setHeader("Content-Disposition", `attachment; filename="${fileSlug}-${form.id}.pdf"`);
   doc.pipe(res);
 
   const right = doc.page.width - MARGIN;
@@ -84,12 +89,19 @@ function generateOnboardingFormPdf(form, customerName, res) {
   doc.font("Inter").fontSize(9).fillColor(GRAY).text(DISCLAIMER, MARGIN, y, { width });
   y = doc.y + 12;
 
-  // Customer / form meta strip
+  // Customer / form meta strip — a blank template (no customer, no real record) just shows a
+  // name line to write in by hand instead of a Form ID/Status/Created that wouldn't mean anything.
+  const isBlankTemplate = form.id === "TEMPLATE";
   doc.rect(MARGIN, y, width, 34).fill(ACCENT_TINT);
-  doc.font("Inter-SemiBold").fontSize(11).fillColor(INK).text(customerName || "", MARGIN + 10, y + 6, { width: width / 2 });
-  doc.font("Inter").fontSize(8).fillColor(GRAY)
-    .text(`Form ID: ${form.id}`, MARGIN + width / 2, y + 6, { width: width / 2 - 10, align: "right" });
-  doc.text(`Status: ${form.status}   ·   Created: ${fmtDate(form.created_at)}`, MARGIN + width / 2, y + 19, { width: width / 2 - 10, align: "right" });
+  if (isBlankTemplate) {
+    doc.font("Inter-SemiBold").fontSize(9).fillColor(GRAY).text("Customer / Prospect name:", MARGIN + 10, y + 6, { width: width - 20 });
+    doc.moveTo(MARGIN + 10, y + 26).lineTo(MARGIN + width - 10, y + 26).strokeColor(GRAY).lineWidth(0.5).stroke();
+  } else {
+    doc.font("Inter-SemiBold").fontSize(11).fillColor(INK).text(customerName || "", MARGIN + 10, y + 6, { width: width / 2 });
+    doc.font("Inter").fontSize(8).fillColor(GRAY)
+      .text(`Form ID: ${form.id}`, MARGIN + width / 2, y + 6, { width: width / 2 - 10, align: "right" });
+    doc.text(`Status: ${form.status}   ·   Created: ${fmtDate(form.created_at)}`, MARGIN + width / 2, y + 19, { width: width / 2 - 10, align: "right" });
+  }
   doc.fillColor(INK);
   y += 46;
 
@@ -97,32 +109,47 @@ function generateOnboardingFormPdf(form, customerName, res) {
     if (y + needed > doc.page.height - MARGIN - 30) { doc.addPage(); y = MARGIN; }
   };
 
+  // A blank template shows every row as a fillable blank line (underline) instead of skipping
+  // rows that have nothing in them yet — the whole point of printing one is to hand-write onto
+  // it. A real customer's record keeps the old behavior: only ever show what's actually filled.
+  const blankLine = (x, lineY, w) => { doc.moveTo(x, lineY).lineTo(x + w, lineY).strokeColor(HAIR).lineWidth(0.75).stroke(); };
+
   // 01 — Preferred company names
   y = sectionHeading(doc, "01", "Preferred Company Names", MARGIN, y, width);
-  const names = form.company_names_en || [];
-  const namesAr = form.company_names_ar || [];
+  const names = isBlankTemplate ? Array(ROW_COUNTS.companyNames).fill("") : (form.company_names_en || []);
+  const namesAr = isBlankTemplate ? Array(ROW_COUNTS.companyNames).fill("") : (form.company_names_ar || []);
   const colW = width / 2 - 10;
   names.forEach((en, i) => {
     const ar = namesAr[i] || "";
-    if (!en && !ar) return;
+    if (!isBlankTemplate && !en && !ar) return;
     ensureRoom(16);
-    const enHeight = doc.font("Inter").fontSize(9.5).heightOfString(en || "—", { width: colW - 18 });
+    const enHeight = isBlankTemplate ? 14 : doc.font("Inter").fontSize(9.5).heightOfString(en || "—", { width: colW - 18 });
     doc.font("Inter-SemiBold").fontSize(9).fillColor(GRAY).text(`${String.fromCharCode(65 + i)}.`, MARGIN, y, { width: 18, lineBreak: false });
-    doc.font("Inter").fontSize(9.5).fillColor(INK).text(en || "—", MARGIN + 18, y, { width: colW - 18 });
-    if (ar) doc.font("Inter").fontSize(9.5).fillColor(INK).text(ar, MARGIN + colW + 20, y, { width: colW, align: "right" });
+    if (isBlankTemplate) {
+      blankLine(MARGIN + 18, y + 11, colW - 18);
+      blankLine(MARGIN + colW + 20, y + 11, colW);
+    } else {
+      doc.font("Inter").fontSize(9.5).fillColor(INK).text(en || "—", MARGIN + 18, y, { width: colW - 18 });
+      if (ar) doc.font("Inter").fontSize(9.5).fillColor(INK).text(ar, MARGIN + colW + 20, y, { width: colW, align: "right" });
+    }
     y += Math.max(14, enHeight) + 5;
   });
   y += 8;
 
   // 02 — Activities
-  const activities = (form.activities || []).filter((a) => a.en || a.ar || a.number);
+  const activities = isBlankTemplate ? Array(ROW_COUNTS.activities).fill({ en: "", ar: "", number: "" }) : (form.activities || []).filter((a) => a.en || a.ar || a.number);
   if (activities.length) {
     ensureRoom(24);
     y = sectionHeading(doc, "02", "Business Activities", MARGIN, y, width);
     activities.forEach((a, i) => {
       ensureRoom(16);
-      doc.font("Inter").fontSize(9.5).fillColor(INK).text(`${i + 1}. ${a.en || "—"}${a.number ? `  (No. ${a.number})` : ""}`, MARGIN, y, { width });
-      y = doc.y + 4;
+      if (isBlankTemplate) {
+        doc.font("Inter-SemiBold").fontSize(9).fillColor(GRAY).text(`${i + 1}.`, MARGIN, y, { width: 18, lineBreak: false });
+        blankLine(MARGIN + 18, y + 11, width - 18);
+      } else {
+        doc.font("Inter").fontSize(9.5).fillColor(INK).text(`${i + 1}. ${a.en || "—"}${a.number ? `  (No. ${a.number})` : ""}`, MARGIN, y, { width });
+      }
+      y = (isBlankTemplate ? y + 14 : doc.y) + 4;
     });
     y += 8;
   }
@@ -130,15 +157,16 @@ function generateOnboardingFormPdf(form, customerName, res) {
   // 03 — Capital & legal status
   ensureRoom(30);
   y = sectionHeading(doc, "03", "Capital & Legal Status", MARGIN, y, width);
-  doc.font("Inter-SemiBold").fontSize(9).fillColor(GRAY).text("Capital amount (QAR)", MARGIN, y, { continued: true, width: 160 });
-  doc.font("Inter").fontSize(9.5).fillColor(INK).text(`  ${form.capital_amount != null ? Number(form.capital_amount).toLocaleString() : "—"}`);
-  y = doc.y + 4;
+  doc.font("Inter-SemiBold").fontSize(9).fillColor(GRAY).text("Capital amount (QAR)", MARGIN, y, { continued: !isBlankTemplate, width: 160 });
+  if (isBlankTemplate) blankLine(MARGIN + 150, y + 11, 160);
+  else doc.font("Inter").fontSize(9.5).fillColor(INK).text(`  ${form.capital_amount != null ? Number(form.capital_amount).toLocaleString() : "—"}`);
+  y = (isBlankTemplate ? y + 14 : doc.y) + 4;
   doc.font("Inter-SemiBold").fontSize(9).fillColor(GRAY).text("Legal status", MARGIN, y, { continued: true, width: 160 });
   doc.font("Inter").fontSize(9.5).fillColor(INK).text(`  ${form.legal_status || "WLL"}`);
   y = doc.y + 12;
 
   // 04 — Partners
-  const partners = (form.partners || []).filter((p) => p.name);
+  const partners = isBlankTemplate ? Array(ROW_COUNTS.partners).fill({}) : (form.partners || []).filter((p) => p.name);
   if (partners.length) {
     ensureRoom(24);
     y = sectionHeading(doc, "04", "Partners — Shares & Contact Details", MARGIN, y, width);
@@ -147,18 +175,19 @@ function generateOnboardingFormPdf(form, customerName, res) {
       ensureRoom(cardH + 8);
       doc.roundedRect(MARGIN, y, width, cardH, 4).fillAndStroke("#FAFBFB", HAIR);
       const px = MARGIN + 12;
-      doc.font("Inter-SemiBold").fontSize(9.5).fillColor(ACCENT).text(`Partner ${i + 1} — ${p.name}`, px, y + 10, { width: width - 24 });
+      doc.font("Inter-SemiBold").fontSize(9.5).fillColor(ACCENT).text(isBlankTemplate ? `Partner ${i + 1}` : `Partner ${i + 1} — ${p.name}`, px, y + 10, { width: width - 24 });
       const row1 = y + 28;
       const colWidth = (width - 24) / 3;
-      doc.font("Inter").fontSize(8.5).fillColor(GRAY).text(`ID/QID/Passport: ${p.idNumber || "—"}`, px, row1, { width: colWidth });
-      doc.text(`Nationality: ${p.nationality || "—"}`, px + colWidth, row1, { width: colWidth });
-      doc.text(`Share: ${p.sharePercent != null && p.sharePercent !== "" ? p.sharePercent + "%" : "—"}`, px + colWidth * 2, row1, { width: colWidth });
+      const blank = isBlankTemplate ? "" : "—";
+      doc.font("Inter").fontSize(8.5).fillColor(GRAY).text(`ID/QID/Passport: ${p.idNumber || blank}`, px, row1, { width: colWidth });
+      doc.text(`Nationality: ${p.nationality || blank}`, px + colWidth, row1, { width: colWidth });
+      doc.text(`Share: ${p.sharePercent != null && p.sharePercent !== "" ? p.sharePercent + "%" : blank}`, px + colWidth * 2, row1, { width: colWidth });
       const row2 = row1 + 16;
-      doc.text(`Mobile: ${p.mobile || "—"}`, px, row2, { width: colWidth });
-      doc.text(`Email: ${p.email || "—"}`, px + colWidth, row2, { width: colWidth * 2 });
+      doc.text(`Mobile: ${p.mobile || blank}`, px, row2, { width: colWidth });
+      doc.text(`Email: ${p.email || blank}`, px + colWidth, row2, { width: colWidth * 2 });
       const row3 = row2 + 16;
-      doc.text(`P.O. Box: ${p.poBox || "—"}`, px, row3, { width: colWidth });
-      doc.text(`Signature authority: ${p.signatureAuthority ? "Yes" : "No"}`, px + colWidth, row3, { width: colWidth * 2 });
+      doc.text(`P.O. Box: ${p.poBox || blank}`, px, row3, { width: colWidth });
+      doc.text(`Signature authority: ${isBlankTemplate ? "☐ Yes   ☐ No" : (p.signatureAuthority ? "Yes" : "No")}`, px + colWidth, row3, { width: colWidth * 2 });
       doc.fillColor(INK);
       y += cardH + 8;
     });
@@ -168,7 +197,7 @@ function generateOnboardingFormPdf(form, customerName, res) {
   // 05 — Visa details — not part of an E-commerce License application at all, regardless of
   // whatever happens to be sitting in the visas column (e.g. a leftover from before the form's
   // type was fixed at creation).
-  const visas = formType === "E-commerce License" ? [] : (form.visas || []).filter((v) => v.nationality || v.qty || v.occupation);
+  const visas = formType === "E-commerce License" ? [] : isBlankTemplate ? Array(ROW_COUNTS.visas).fill({}) : (form.visas || []).filter((v) => v.nationality || v.qty || v.occupation);
   if (visas.length) {
     ensureRoom(40);
     y = sectionHeading(doc, "05", "Visa Details", MARGIN, y, width);

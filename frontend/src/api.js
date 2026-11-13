@@ -214,6 +214,15 @@ export const api = {
       if (!res.ok) throw new ApiError("Failed to generate PDF", res.status);
       return res.blob();
     },
+    // A blank, customer-independent template — for printing before a prospect is even a customer
+    // record yet, straight from the Customer & KYC list.
+    downloadOnboardingTemplate: async (formType) => {
+      const headers = {};
+      if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
+      const res = await fetch(`/api/customers/onboarding-template/pdf?formType=${encodeURIComponent(formType)}`, { headers, cache: "no-store" });
+      if (!res.ok) throw new ApiError("Failed to generate PDF", res.status);
+      return res.blob();
+    },
     downloadStatementPdf: async (id) => {
       const headers = {};
       if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
