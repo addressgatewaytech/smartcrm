@@ -442,6 +442,17 @@ const CSS = `
     .agw-bottom-nav.theme-glass .agw-bottom-item.active::before { display: none; }
     .agw-bottom-nav.theme-glass .agw-bottom-item .dot { border-color: rgba(255,255,255,.9); }
     .agw-shell.theme-glass .agw-content { padding-bottom: 96px; }
+
+    /* The "More" sheet is the mobile stand-in for the sidebar (hidden below this breakpoint) —
+       same light-glass treatment as .agw-sidebar gets on desktop. It renders as a sibling of
+       .agw-shell too, so this is scoped off .agw.theme-glass (the outer wrapper) rather than
+       .agw-shell.theme-glass, same fix as the bottom nav above. */
+    .agw.theme-glass .agw-more-panel { background: rgba(255,255,255,.86); backdrop-filter: blur(24px) saturate(180%); -webkit-backdrop-filter: blur(24px) saturate(180%);
+      border-top: 1px solid rgba(255,255,255,.9); box-shadow: 0 -10px 30px rgba(14,51,80,.14);
+      --sidebar: rgba(255,255,255,.7); --sidebar-line: rgba(14,51,80,.12); --sidebar-text: #3F4A54; --sidebar-text-dim: #8DA0AC; }
+    .agw.theme-glass .agw-more-panel .agw-nav-item:hover { background: rgba(15,153,179,.1); color: #0E3350; }
+    .agw.theme-glass .agw-more-panel .agw-nav-item.active { background: linear-gradient(135deg,#0F99B3,#0B7E93); }
+    .agw.theme-glass .agw-more-panel .agw-userbox select { background: rgba(255,255,255,.7); color: #0E3350; }
   }
 
   .agw .theme-glass-page { margin: -24px; padding: 24px; min-height: calc(100% + 48px);
@@ -1653,7 +1664,7 @@ export default function App() {
   };
 
   return (
-    <div className="agw" style={{ height: "100%" }}>
+    <div className={`agw ${glassTheme ? "theme-glass" : ""}`} style={{ height: "100%" }}>
       <style>{CSS}</style>
       <link rel="preconnect" href="https://fonts.googleapis.com" />
       <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -1856,7 +1867,11 @@ export default function App() {
           <div className="agw-more-backdrop" onClick={()=>setShowMore(false)} />
           <div className="agw-more-panel">
             <div className="agw-more-handle" />
-            <div style={{ padding: "0 12px 14px" }}><BrandLogo scale={0.85} onDark /></div>
+            <div style={{ padding: "0 12px 14px" }}>
+              {glassTheme
+                ? <img src="/logo-smart-crm-dark.png" alt="Smart CRM" style={{ display: "block", height: 34, width: "auto" }} />
+                : <BrandLogo scale={0.85} onDark />}
+            </div>
             <nav className="agw-nav" style={{ padding: "0 8px", overflow: "visible" }}>
               {visibleNav.map(g => (
                 <div key={g.group || g.items[0].key}>
@@ -1871,6 +1886,12 @@ export default function App() {
                 </div>
               ))}
             </nav>
+            {glassTheme && (
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:6, padding:"14px 12px 0" }}>
+                <span style={{ fontSize:9.5, color:"var(--sidebar-text-dim)", letterSpacing:".06em", textTransform:"uppercase" }}>Powered by</span>
+                <img src="/logo-address-gateway.png" alt="Address Gateway Business Services" style={{ height:18, width:"auto", display:"block" }} />
+              </div>
+            )}
             <div className="agw-userbox" style={{ marginTop: 8 }}>
               {currentUser.roles.length > 1 && (
                 <>
