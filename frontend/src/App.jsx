@@ -967,6 +967,7 @@ const NAV = [
     { key: "customersAddressGateway", moduleKey: "customers", moduleLabel: "Customer & KYC", label: "Address Gateway", icon: UserCheck, roles: [...ADMIN_LIKE,"sales_manager","sales_exec","accounts","ops_manager","pro_head","pro"] },
     { key: "customersOthers", moduleKey: "customers", label: "Others", icon: UserCheck, roles: [...ADMIN_LIKE,"sales_manager","sales_exec","accounts","ops_manager","pro_head","pro"] },
     { key: "customersAll", moduleKey: "customers", label: "All Customers", icon: UserCheck, roles: [...ADMIN_LIKE,"sales_manager","sales_exec","accounts","ops_manager","pro_head","pro"] },
+    { key: "onboardingTemplates", moduleKey: "customers", label: "Onboarding", icon: FileText, roles: [...ADMIN_LIKE,"sales_manager","sales_exec","accounts","ops_manager","pro_head","pro"] },
   ]},
   { group: "Finance", items: [
     { key: "orders", label: "Sales Orders", icon: ShoppingCart, roles: [...ADMIN_LIKE,"sales_manager","accounts"] },
@@ -1425,6 +1426,7 @@ export default function App() {
     customersAddressGateway: ["Customer & KYC — Address Gateway", "Client records, employee documents, and expiry status"],
     customersOthers: ["Customer & KYC — Others", "Client records, employee documents, and expiry status"],
     customersAll: ["Customer & KYC — All Customers", "Client records, employee documents, and expiry status"],
+    onboardingTemplates: ["Onboarding", "Blank Data Collection Forms — print and fill before a prospect is even a customer record"],
     dataManager: ["Data Manager", "Collect, clean, assign and track outreach data — separate from CRM Leads"],
     subscriptions: ["Subscriptions", "Growth Partner Program packages and customer subscription tracking"],
     orders: ["Sales Orders", "Confirmed orders converted from approved quotations"],
@@ -1562,6 +1564,7 @@ export default function App() {
             {page === "customersAddressGateway" && <CustomersPage {...ctx} setPage={setPage} onViewQuotation={onViewQuotation} initialCategoryFilter="Address Gateway Customers" expiryFilterRequest={customersExpiryFilterRequest} onExpiryFilterRequestHandled={()=>setCustomersExpiryFilterRequest(null)} />}
             {page === "customersOthers" && <CustomersPage {...ctx} setPage={setPage} onViewQuotation={onViewQuotation} initialCategoryFilter="Others" expiryFilterRequest={customersExpiryFilterRequest} onExpiryFilterRequestHandled={()=>setCustomersExpiryFilterRequest(null)} />}
             {page === "customersAll" && <CustomersPage {...ctx} setPage={setPage} onViewQuotation={onViewQuotation} initialCategoryFilter="" expiryFilterRequest={customersExpiryFilterRequest} onExpiryFilterRequestHandled={()=>setCustomersExpiryFilterRequest(null)} />}
+            {page === "onboardingTemplates" && <OnboardingTemplatesPage />}
             {page === "dataManager" && <DataManagerPage {...ctx} />}
             {page === "subscriptions" && <SubscriptionsPage {...ctx} />}
             {page === "orders" && <OrdersPage {...ctx} setPage={setPage} highlightId={highlightSalesOrderId} onHighlightHandled={()=>setHighlightSalesOrderId(null)}
@@ -4931,40 +4934,50 @@ function matchesExpiryFilter(customer, filterKey) {
   });
 }
 
-// A blank, customer-independent Data Collection Form — for printing before a prospect is even a
-// customer record in the CRM yet. Same dropdown pattern as SalesPeopleFilter below.
-function BlankOnboardingFormButton() {
-  const [open, setOpen] = useState(false);
-  const [downloading, setDownloading] = useState(false);
-  const ref = useRef(null);
-  useEffect(() => {
-    const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, []);
+// Its own sidebar page (Customer & KYC > Onboarding) rather than a button buried in the Customers
+// list toolbar — a blank, customer-independent Data Collection Form, for printing and collecting
+// a prospect's details by hand before they're even entered in the CRM (the old paper-form use
+// case this whole feature replaces). Click either card to download that type's blank PDF.
+function OnboardingTemplatesPage() {
+  const [downloading, setDownloading] = useState(null);
 
   const download = async (formType) => {
-    setOpen(false);
-    setDownloading(true);
+    if (downloading) return;
+    setDownloading(formType);
     try {
       const blob = await api.customers.downloadOnboardingTemplate(formType);
       downloadBlob(`${formType.replace(/[^a-z0-9]+/gi, "-")}-Blank-Form.pdf`, blob);
     } finally {
-      setDownloading(false);
+      setDownloading(null);
     }
   };
 
+  const cards = [
+    { type: "Company Formation", icon: Building2, desc: "Preferred company names, business activities, capital & legal status, partners' shares and contact details, and visa details." },
+    { type: "E-commerce License", icon: ShoppingCart, desc: "Same sections as Company Formation, minus Visa Details — visas aren't part of an e-commerce license application." },
+  ];
+
   return (
-    <div ref={ref} style={{ position:"relative" }}>
-      <button type="button" className="btn btn-sm" disabled={downloading} onClick={()=>setOpen(o=>!o)}>
-        <FileText size={13}/> {downloading ? "Generating…" : "Blank form"} <ChevronDown size={13}/>
-      </button>
-      {open && (
-        <div className="agw-card" style={{ position:"absolute", top:"100%", left:0, marginTop:4, zIndex:50, width:220, padding:6 }}>
-          <button type="button" className="btn btn-sm btn-ghost" style={{ width:"100%", justifyContent:"flex-start" }} onClick={()=>download("Company Formation")}>Company Formation</button>
-          <button type="button" className="btn btn-sm btn-ghost" style={{ width:"100%", justifyContent:"flex-start", marginTop:2 }} onClick={()=>download("E-commerce License")}>E-commerce License</button>
-        </div>
-      )}
+    <div>
+      <p className="modal-sub" style={{ marginTop:0, marginBottom:16 }}>
+        A blank Data Collection Form — no customer record needed. Click a card below to download and print it, ready to fill in by hand with a prospect before they're even entered in the CRM.
+      </p>
+      <div className="agw-grid" style={{ gridTemplateColumns:"repeat(2,1fr)" }}>
+        {cards.map(c => (
+          <div key={c.type} className="agw-card" style={{ cursor: downloading ? "default" : "pointer" }} onClick={()=>download(c.type)}>
+            <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
+              <div style={{ width:40, height:40, borderRadius:10, background:"var(--brand-tint)", color:"var(--brand)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                <c.icon size={20}/>
+              </div>
+              <strong style={{ fontSize:15 }}>{c.type}</strong>
+            </div>
+            <p style={{ fontSize:12.5, color:"var(--ink-soft)", marginBottom:14 }}>{c.desc}</p>
+            <button className="btn btn-primary btn-sm" disabled={!!downloading} onClick={(e)=>{ e.stopPropagation(); download(c.type); }}>
+              <Download size={13}/> {downloading===c.type ? "Generating…" : "Download blank form"}
+            </button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -5076,7 +5089,6 @@ function CustomersPage({ state, dispatch, role, userId, expiryFilterRequest, onE
             <Download size={13}/> Export
           </button>
           {isAdmin && <button className="btn btn-sm" onClick={()=>setShowDuplicates(true)}><Copy size={13}/> Check duplicates</button>}
-          <BlankOnboardingFormButton />
           {role !== "viewer" && <button className="btn btn-primary" onClick={()=>setShowAdd(true)}><Plus size={15}/> New customer</button>}
         </div>
       </div>
