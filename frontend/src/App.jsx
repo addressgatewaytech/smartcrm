@@ -160,6 +160,13 @@ const CSS = `
 
   .kpi-label { font-size: 12px; color: var(--ink-soft); margin-bottom: 6px; }
   .kpi-value { font-family: 'Space Grotesk', sans-serif; font-size: 26px; font-weight: 500; }
+  .kpi-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; gap: 8px; }
+  .kpi-top .kpi-label { margin-bottom: 0; }
+  .kpi-trend { font-size: 10.5px; font-weight: 700; padding: 3px 8px; border-radius: 20px; white-space: nowrap; flex-shrink: 0; }
+  .kpi-trend.up { background: var(--success-tint); color: var(--success); }
+  .kpi-trend.down { background: var(--danger-tint); color: var(--danger); }
+  .kpi-foot { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--hair); font-size: 11px; color: var(--ink-soft);
+    display: flex; justify-content: space-between; align-items: center; }
   .kpi-foot { font-size: 11.5px; color: var(--ink-soft); margin-top: 4px; }
 
   .agw-table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -422,6 +429,19 @@ const CSS = `
   @media (max-width: 860px) {
     .agw-shell.theme-glass { padding: 10px; gap: 10px; }
     .agw-shell.theme-glass .agw-topbar { margin-bottom: 10px; }
+    /* Same floating-glass treatment as the sidebar/topbar: inset from the screen edges and
+       rounded, rather than a flush bar — the active tab gets a filled pill instead of the
+       classic thin top indicator line. The class goes directly on <nav> (not .agw-shell), since
+       the bottom nav renders as a sibling of .agw-shell, not a descendant of it. */
+    .agw-bottom-nav.theme-glass { left: 10px; right: 10px; bottom: 10px; height: 64px; border-radius: 20px;
+      background: rgba(255,255,255,.72); backdrop-filter: blur(24px) saturate(180%); -webkit-backdrop-filter: blur(24px) saturate(180%);
+      border: 1px solid rgba(255,255,255,.9); box-shadow: inset 0 1px 0 rgba(255,255,255,.95), 0 10px 30px rgba(14,51,80,.14);
+      padding-bottom: 0; gap: 4px; padding-left: 6px; padding-right: 6px; }
+    .agw-bottom-nav.theme-glass .agw-bottom-item { color: #8DA0AC; margin: 8px 0; border-radius: 14px; }
+    .agw-bottom-nav.theme-glass .agw-bottom-item.active { color: #fff; background: linear-gradient(135deg,#0F99B3,#0B7E93); box-shadow: 0 6px 16px rgba(15,153,179,.35); }
+    .agw-bottom-nav.theme-glass .agw-bottom-item.active::before { display: none; }
+    .agw-bottom-nav.theme-glass .agw-bottom-item .dot { border-color: rgba(255,255,255,.9); }
+    .agw-shell.theme-glass .agw-content { padding-bottom: 96px; }
   }
 
   .agw .theme-glass-page { margin: -24px; padding: 24px; min-height: calc(100% + 48px);
@@ -1814,7 +1834,7 @@ export default function App() {
       </div>
       <TableScrollHint />
 
-      <nav className="agw-bottom-nav">
+      <nav className={`agw-bottom-nav ${glassTheme ? "theme-glass" : ""}`}>
         <button className={`agw-bottom-item ${page==="dashboard"?"active":""}`} onClick={()=>setPage("dashboard")}>
           <LayoutDashboard size={20}/><span>Home</span>
         </button>
@@ -1920,6 +1940,19 @@ function Dashboard({ state, dispatch, role, userId, setPage, onOpenExpiredCustom
   const periodLeads = state.leads.filter(l => inRange(l.createdAt, range)).length;
   const periodJobsCompleted = state.jobCards.filter(j => j.status==="Completed" && j.statusLog?.some(s=>s.status==="Completed" && inRange(s.at, range))).length;
 
+  // Real "vs. last period" trend badges on the period-scoped KPI cards below — each one reruns
+  // the exact same filter over the equal-length stretch immediately before the current range, so
+  // the percentage is an honest comparison, not a placeholder. A KPI that's a live snapshot
+  // (Pipeline value, Pending collection, ...) rather than a period total has no such badge —
+  // there's no meaningful "previous period" for a current balance.
+  const prevRange = previousPeriodRange(range);
+  const prevPeriodLeads = state.leads.filter(l => inRange(l.createdAt, prevRange)).length;
+  const prevBusinessVolume = state.quotations.filter(q => q.status === "Approved" && q.feeType !== "Government Fee" && inRange(q.createdAt, prevRange))
+    .reduce((a,q) => a + quoteBusinessVolume(q, state.serviceCosts), 0);
+  const prevPeriodJobsCompleted = state.jobCards.filter(j => j.status==="Completed" && j.statusLog?.some(s=>s.status==="Completed" && inRange(s.at, prevRange))).length;
+  const prevPeriodInvoiced = state.invoices.filter(inv => inv.feeType !== "Government Fee" && inRange(inv.createdAt, prevRange)).reduce((a,inv)=>a+inv.amount,0);
+  const prevPeriodCollected = state.invoices.reduce((a,inv) => a + inv.payments.filter(p=>inRange(p.date, prevRange)).reduce((x,p)=>x+p.amount,0), 0);
+
   // Leads handed to this user by the Lead Manager vs. ones they brought in themselves. assignedAt
   // is only ever stamped on a central-distribution hand-off (see leads.routes.js), so it's exactly
   // what separates the two — a rep's self-added lead is owned from creation and never gets one.
@@ -1929,10 +1962,14 @@ function Dashboard({ state, dispatch, role, userId, setPage, onOpenExpiredCustom
   // Total value quoted in the period, regardless of outcome — the top of the funnel, where
   // "Business volume" above counts only the Approved ones.
   const periodQuotationsValue = state.quotations.filter(q => inRange(q.createdAt, range)).reduce((a,q) => a + quoteAmount(q), 0);
+  const prevPeriodQuotationsValue = state.quotations.filter(q => inRange(q.createdAt, prevRange)).reduce((a,q) => a + quoteAmount(q), 0);
   // won_at was added to deals long after the table itself, so deals closed before that column
   // existed have none — fall back to createdAt, otherwise every historical win drops out entirely.
   const closedDealValue = state.deals
     .filter(d => d.stage === "Won" && inRange(d.wonAt || d.createdAt, range))
+    .reduce((a,d) => a + d.value, 0);
+  const prevClosedDealValue = state.deals
+    .filter(d => d.stage === "Won" && inRange(d.wonAt || d.createdAt, prevRange))
     .reduce((a,d) => a + d.value, 0);
   // GET /invoices deliberately also hands a plain sales_exec any invoice with no linked sales
   // order (e.g. subscription billing) so someone is responsible for chasing it — but that means
@@ -2135,54 +2172,60 @@ function Dashboard({ state, dispatch, role, userId, setPage, onOpenExpiredCustom
     state.invoices.reduce((a,inv) => a + inv.payments.filter(p=>(p.date||"").slice(0,7)===key).reduce((x,p)=>x+p.amount,0), 0)
   );
 
+  // Every card's footer names what it's actually counting — the current period for anything
+  // filtered by the period picker above, or what kind of live snapshot it is otherwise (a
+  // snapshot never gets a trend badge either; see pctChange above for why).
+  const periodLabel = PERIODS.find(p => p.key === period)?.label || "This period";
+
   // Shown on every role's dashboard, whatever else that role sees — leads handed to you and leads
   // you sourced yourself are tracked separately so neither hides inside a single combined count.
+  // Lifetime counts (not period-filtered), so no trend badge.
   const myLeadKpis = [
-    { label: "Assigned leads", value: myAssignedLeads, page: "leads" },
-    { label: "My leads", value: myOwnLeads, page: "leads" },
+    { label: "Assigned leads", value: myAssignedLeads, page: "leads", sub: "By the Lead Manager" },
+    { label: "My leads", value: myOwnLeads, page: "leads", sub: "Self-sourced" },
   ];
   // The money funnel: quoted -> won -> collected -> still owed. Collected is period-scoped;
   // pending is the live total owed across all invoices, since a balance isn't a period figure.
   const valueKpis = [
-    { label: "Quotations value", value: money(periodQuotationsValue), page: "quotations" },
-    { label: "Closed deal value", value: money(closedDealValue), page: "deals" },
-    { label: "Payment collected", value: money(periodCollected), page: "invoices" },
-    { label: "Pending collection", value: money(role === "sales_exec" ? myOutstanding : outstanding), page: "invoices" },
+    { label: "Quotations value", value: money(periodQuotationsValue), page: "quotations", sub: periodLabel, trend: pctChange(periodQuotationsValue, prevPeriodQuotationsValue) },
+    { label: "Closed deal value", value: money(closedDealValue), page: "deals", sub: periodLabel, trend: pctChange(closedDealValue, prevClosedDealValue) },
+    { label: "Payment collected", value: money(periodCollected), page: "invoices", sub: periodLabel, trend: pctChange(periodCollected, prevPeriodCollected) },
+    { label: "Pending collection", value: money(role === "sales_exec" ? myOutstanding : outstanding), page: "invoices", sub: "Outstanding now" },
   ];
 
   // Every KPI links to the page it's counted from — clicking the number takes you straight there
   // instead of leaving you to find the right nav item yourself.
   const kpis = ["ops_manager","ops_member","pro_head","pro"].includes(role) ? [
-    { label: "Jobs in progress", value: jobsInProgress, page: "jobs" },
-    { label: "Completed", value: jobsCompleted, page: "jobs" },
-    { label: "Cancelled", value: jobsCancelled, page: "jobs" },
-    { label: (role === "ops_member" || role === "pro") ? "Assigned to me" : "Unassigned jobs", value: (role === "ops_member" || role === "pro") ? myJobs.length : state.jobCards.filter(j=>j.assignees.length===0).length, page: "jobs" },
+    { label: "Jobs in progress", value: jobsInProgress, page: "jobs", sub: "Right now" },
+    { label: "Completed", value: jobsCompleted, page: "jobs", sub: "All time" },
+    { label: "Cancelled", value: jobsCancelled, page: "jobs", sub: "All time" },
+    { label: (role === "ops_member" || role === "pro") ? "Assigned to me" : "Unassigned jobs", value: (role === "ops_member" || role === "pro") ? myJobs.length : state.jobCards.filter(j=>j.assignees.length===0).length, page: "jobs", sub: "Right now" },
     ...myLeadKpis,
   ] : role === "accounts" ? [
-    { label: "Outstanding balance", value: money(outstanding), page: "invoices" },
-    { label: "Invoiced this period", value: money(periodInvoiced), page: "invoices" },
-    { label: "Collected this period", value: money(periodCollected), page: "invoices" },
-    { label: "Paid in full", value: state.invoices.filter(i=>i.status==="Paid").length, page: "invoices" },
+    { label: "Outstanding balance", value: money(outstanding), page: "invoices", sub: "Live balance" },
+    { label: "Invoiced this period", value: money(periodInvoiced), page: "invoices", sub: periodLabel, trend: pctChange(periodInvoiced, prevPeriodInvoiced) },
+    { label: "Collected this period", value: money(periodCollected), page: "invoices", sub: periodLabel, trend: pctChange(periodCollected, prevPeriodCollected) },
+    { label: "Paid in full", value: state.invoices.filter(i=>i.status==="Paid").length, page: "invoices", sub: "All time" },
     ...myLeadKpis,
   ] : role === "hr" ? [
-    { label: "Employees", value: state.employees.length, page: "hr" },
-    { label: "Documents expiring", value: state.employees.flatMap(e=>e.docs).filter(d=>docState(d.expiry).label!=="Valid").length, page: "hr" },
+    { label: "Employees", value: state.employees.length, page: "hr", sub: "Active now" },
+    { label: "Documents expiring", value: state.employees.flatMap(e=>e.docs).filter(d=>docState(d.expiry).label!=="Valid").length, page: "hr", sub: "Needs attention" },
     ...myLeadKpis,
   ] : role === "lead_manager" ? [
-    { label: "Leads assigned", value: state.leads.filter(l=>l.assignedAt).length, page: "leadAssignment" },
-    { label: "SLA overdue", value: state.leads.filter(l=>l.slaViolated || (l.slaDueAt && new Date(l.slaDueAt) < new Date() && !(l.followUps||[]).some(f=>f.at && new Date(f.at)>=new Date(l.assignedAt)))).length, page: "leadAssignment" },
-    { label: "Unassigned leads", value: state.leads.filter(l=>!l.owner).length, page: "leadAssignment" },
+    { label: "Leads assigned", value: state.leads.filter(l=>l.assignedAt).length, page: "leadAssignment", sub: "All time" },
+    { label: "SLA overdue", value: state.leads.filter(l=>l.slaViolated || (l.slaDueAt && new Date(l.slaDueAt) < new Date() && !(l.followUps||[]).some(f=>f.at && new Date(f.at)>=new Date(l.assignedAt)))).length, page: "leadAssignment", sub: "Right now" },
+    { label: "Unassigned leads", value: state.leads.filter(l=>!l.owner).length, page: "leadAssignment", sub: "Right now" },
     ...myLeadKpis,
     ...valueKpis,
   ] : role === "content_creator" ? [
-    { label: "Active tasks", value: myContentActive.length, page: "tasks" },
-    { label: "Stages completed", value: myContentStagesDone, page: "tasks" },
-    { label: "On-time delivery", value: `${myContentOnTimePct}%`, page: "tasks" },
+    { label: "Active tasks", value: myContentActive.length, page: "tasks", sub: "In progress" },
+    { label: "Stages completed", value: myContentStagesDone, page: "tasks", sub: "All time" },
+    { label: "On-time delivery", value: `${myContentOnTimePct}%`, page: "tasks", sub: "All time" },
   ] : [
-    { label: "New leads this period", value: periodLeads, page: "leads" },
-    { label: "Pipeline value", value: money(pipelineValue), page: "deals" },
-    { label: "Business volume this period", value: money(businessVolume), page: "quotations" },
-    { label: "Job cards completed", value: periodJobsCompleted, page: "jobs" },
+    { label: "New leads this period", value: periodLeads, page: "leads", sub: periodLabel, trend: pctChange(periodLeads, prevPeriodLeads) },
+    { label: "Pipeline value", value: money(pipelineValue), page: "deals", sub: "Open deals" },
+    { label: "Business volume this period", value: money(businessVolume), page: "quotations", sub: periodLabel, trend: pctChange(businessVolume, prevBusinessVolume) },
+    { label: "Job cards completed", value: periodJobsCompleted, page: "jobs", sub: periodLabel, trend: pctChange(periodJobsCompleted, prevPeriodJobsCompleted) },
     ...myLeadKpis,
     ...valueKpis,
   ];
@@ -2347,8 +2390,17 @@ function Dashboard({ state, dispatch, role, userId, setPage, onOpenExpiredCustom
           <div className="agw-card" key={k.label} onClick={k.page ? () => setPage(k.page) : undefined}
             style={k.page ? { cursor: "pointer" } : undefined}
             title={k.page ? "View details" : undefined}>
-            <div className="kpi-label">{k.label}</div>
+            <div className="kpi-top">
+              <span className="kpi-label">{k.label}</span>
+              {k.trend != null && (
+                <span className={`kpi-trend ${k.trend >= 0 ? "up" : "down"}`}>{k.trend >= 0 ? "▲" : "▼"} {Math.abs(k.trend)}%</span>
+              )}
+            </div>
             <div className="kpi-value disp">{k.value}</div>
+            <div className="kpi-foot">
+              <span>{k.sub}</span>
+              {k.page && <ChevronRight size={12} />}
+            </div>
           </div>
         ))}
       </div>
@@ -8641,6 +8693,26 @@ function periodRange(period, customFrom, customTo) {
   if (period === "year") { const d = new Date(); return [`${d.getFullYear()}-01-01`, today]; }
   if (period === "custom") return [customFrom || today, customTo || today];
   return [null, null]; // all time
+}
+// The immediately preceding stretch of equal length to `range` — "This Month" compares against
+// the same number of days just before the 1st, "This Week" against the 7 days before that, etc.
+// Returns [null, null] (no comparison) for "All Time", which has no meaningful prior period.
+function previousPeriodRange(range) {
+  if (!range[0] || !range[1]) return [null, null];
+  const from = new Date(range[0] + "T00:00:00");
+  const to = new Date(range[1] + "T00:00:00");
+  const days = Math.round((to - from) / 86400000) + 1;
+  const prevTo = new Date(from); prevTo.setDate(prevTo.getDate() - 1);
+  const prevFrom = new Date(prevTo); prevFrom.setDate(prevFrom.getDate() - (days - 1));
+  const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return [fmt(prevFrom), fmt(prevTo)];
+}
+// Real period-over-period change for a KPI card's trend badge — null (no badge shown) when
+// there's nothing to meaningfully compare against, rather than a misleading "+100%"/"-100%" off
+// a zero baseline.
+function pctChange(current, previous) {
+  if (!previous) return null;
+  return Math.round(((current - previous) / previous) * 100);
 }
 function inRange(dateStr, range) {
   if (!dateStr) return false;
