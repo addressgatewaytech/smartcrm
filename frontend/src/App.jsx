@@ -2205,7 +2205,7 @@ function Dashboard({ state, dispatch, role, userId, setPage, onOpenExpiredCustom
   const myContentStagesDone = myContentTasks.reduce((a,{snap})=>a+snap.completedCount, 0);
 
   // --- Charts tab data -------------------------------------------------------------------------
-  const [chartTab, setChartTab] = useState("overview");
+  const [chartTab, setChartTab] = useState("charts");
   // A lightweight "log a lead" action for roles that don't get the full Leads page (only
   // admin-tier/sales_manager/sales_exec do — see NAV in App.jsx) — everyone else can still capture
   // an enquiry they come across without seeing the Leads list/pipeline. A Viewer never gets this
