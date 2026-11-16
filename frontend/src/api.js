@@ -70,6 +70,14 @@ async function request(method, path, body, isFormData = false, tokenOverride) {
 
   if (!res.ok) {
     const message = (data && data.error) || `Request failed (${res.status})`;
+    // A 401 while a token was actually sent means that token is no longer valid (expired, or the
+    // user was signed out elsewhere) — as opposed to a plain failed login attempt, which sends no
+    // token at all. Tell the app at large so it can drop the stale session and say why, instead of
+    // just surfacing this one request's own "Invalid or expired token" as if it were that action's
+    // own error.
+    if (res.status === 401 && useToken) {
+      window.dispatchEvent(new CustomEvent("agw:session-expired"));
+    }
     throw new ApiError(message, res.status);
   }
   return data;

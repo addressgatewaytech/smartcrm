@@ -1245,7 +1245,7 @@ function FaceLockScreen({ user, onUnlock, onLogout }) {
   );
 }
 
-function Login({ onLogin }) {
+function Login({ onLogin, sessionExpired }) {
   const [mode, setMode] = useState("login"); // "login" | "forgot-email" | "forgot-reset" | "forgot-done"
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -1310,6 +1310,7 @@ function Login({ onLogin }) {
           <div style={{ marginBottom: 22 }}><BrandLogo scale={1.05} /></div>
           <h3 style={{ marginBottom: 4 }}>Sign in</h3>
           <p className="modal-sub">Use your Address Gateway account.</p>
+          {sessionExpired && !error && <div className="side-note" style={{ marginTop: 0, marginBottom: 14 }}>Your session has expired. Please sign in again.</div>}
           <div className="field"><label>Email</label><input type="email" value={email} onChange={e=>setEmail(e.target.value)} autoFocus required /></div>
           <div className="field"><label>Password</label><input type="password" value={password} onChange={e=>setPassword(e.target.value)} required /></div>
           {error && <div className="side-note" style={{ borderColor:"var(--danger)", color:"var(--danger)", marginTop:0 }}>{error}</div>}
@@ -1545,6 +1546,7 @@ export default function App() {
   };
 
   // On load, if a token is already stored, verify it's still valid before showing the app.
+  const [sessionExpired, setSessionExpired] = useState(false);
   useEffect(() => {
     if (!getToken()) { setAuthChecked(true); return; }
     api.auth.me().then((me) => {
@@ -1552,10 +1554,29 @@ export default function App() {
       setActiveRole(pickActiveRole(me));
       if (isMobileOrTablet() && isFaceLockEnabled(me.id)) setLocked(true);
       else maybeOfferFaceLock(me);
-    }).catch(() => setToken(null)).finally(() => setAuthChecked(true));
+    }).catch((err) => {
+      setToken(null);
+      if (err instanceof ApiError && err.status === 401) setSessionExpired(true);
+    }).finally(() => setAuthChecked(true));
   }, []);
 
-  const handleLogin = (user) => { setCurrentUser(user); setActiveRole(pickActiveRole(user)); maybeOfferFaceLock(user); };
+  // Fired by api.js whenever any request comes back 401 with a token already attached — the
+  // token expired (or was invalidated) mid-session, not just this one action failing. Drop the
+  // stale session and send the user back to Login with a plain explanation, instead of leaving
+  // whichever screen they were on to show that request's own generic error.
+  useEffect(() => {
+    const onSessionExpired = () => {
+      clearAllTokens();
+      setCurrentUser(null);
+      setLocked(false);
+      setFaceLockPrompt(false);
+      setSessionExpired(true);
+    };
+    window.addEventListener("agw:session-expired", onSessionExpired);
+    return () => window.removeEventListener("agw:session-expired", onSessionExpired);
+  }, []);
+
+  const handleLogin = (user) => { setSessionExpired(false); setCurrentUser(user); setActiveRole(pickActiveRole(user)); maybeOfferFaceLock(user); };
   // Fired (and awaited, so it still carries the still-valid token) before clearing it — records
   // the sign-out in the audit log. A failed call shouldn't block the user from actually logging
   // out, so the client-side cleanup always runs regardless.
@@ -1642,7 +1663,7 @@ export default function App() {
   }, [state.notifications, currentUser, activeRole]);
 
   if (!authChecked) return <LoadingScreen />;
-  if (!currentUser) return <Login onLogin={handleLogin} />;
+  if (!currentUser) return <Login onLogin={handleLogin} sessionExpired={sessionExpired} />;
   if (locked) return <FaceLockScreen user={currentUser} onUnlock={() => setLocked(false)} onLogout={handleLogout} />;
   if (dataLoading) return <LoadingScreen />;
 
