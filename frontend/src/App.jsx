@@ -1245,10 +1245,14 @@ function FaceLockScreen({ user, onUnlock, onLogout }) {
   );
 }
 
+const REMEMBER_EMAIL_KEY = "agw_remember_email";
+
 function Login({ onLogin, sessionExpired }) {
   const [mode, setMode] = useState("login"); // "login" | "forgot-email" | "forgot-reset" | "forgot-done"
-  const [email, setEmail] = useState("");
+  const rememberedEmail = (() => { try { return localStorage.getItem(REMEMBER_EMAIL_KEY) || ""; } catch { return ""; } })();
+  const [email, setEmail] = useState(rememberedEmail);
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(!!rememberedEmail);
   const [otp, setOtp] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [error, setError] = useState("");
@@ -1262,6 +1266,13 @@ function Login({ onLogin, sessionExpired }) {
     try {
       const res = await api.auth.login(email, password);
       setToken(res.token);
+      // The password itself is never stored here — only the email, so it's ready to fill next
+      // time. Saving the actual password is left to the browser's own password manager, via the
+      // autoComplete attributes on the fields below.
+      try {
+        if (rememberMe) localStorage.setItem(REMEMBER_EMAIL_KEY, email);
+        else localStorage.removeItem(REMEMBER_EMAIL_KEY);
+      } catch {}
       onLogin(res.user);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong — please try again.");
@@ -1311,8 +1322,11 @@ function Login({ onLogin, sessionExpired }) {
           <h3 style={{ marginBottom: 4 }}>Sign in</h3>
           <p className="modal-sub">Use your Address Gateway account.</p>
           {sessionExpired && !error && <div className="side-note" style={{ marginTop: 0, marginBottom: 14 }}>Your session has expired. Please sign in again.</div>}
-          <div className="field"><label>Email</label><input type="email" value={email} onChange={e=>setEmail(e.target.value)} autoFocus required /></div>
-          <div className="field"><label>Password</label><input type="password" value={password} onChange={e=>setPassword(e.target.value)} required /></div>
+          <div className="field"><label>Email</label><input type="email" name="email" autoComplete="username" value={email} onChange={e=>setEmail(e.target.value)} autoFocus required /></div>
+          <div className="field"><label>Password</label><input type="password" name="password" autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)} required /></div>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--ink-soft)", marginTop: 4, cursor: "pointer" }}>
+            <input type="checkbox" checked={rememberMe} onChange={e=>setRememberMe(e.target.checked)} /> Remember my email on this device
+          </label>
           {error && <div className="side-note" style={{ borderColor:"var(--danger)", color:"var(--danger)", marginTop:0 }}>{error}</div>}
           <button className="btn btn-primary" type="submit" disabled={busy} style={{ width: "100%", justifyContent: "center", marginTop: 8 }}>
             {busy ? "Signing in…" : "Sign in"}
