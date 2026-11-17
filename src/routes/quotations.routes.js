@@ -1,19 +1,30 @@
 const express = require("express");
 const { query, withTransaction } = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
-const { requireRole, isAdminLike } = require("../middleware/roles");
+const { requireRole, isAdminLike, hasModuleEdit } = require("../middleware/roles");
 const { nextId, nextSequentialId, daysFromNow, quoteTotal, professionalFeeTotal, findOrCreateCustomer } = require("../utils/helpers");
 const { generateQuotationPdf, THEMES } = require("../utils/quotationPdf");
 const validTheme = (t) => (t && THEMES[t] ? t : "charcoal");
-const { requireRoleOrApprovalTypeDesignation, isAssignedApprover, approverAudience } = require("../utils/designationApproval");
+const { isAssignedApprover, approverAudience } = require("../utils/designationApproval");
+
+// True if `userId` has been individually granted the "Edit" permission on the Quotations module
+// (Users & Roles > Module Access) — unlike every other use of hasModuleEdit in this app, this one
+// never widens WHICH quotations someone can see or touch, only whether they can approve/revise
+// their OWN (see the `owner` check at each call site below). Off by default for everyone.
+async function canSelfServiceOwnQuotation(userId) {
+  return hasModuleEdit(userId, "quotations");
+}
 
 // Sales Manager / Admin-tier can always send a quotation straight to the client; anyone else
 // needs to submit it for approval first (see /:id/submit-for-approval and /:id/approve-discount)
 // unless the Approval Process Workflow (Users & Roles) has assigned their designation as an
-// approver for "Quotation Approval".
-async function canSendDirectly(user) {
+// approver for "Quotation Approval", or they've been individually granted self-service on their
+// own quotations via Module Access.
+async function canSendDirectly(user, quotationOwner) {
   if (user.roles.includes("sales_manager") || isAdminLike(user.roles)) return true;
-  return isAssignedApprover(user.id, "quotation_approval");
+  if (await isAssignedApprover(user.id, "quotation_approval")) return true;
+  if (quotationOwner && user.id === quotationOwner) return canSelfServiceOwnQuotation(user.id);
+  return false;
 }
 
 // Notifies whoever can actually approve this quotation — Sales Manager/Admin-tier plus anyone
@@ -188,13 +199,18 @@ router.delete("/:id", requireRole(["admin_like"]), async (req, res) => {
 // Submit-for-approval / Send-to-client flow) and returns the linked deal to "Quotation Sent" so
 // the pipeline reflects that it's back under negotiation. Available any time after it's been
 // sent to the client and before/at Approved (covers a client wanting changes mid-negotiation, not
-// just after full approval) — Admin-only, since it can silently reopen a quotation a Sales
-// Manager already signed off on. Does NOT touch any Sales Order/Invoice/Job Card already created
-// from a previous approval — those are a separate record of what was actually agreed at the time;
-// an admin can remove one via its own page if it truly was a mistake.
-router.post("/:id/revise", requireRole(["admin_like"]), async (req, res) => {
-  const [q] = await query("SELECT status, deal_id FROM quotations WHERE id = ?", [req.params.id]);
+// just after full approval) — Admin-tier always can; the quotation's own owner can too, but only
+// if individually granted self-service via Module Access > Quotations > Edit (off by default).
+// Does NOT touch any Sales Order/Invoice/Job Card already created from a previous approval —
+// those are a separate record of what was actually agreed at the time; an admin can remove one via
+// its own page if it truly was a mistake.
+router.post("/:id/revise", async (req, res) => {
+  const [q] = await query("SELECT status, deal_id, owner FROM quotations WHERE id = ?", [req.params.id]);
   if (!q) return res.status(404).json({ error: "Not found" });
+  const isOwner = q.owner === req.user.id;
+  if (!isAdminLike(req.user.roles) && !(isOwner && (await canSelfServiceOwnQuotation(req.user.id)))) {
+    return res.status(403).json({ error: "You do not have permission to perform this action" });
+  }
   const revisable = ["Sent", "Under Negotiation", "Client Accepted", "Approved"];
   if (!revisable.includes(q.status)) return res.status(400).json({ error: "This quotation can't be revised from its current status" });
   await query("UPDATE quotations SET status = 'Draft' WHERE id = ?", [req.params.id]);
@@ -216,10 +232,17 @@ router.post("/:id/submit-for-approval", async (req, res) => {
 
 // Sales Manager / Admin-tier approves a quotation pending approval, moving it to Sent — or, if
 // the Approval Process Workflow (Users & Roles) has assigned designations to "Quotation
-// Approval", anyone holding one of those designations can too.
-router.post("/:id/approve-discount", requireRoleOrApprovalTypeDesignation(["sales_manager", "admin_like"], "quotation_approval"), async (req, res) => {
+// Approval", anyone holding one of those designations can too — or, if the quotation's own owner
+// has been individually granted self-service via Module Access > Quotations > Edit, they can
+// approve (and send) their own.
+router.post("/:id/approve-discount", async (req, res) => {
   const [q] = await query("SELECT owner, customer FROM quotations WHERE id = ? AND status = 'Pending Manager Approval'", [req.params.id]);
   if (!q) return res.status(404).json({ error: "Not found or not pending approval" });
+  const isOwner = q.owner === req.user.id;
+  const canApprove = req.user.roles.includes("sales_manager") || isAdminLike(req.user.roles)
+    || (await isAssignedApprover(req.user.id, "quotation_approval"))
+    || (isOwner && (await canSelfServiceOwnQuotation(req.user.id)));
+  if (!canApprove) return res.status(403).json({ error: "You do not have permission to perform this action" });
   await query("UPDATE quotations SET status = 'Sent' WHERE id = ?", [req.params.id]);
   // Lets the owner's own Dashboard/Quotations list pick this out specifically (body starts with
   // the exact quotation id, matched as a prefix on the frontend) — not just a generic "something
@@ -235,14 +258,14 @@ router.post("/:id/status", async (req, res) => {
   const { status } = req.body; // "Sent" | "Under Negotiation" | "Client Accepted" | "Rejected" | "Approved" (Government Fee terminal state — see below)
 
   if (status === "Sent") {
-    const [q] = await query("SELECT status FROM quotations WHERE id = ?", [req.params.id]);
+    const [q] = await query("SELECT status, owner FROM quotations WHERE id = ?", [req.params.id]);
     if (!q) return res.status(404).json({ error: "Not found" });
     // A quotation pending approval must go through /:id/approve-discount, not this generic
     // route — otherwise anyone could bypass the approval gate entirely.
     if (q.status === "Pending Manager Approval") {
       return res.status(400).json({ error: "This quotation needs approval before it can be sent — use the approve action" });
     }
-    if (q.status === "Draft" && !(await canSendDirectly(req.user))) {
+    if (q.status === "Draft" && !(await canSendDirectly(req.user, q.owner))) {
       return res.status(403).json({ error: "Submit this quotation for approval before sending it to the client" });
     }
   }

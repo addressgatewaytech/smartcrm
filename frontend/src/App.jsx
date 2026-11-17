@@ -4442,7 +4442,10 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
   const hasDiscount = cq.items.some(it=>it.discountPct>0) || (cq.orderDiscount||0) > 0;
   const myDesignation = state?.employees.find(e=>e.id===userId)?.designation;
   const assignedApproverDesignations = (state?.approvalTypes||[]).find(t=>t.key==="quotation_approval")?.approverDesignations || [];
-  const canApprove = role === "sales_manager" || ADMIN_LIKE.includes(role) || (myDesignation && assignedApproverDesignations.includes(myDesignation));
+  // Module Access > Quotations > Edit, granted to this specific user, lets them approve and
+  // revise their OWN quotations without a Sales Manager/Admin — it never extends to anyone else's.
+  const canSelfServiceOwnQuotation = q.owner === userId && !!state?.myModulePermissions?.quotations?.canEdit;
+  const canApprove = role === "sales_manager" || ADMIN_LIKE.includes(role) || (myDesignation && assignedApproverDesignations.includes(myDesignation)) || canSelfServiceOwnQuotation;
   // Sales person is attribution metadata, not something the client's document shows — kept here,
   // in the admin-facing detail view (and the list table), and reassignable regardless of status
   // since it's a correction, not a content edit.
@@ -4627,7 +4630,7 @@ function QuoteDetailModal({ quotation: q, state, dispatch, role, userId, custome
             <div className="side-note" style={{marginTop:0}}>Client accepted — now under payment process. Accounts will convert this into a sales order.</div>
           )
         )}
-        {revisable && isAdmin &&
+        {revisable && (isAdmin || canSelfServiceOwnQuotation) &&
           <button className="btn" disabled={actionBusy} onClick={()=>setRevising(true)}><Pencil size={13}/> Revise quotation</button>}
       </div>
       )}
@@ -10661,7 +10664,8 @@ function ModuleAccessPage({ state, dispatch }) {
                 <tr key={m.key}>
                   <td style={{ display:"flex", alignItems:"center", gap:8 }}><m.icon size={14} style={{color:"var(--ink-soft)"}}/>{m.label}</td>
                   {["canView","canAdd","canEdit","canDelete"].map(field => (
-                    <td key={field} style={{textAlign:"center"}}>
+                    <td key={field} style={{textAlign:"center"}}
+                      title={m.key === "quotations" && field === "canEdit" ? "Also lets this person approve and revise their OWN quotations without a Sales Manager/Admin." : undefined}>
                       <input type="checkbox" checked={!!grid[m.key]?.[field]} onChange={()=>toggle(m.key, field)} />
                     </td>
                   ))}
