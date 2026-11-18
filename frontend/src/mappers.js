@@ -62,6 +62,7 @@ export const mapCustomer = (c) => ({
   landline: c.landline, contactMobile: c.contact_mobile, email: c.email,
   address: c.address, companySize: c.company_size, createdAt: c.created_at, cloudLink: c.cloud_link || "", status: c.status || "Pending",
   category: c.category || "Others", categoryOverride: c.category_override || "", salesPerson: c.salesPerson || "", salesPersonOverride: c.sales_person_override || "",
+  ownerId: c.ownerId || null,
   crOpenedAt: c.cr_opened_at || "",
   docs: (c.docs || []).map((d) => ({ id: d.id, type: d.type, number: d.number, expiry: d.expiry, cloudLink: d.cloud_link || "" })),
   employees: (c.employees || []).map((e) => ({

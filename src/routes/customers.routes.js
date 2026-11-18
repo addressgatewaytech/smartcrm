@@ -2,7 +2,7 @@ const express = require("express");
 const crypto = require("crypto");
 const { query, withTransaction } = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
-const { requireRole, isAdminLike, requireRoleOrModuleEdit, hasModuleEdit } = require("../middleware/roles");
+const { requireRole, isAdminLike, hasModuleEdit } = require("../middleware/roles");
 const { nextId, nextSequentialId, quoteTotal, findDuplicateCustomer, COMPULSORY_KYC_DOC_TYPES, seedDefaultKycDocs, today, renameCustomerCascade } = require("../utils/helpers");
 const { generateOnboardingFormPdf } = require("../utils/onboardingFormPdf");
 const { generateAccountStatementPdf } = require("../utils/accountStatementPdf");
@@ -31,6 +31,45 @@ async function autoActivateIfReady(customerId) {
   if (!customer || customer.status !== "Pending") return;
   const missing = await missingOrExpiredCompulsoryDocs(customerId);
   if (!missing.length) await query("UPDATE customers SET status = 'Active' WHERE id = ?", [customerId]);
+}
+
+// Single-customer version of GET /'s own ownerFor — a manual sales_person_override wins, else the
+// most recent lead/deal traced to this customer (by customer_id, falling back to a case-insensitive
+// name match for legacy rows that predate that link), else whoever created it directly.
+async function customerOwnerId(customerId) {
+  const [customer] = await query("SELECT name, created_by, sales_person_override FROM customers WHERE id = ?", [customerId]);
+  if (!customer) return null;
+  if (customer.sales_person_override) return customer.sales_person_override;
+  const [lead] = await query(
+    "SELECT owner FROM leads WHERE customer_id = ? OR (customer_id IS NULL AND LOWER(TRIM(company)) = LOWER(TRIM(?))) ORDER BY created_at DESC LIMIT 1",
+    [customerId, customer.name]
+  );
+  if (lead) return lead.owner;
+  const [deal] = await query(
+    "SELECT owner FROM deals WHERE customer_id = ? OR (customer_id IS NULL AND LOWER(TRIM(customer)) = LOWER(TRIM(?))) ORDER BY created_at DESC LIMIT 1",
+    [customerId, customer.name]
+  );
+  if (deal) return deal.owner;
+  return customer.created_by || null;
+}
+
+// Same additive shape as requireRoleOrModuleEdit, plus one more way in: whoever this customer's
+// own owner is (same ownerFor rule GET / already uses to scope visibility) can also edit their
+// own customer's profile/cloud-link/audit — "respective customers only", same as leads/deals/
+// quotations already work for a plain sales_exec, just extended to editing here too.
+async function requireRoleOrModuleEditOrOwnCustomer(req, res, next) {
+  const baseRoles = ["admin_like", "ops_manager", "ops_member", "pro_head", "pro"];
+  const userRoles = req.user?.roles || [];
+  const roleOk = baseRoles.some((role) => (role === "admin_like" ? isAdminLike(userRoles) : userRoles.includes(role)));
+  if (roleOk) return next();
+  try {
+    if (await hasModuleEdit(req.user.id, "customers")) return next();
+    const ownerId = await customerOwnerId(req.params.id);
+    if (ownerId && ownerId === req.user.id) return next();
+    return res.status(403).json({ error: "You do not have permission to perform this action" });
+  } catch (err) {
+    next(err);
+  }
 }
 
 router.get("/", async (req, res) => {
@@ -105,7 +144,10 @@ router.get("/", async (req, res) => {
     // in schema.sql.
     category: c.category_override || (confirmedIds.has(c.id) ? "Address Gateway Customers" : "Others"),
     // A manual sales_person_override always wins over the computed owner — same pattern as
-    // category_override above.
+    // category_override above. ownerId is the same value as a raw id (not the resolved name) —
+    // the frontend uses it to let this customer's own owner edit their profile without being
+    // Admin-tier/Ops/PRO or holding the Module Access grant (see requireRoleOrModuleEditOrOwnCustomer).
+    ownerId: c.sales_person_override || ownerFor(c) || null,
     salesPerson: users.find((u) => u.id === (c.sales_person_override || ownerFor(c)))?.name || null,
     docs: docs.filter((d) => d.customer_id === c.id),
     employees: staff.filter((s) => s.customer_id === c.id).map((s) => ({ ...s, docs: staffDocs.filter((d) => d.customer_staff_id === s.id) })),
@@ -128,8 +170,9 @@ router.post("/", async (req, res) => {
 
 // Ops Manager can update a customer's profile (name/contact/KYC-adjacent fields) as part of the
 // same "update options" access — deletion stays Admin-tier only below, since that's destructive
-// and wasn't asked for.
-router.patch("/:id", requireRoleOrModuleEdit(["admin_like", "ops_manager", "ops_member", "pro_head", "pro"], "customers"), async (req, res) => {
+// and wasn't asked for. A plain sales_exec (or anyone else) can also edit their own customer's
+// profile here — see requireRoleOrModuleEditOrOwnCustomer.
+router.patch("/:id", requireRoleOrModuleEditOrOwnCustomer, async (req, res) => {
   const b = req.body;
   const dup = await findDuplicateCustomer(query, { name: b.name, phone: b.phone, email: b.email }, req.params.id);
   if (dup) {
@@ -184,7 +227,7 @@ router.patch("/:id", requireRoleOrModuleEdit(["admin_like", "ops_manager", "ops_
 // instead of one folder link for the customer.
 // Same gate as PATCH /:id above (kept in sync — this was missed when ops_member/Module Access
 // can_edit were added there, silently 403ing a save even though the Edit button showed for them).
-router.patch("/:id/cloud-link", requireRoleOrModuleEdit(["admin_like", "ops_manager", "ops_member", "pro_head", "pro"], "customers"), async (req, res) => {
+router.patch("/:id/cloud-link", requireRoleOrModuleEditOrOwnCustomer, async (req, res) => {
   const { url } = req.body;
   const trimmed = (url || "").trim();
   // A non-URL value (typo, pasted the wrong thing) would silently "save" and then do nothing
@@ -200,7 +243,7 @@ router.patch("/:id/cloud-link", requireRoleOrModuleEdit(["admin_like", "ops_mana
 // Upserts this customer's audit status for one year (Pending/Submitted/Not Required) — whether a
 // year even applies is computed on the frontend from cr_opened_at, not checked here, so marking a
 // status is always allowed (e.g. pre-emptively recording "Not Required" for a one-off exemption).
-router.patch("/:id/audit/:year", requireRoleOrModuleEdit(["admin_like", "ops_manager", "ops_member", "pro_head", "pro"], "customers"), async (req, res) => {
+router.patch("/:id/audit/:year", requireRoleOrModuleEditOrOwnCustomer, async (req, res) => {
   const { status, note } = req.body;
   if (!["Pending", "Submitted", "Not Required"].includes(status)) {
     return res.status(400).json({ error: "Invalid audit status" });

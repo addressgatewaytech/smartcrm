@@ -5491,9 +5491,11 @@ function CustomersPage({ state, dispatch, role, userId, expiryFilterRequest, onE
   // across every client operationally, not just ones they personally sourced) — Delete stays
   // Admin-tier only regardless of role, since that's destructive and touches KYC records other
   // people rely on (also enforced server-side: PATCH allows admin_like+ops_manager, DELETE admin_like only).
-  // An explicit can_edit grant on the Customers module (Module Access) also qualifies — see
-  // requireRoleOrModuleEdit on the backend PATCH route for the matching server-side check.
-  const canEditCustomer = isAdmin || role === "ops_manager" || role === "ops_member" || role === "pro_head" || role === "pro" || !!state.myModulePermissions?.customers?.canEdit;
+  // An explicit can_edit grant on the Customers module (Module Access) also qualifies, and so does
+  // simply being this customer's own owner — "respective customers only", same as leads/deals/
+  // quotations already work for a plain sales_exec — see requireRoleOrModuleEditOrOwnCustomer on
+  // the backend PATCH routes for the matching server-side check.
+  const canEditCustomer = (c) => isAdmin || role === "ops_manager" || role === "ops_member" || role === "pro_head" || role === "pro" || !!state.myModulePermissions?.customers?.canEdit || (!!c.ownerId && c.ownerId === userId);
   // Visibility (a sales_exec only sees their own customers) is enforced server-side in
   // GET /customers, since that's the only place with enough data to derive ownership correctly —
   // /leads itself is already scoped to the requesting user for a sales_exec, so state.leads here
@@ -5638,11 +5640,11 @@ function CustomersPage({ state, dispatch, role, userId, expiryFilterRequest, onE
                     <td>
                       <div style={{display:"flex",alignItems:"center",gap:6}}>
                         {(() => { const st = officeSpaceStateOf(c); return st ? <Stamp tone={st.cls.replace("stamp-","")}>{st.label}</Stamp> : "—"; })()}
-                        {canEditCustomer && <button className="btn btn-sm btn-ghost" style={{padding:4}} title="Mark Office Space" onClick={e=>{e.stopPropagation(); setOfficeSpaceFor(c);}}><Building2 size={13}/></button>}
+                        {canEditCustomer(c) && <button className="btn btn-sm btn-ghost" style={{padding:4}} title="Mark Office Space" onClick={e=>{e.stopPropagation(); setOfficeSpaceFor(c);}}><Building2 size={13}/></button>}
                       </div>
                     </td>
                     <td><Stamp tone={c.category==="Address Gateway Customers"?"success":"neutral"}>{c.category}</Stamp></td>
-                    <td><RowActions onEdit={canEditCustomer ? ()=>setEditCustomer(c) : null} onRemove={isAdmin ? ()=>setRemoveCustomer(c) : null} /></td>
+                    <td><RowActions onEdit={canEditCustomer(c) ? ()=>setEditCustomer(c) : null} onRemove={isAdmin ? ()=>setRemoveCustomer(c) : null} /></td>
                   </tr>
                 );
               })}
@@ -5675,8 +5677,8 @@ function CustomersPage({ state, dispatch, role, userId, expiryFilterRequest, onE
                   {flagged > 0 ? <Stamp tone="warning">{flagged} doc{flagged>1?"s":""} flagged</Stamp> : <Stamp tone="success">KYC clear</Stamp>}
                   {auditPending(c) && <Stamp tone="danger">Auditing pending</Stamp>}
                   {officeSpaceDue(c) && <Stamp tone="danger">Office Space: {officeSpaceStateOf(c).label}</Stamp>}
-                  {canEditCustomer && <button className="btn btn-sm btn-ghost" style={{padding:4}} title="Mark Office Space" onClick={e=>{e.stopPropagation(); setOfficeSpaceFor(c);}}><Building2 size={13}/></button>}
-                  <RowActions onEdit={canEditCustomer ? ()=>setEditCustomer(c) : null} onRemove={isAdmin ? ()=>setRemoveCustomer(c) : null} />
+                  {canEditCustomer(c) && <button className="btn btn-sm btn-ghost" style={{padding:4}} title="Mark Office Space" onClick={e=>{e.stopPropagation(); setOfficeSpaceFor(c);}}><Building2 size={13}/></button>}
+                  <RowActions onEdit={canEditCustomer(c) ? ()=>setEditCustomer(c) : null} onRemove={isAdmin ? ()=>setRemoveCustomer(c) : null} />
                 </div>
               </div>
               <div style={{ display:"flex", gap:6, marginTop: 12, flexWrap:"wrap" }}>
@@ -5834,8 +5836,10 @@ function CustomerDetailModal({ customer: c, state, dispatch, role, userId, setPa
   const isAdmin = ADMIN_LIKE.includes(role);
   // Same gate as the Customers list's own Edit action (and PATCH /customers/:id itself) — lets
   // this detail view's "Edit profile" button open the identical form, without needing to go back
-  // to the list just to change a phone number or address.
-  const canEditCustomer = isAdmin || role === "ops_manager" || role === "ops_member" || role === "pro_head" || role === "pro" || !!state.myModulePermissions?.customers?.canEdit;
+  // to the list just to change a phone number or address. Also lets this customer's own owner
+  // edit it — "respective customers only", same as leads/deals/quotations already work for a
+  // plain sales_exec.
+  const canEditCustomer = isAdmin || role === "ops_manager" || role === "ops_member" || role === "pro_head" || role === "pro" || !!state.myModulePermissions?.customers?.canEdit || (!!c.ownerId && c.ownerId === userId);
   const [tab, setTab] = useState("dashboard");
   const [editingProfile, setEditingProfile] = useState(false);
   const [creatingDeal, setCreatingDeal] = useState(false);
@@ -5965,7 +5969,7 @@ function CustomerDetailModal({ customer: c, state, dispatch, role, userId, setPa
           set — see missingOrExpiredCompulsoryDocs, customers.routes.js. */}
       {(() => {
         const canBeActive = COMPULSORY_KYC_TYPES.every(t => c.docs.some(d => d.type === t && d.expiry && docState(d.expiry).label !== "Expired"));
-        const canEditThese = isAdmin || role==="ops_manager" || role==="ops_member" || role==="pro_head" || role==="pro";
+        const canEditThese = canEditCustomer;
         return (
           <div className="agw-card" style={{ marginBottom: 16, display:"flex", flexWrap:"wrap", gap:16 }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:10, flex:1, minWidth:260 }}>
@@ -6008,7 +6012,7 @@ function CustomerDetailModal({ customer: c, state, dispatch, role, userId, setPa
         );
       })()}
       {c.type === "Company" && (() => {
-        const canEditThese = isAdmin || role==="ops_manager" || role==="ops_member" || role==="pro_head" || role==="pro";
+        const canEditThese = canEditCustomer;
         const year = auditYearFor();
         const required = auditRequired(c, year);
         // UPDATE_CUSTOMER/SET_CUSTOMER_AUDIT_STATUS were previously fire-and-forget here — a
