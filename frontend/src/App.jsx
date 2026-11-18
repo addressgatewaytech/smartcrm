@@ -5832,7 +5832,12 @@ function OfficeSpaceModal({ customer: c, dispatch, onClose }) {
 
 function CustomerDetailModal({ customer: c, state, dispatch, role, userId, setPage, onViewQuotation, onClose }) {
   const isAdmin = ADMIN_LIKE.includes(role);
+  // Same gate as the Customers list's own Edit action (and PATCH /customers/:id itself) — lets
+  // this detail view's "Edit profile" button open the identical form, without needing to go back
+  // to the list just to change a phone number or address.
+  const canEditCustomer = isAdmin || role === "ops_manager" || role === "ops_member" || role === "pro_head" || role === "pro" || !!state.myModulePermissions?.customers?.canEdit;
   const [tab, setTab] = useState("dashboard");
+  const [editingProfile, setEditingProfile] = useState(false);
   const [creatingDeal, setCreatingDeal] = useState(false);
   const [quoteFor, setQuoteFor] = useState(null);
   const [merging, setMerging] = useState(false);
@@ -5918,6 +5923,7 @@ function CustomerDetailModal({ customer: c, state, dispatch, role, userId, setPa
           <button className={`tab ${tab==="onboarding"?"active":""}`} onClick={()=>setTab("onboarding")}>Onboarding Form</button>
         </div>
         <div style={{ display:"flex", gap:8 }}>
+          {canEditCustomer && <button className="btn btn-sm" onClick={()=>setEditingProfile(true)}><Pencil size={13}/> Edit profile</button>}
           <button className="btn btn-sm" onClick={()=>setCreatingDeal(true)}><Handshake size={13}/> Create deal</button>
           <button className="btn btn-sm" onClick={()=>setEmailingCustomer(true)}><Mail size={13}/> Email customer</button>
           <button className="btn btn-sm" onClick={()=>setMarkingOfficeSpace(true)}><Building2 size={13}/> Office Space</button>
@@ -5926,6 +5932,7 @@ function CustomerDetailModal({ customer: c, state, dispatch, role, userId, setPa
       </div>
       <div style={{ borderBottom:"1px solid var(--hair)", marginBottom:18 }} />
 
+      {editingProfile && <NewCustomerModal customer={c} dispatch={dispatch} onClose={()=>setEditingProfile(false)} />}
       {merging && <MergeCustomersModal customer={c} state={state} dispatch={dispatch} onClose={()=>setMerging(false)} onMerged={onClose} />}
       {markingOfficeSpace && <OfficeSpaceModal customer={c} dispatch={dispatch} onClose={()=>setMarkingOfficeSpace(false)} />}
 
