@@ -103,27 +103,31 @@ app.use((err, req, res, next) => {
 // NOTE: if you ever run more than one server instance/process, guard these behind a leader-election
 // check or a dedicated worker process so the job doesn't fire once per instance.
 if (process.env.NODE_ENV === "production") {
-  // Every-minute was overkill for sweeps that only need to notice something within a few minutes
-  // of it becoming due, and was a real contributor to burning through the MySQL account's
-  // max_connections_per_hour cap (Hostinger shared plan default: 500/hour) — once that's hit,
-  // every DB-touching route fails until the hour rolls over, which is what "server down for a
-  // few minutes" actually was. 5-minute cadence cuts this job's connection churn by 5x.
+  // Was every 5 minutes; cut back to once a day (07:00 Qatar time, ahead of the business day) to
+  // minimize this job's share of the MySQL account's max_connections_per_hour cap (Hostinger
+  // shared plan default: 500/hour) — once that's hit, every DB-touching route fails until the
+  // hour rolls over, which is what "server down for a few minutes" has looked like before. An
+  // explicit timezone keeps "daily" meaning the same wall-clock time regardless of the server's
+  // own timezone (see officeHours.js for why nothing else here depends on it either).
+  const DAILY_SWEEP_SCHEDULE = "0 7 * * *";
+  const DAILY_SWEEP_OPTS = { timezone: "Asia/Qatar" };
+
   const { checkOverdueLeads } = require("./src/services/leadSlaJobs");
-  cron.schedule("*/5 * * * *", () => checkOverdueLeads().catch((e) => console.error("Cron lead-SLA sweep failed", e)));
-  console.log("Lead Assignment Manager SLA sweep scheduled (every 5 minutes).");
+  cron.schedule(DAILY_SWEEP_SCHEDULE, () => checkOverdueLeads().catch((e) => console.error("Cron lead-SLA sweep failed", e)), DAILY_SWEEP_OPTS);
+  console.log("Lead Assignment Manager SLA sweep scheduled (daily at 07:00 Qatar time).");
 
   const { checkDueReminders } = require("./src/services/todoReminderJob");
-  cron.schedule("*/5 * * * *", () => checkDueReminders().catch((e) => console.error("Cron to-do reminder sweep failed", e)));
-  console.log("My To-Do List reminder sweep scheduled (every 5 minutes).");
+  cron.schedule(DAILY_SWEEP_SCHEDULE, () => checkDueReminders().catch((e) => console.error("Cron to-do reminder sweep failed", e)), DAILY_SWEEP_OPTS);
+  console.log("My To-Do List reminder sweep scheduled (daily at 07:00 Qatar time).");
 
   const { checkChequeDeposits, checkSoftwareRenewals } = require("./src/services/companyFinanceJobs");
-  cron.schedule("*/5 * * * *", () => checkChequeDeposits().catch((e) => console.error("Cron cheque-deposit sweep failed", e)));
-  cron.schedule("*/5 * * * *", () => checkSoftwareRenewals().catch((e) => console.error("Cron software-renewal sweep failed", e)));
-  console.log("Company Finance reminder sweeps scheduled (every 5 minutes).");
+  cron.schedule(DAILY_SWEEP_SCHEDULE, () => checkChequeDeposits().catch((e) => console.error("Cron cheque-deposit sweep failed", e)), DAILY_SWEEP_OPTS);
+  cron.schedule(DAILY_SWEEP_SCHEDULE, () => checkSoftwareRenewals().catch((e) => console.error("Cron software-renewal sweep failed", e)), DAILY_SWEEP_OPTS);
+  console.log("Company Finance reminder sweeps scheduled (daily at 07:00 Qatar time).");
 
   const { checkFollowUpReminders } = require("./src/services/leadFollowUpReminderJob");
-  cron.schedule("*/5 * * * *", () => checkFollowUpReminders().catch((e) => console.error("Cron lead follow-up reminder sweep failed", e)));
-  console.log("Lead follow-up reminder sweep scheduled (every 5 minutes).");
+  cron.schedule(DAILY_SWEEP_SCHEDULE, () => checkFollowUpReminders().catch((e) => console.error("Cron lead follow-up reminder sweep failed", e)), DAILY_SWEEP_OPTS);
+  console.log("Lead follow-up reminder sweep scheduled (daily at 07:00 Qatar time).");
 
   // Not a cron sweep: bulk email campaigns run on their own per-campaign timers (random gaps
   // between sends, no idle DB polling). This just re-arms whatever was mid-run before a restart/deploy.
