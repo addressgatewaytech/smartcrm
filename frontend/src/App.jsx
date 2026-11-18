@@ -2477,32 +2477,6 @@ function Dashboard({ state, dispatch, role, userId, setPage, onOpenExpiredCustom
       })()}
       {showPostUpdate && <PostUpdateModal dispatch={dispatch} onClose={()=>setShowPostUpdate(false)} />}
 
-      {/* Always visible regardless of which chart tab is active — unpaid balances need to stay in
-          front of whoever owns the relationship, not hide behind a tab click. */}
-      {isSalesTeamRole && followUpCustomers.length > 0 && (
-        <div className="agw-card" style={{ marginBottom: 20, borderColor: "#EFC3BC", background: "var(--danger-tint)" }}>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 10, flexWrap:"wrap", gap:8 }}>
-            <strong style={{ fontSize: 14, color:"var(--danger)" }}><AlertTriangle size={14} style={{verticalAlign:-2, marginRight:6}}/>Balance due — follow up</strong>
-            <span className="pill" style={{ color:"var(--danger)", borderColor:"#EFC3BC" }}>{followUpCustomers.length} customer{followUpCustomers.length!==1?"s":""} · {money(followUpCustomers.reduce((a,c)=>a+c.balance,0))}</span>
-          </div>
-          <div>
-            {followUpCustomers.slice(0,8).map(c => (
-              <div key={c.customerId || c.name} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom:"1px solid #EFC3BC", cursor: c.customerId ? "pointer" : "default" }}
-                onClick={c.customerId ? () => onViewCustomer?.(c.customerId) : undefined}>
-                <div>
-                  <div style={{ fontSize:13, fontWeight:500 }}>{c.name}</div>
-                  <div style={{ fontSize:11.5, color:"var(--ink-soft)" }}>{c.invoiceCount} invoice{c.invoiceCount!==1?"s":""}{c.nextPaymentDate ? ` · Next payment ${fmtDate(c.nextPaymentDate)}` : ""}</div>
-                </div>
-                <div className="mono" style={{ fontSize:13.5, fontWeight:600, color:"var(--danger)" }}>{money(c.balance)}</div>
-              </div>
-            ))}
-          </div>
-          {followUpCustomers.length > 8 && (
-            <button className="btn btn-sm btn-ghost" style={{ marginTop:8 }} onClick={()=>setPage("invoices")}>View all in Invoices <ChevronRight size={14}/></button>
-          )}
-        </div>
-      )}
-
       {chartTab === "overview" && <>
       {role === "content_creator" && (
         <div className="agw-card" style={{ marginBottom: 20 }}>
@@ -3003,6 +2977,32 @@ function Dashboard({ state, dispatch, role, userId, setPage, onOpenExpiredCustom
                 </div>
               ))}
             </div>
+          )}
+        </div>
+      )}
+
+      {/* Last on the page, not first — unpaid balances still need visibility, but not ahead of
+          everything else regardless of which chart tab is active. */}
+      {isSalesTeamRole && followUpCustomers.length > 0 && (
+        <div className="agw-card" style={{ marginTop: 20, borderColor: "#EFC3BC", background: "var(--danger-tint)" }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 10, flexWrap:"wrap", gap:8 }}>
+            <strong style={{ fontSize: 14, color:"var(--danger)" }}><AlertTriangle size={14} style={{verticalAlign:-2, marginRight:6}}/>Balance due — follow up</strong>
+            <span className="pill" style={{ color:"var(--danger)", borderColor:"#EFC3BC" }}>{followUpCustomers.length} customer{followUpCustomers.length!==1?"s":""} · {money(followUpCustomers.reduce((a,c)=>a+c.balance,0))}</span>
+          </div>
+          <div>
+            {followUpCustomers.slice(0,8).map(c => (
+              <div key={c.customerId || c.name} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom:"1px solid #EFC3BC", cursor: c.customerId ? "pointer" : "default" }}
+                onClick={c.customerId ? () => onViewCustomer?.(c.customerId) : undefined}>
+                <div>
+                  <div style={{ fontSize:13, fontWeight:500 }}>{c.name}</div>
+                  <div style={{ fontSize:11.5, color:"var(--ink-soft)" }}>{c.invoiceCount} invoice{c.invoiceCount!==1?"s":""}{c.nextPaymentDate ? ` · Next payment ${fmtDate(c.nextPaymentDate)}` : ""}</div>
+                </div>
+                <div className="mono" style={{ fontSize:13.5, fontWeight:600, color:"var(--danger)" }}>{money(c.balance)}</div>
+              </div>
+            ))}
+          </div>
+          {followUpCustomers.length > 8 && (
+            <button className="btn btn-sm btn-ghost" style={{ marginTop:8 }} onClick={()=>setPage("invoices")}>View all in Invoices <ChevronRight size={14}/></button>
           )}
         </div>
       )}
