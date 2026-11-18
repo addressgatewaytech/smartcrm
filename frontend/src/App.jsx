@@ -2234,12 +2234,10 @@ function Dashboard({ state, dispatch, role, userId, setPage, onOpenExpiredCustom
   }).sort((a,b) => b.businessVolume - a.businessVolume);
 
   // Customers with an outstanding Professional Fee balance, for the red "Balance due — follow up"
-  // box below — same scoping as myOutstanding/outstanding above (a sales_exec sees only their own
-  // customers; Sales Manager/Admin-tier see every customer). Grouped by customer, not invoice, so
-  // someone with several unpaid invoices shows up once with their combined balance.
-  const followUpInvoices = role === "sales_exec"
-    ? state.invoices.filter(inv => inv.salesOrderId && mySalesOrderIds.has(inv.salesOrderId))
-    : state.invoices;
+  // box below — always scoped to this logged-in user's own respective customers only, regardless
+  // of role (never a company-wide list, even for Sales Manager/Admin-tier). Grouped by customer,
+  // not invoice, so someone with several unpaid invoices shows up once with their combined balance.
+  const followUpInvoices = state.invoices.filter(inv => inv.salesOrderId && mySalesOrderIds.has(inv.salesOrderId));
   const followUpByCustomer = {};
   followUpInvoices.forEach(inv => {
     const bal = Math.max(0, inv.professionalFeeAmount - paidTowardProfessionalFee(inv));
