@@ -97,14 +97,44 @@ router.get("/:id/pdf", async (req, res) => {
   generateInvoicePdf({ ...row, items: invoiceItems, payments, internalOnly }, res);
 });
 
+// A payment on a Mixed (Professional + Government Fee) invoice can be split between the two —
+// pfAmount/gfAmount from the client, required to add up to `amount`. A pure invoice of either
+// kind never asks the client for a split; it's resolved here instead, so old frontend builds (or
+// any other caller) that never sends pfAmount/gfAmount still behave exactly as before.
+function resolveFeeSplit({ amount, professionalFeeAmount, invoiceAmount, pfAmount, gfAmount }) {
+  const profFee = Number(professionalFeeAmount || 0);
+  const govFee = Math.max(0, Number(invoiceAmount) - profFee);
+  const isMixed = profFee > 0.005 && govFee > 0.005;
+  if (!isMixed) return profFee > 0 ? { pf: Number(amount), gf: 0 } : { pf: 0, gf: Number(amount) };
+  const pf = Number(pfAmount) || 0;
+  const gf = Number(gfAmount) || 0;
+  if (Math.abs(pf + gf - Number(amount)) > 0.01) return null;
+  return { pf, gf };
+}
+
 router.post("/:id/payments", requireRole(["accounts", "admin_like"]), async (req, res) => {
-  const { amount, mode, paidAt } = req.body;
+  const { amount, mode, paidAt, pfAmount, gfAmount, nextPaymentAmount, nextPaymentDate } = req.body;
+  const [invoice] = await query("SELECT amount, professional_fee_amount FROM invoices WHERE id = ?", [req.params.id]);
+  if (!invoice) return res.status(404).json({ error: "Not found" });
+  const split = resolveFeeSplit({ amount, professionalFeeAmount: invoice.professional_fee_amount, invoiceAmount: invoice.amount, pfAmount, gfAmount });
+  if (!split) return res.status(400).json({ error: "Professional Fee + Government Fee portions must add up to the payment amount" });
   // paidAt lets Accounts record when a payment was actually received (e.g. logging it a day or
   // two late, or reconciling an older bank statement) instead of always stamping "now" — falls
   // back to the current moment when not given, same as before this existed.
-  await query("INSERT INTO invoice_payments (id, invoice_id, amount, mode, recorded_by, paid_at) VALUES (?,?,?,?,?,COALESCE(?, NOW()))", [nextId("PMT"), req.params.id, amount, mode, req.user.id, paidAt || null]);
+  await query(
+    "INSERT INTO invoice_payments (id, invoice_id, amount, pf_amount, gf_amount, mode, recorded_by, paid_at) VALUES (?,?,?,?,?,?,?,COALESCE(?, NOW()))",
+    [nextId("PMT"), req.params.id, amount, split.pf, split.gf, mode, req.user.id, paidAt || null]
+  );
 
-  const [invoice] = await query("SELECT amount FROM invoices WHERE id = ?", [req.params.id]);
+  // The "next payment due" reminder is set from here (Record Payment) alongside recording the
+  // payment that led to it, or independently via PATCH /:id/next-payment — both just overwrite
+  // whatever was there before. Only touched when actually sent, so recording a payment without
+  // naming a next one leaves an existing reminder alone.
+  if (nextPaymentAmount !== undefined || nextPaymentDate !== undefined) {
+    await query("UPDATE invoices SET next_payment_amount = ?, next_payment_date = ? WHERE id = ?",
+      [nextPaymentAmount || null, nextPaymentDate || null, req.params.id]);
+  }
+
   const [{ total_paid }] = await query("SELECT COALESCE(SUM(amount),0) AS total_paid FROM invoice_payments WHERE invoice_id = ?", [req.params.id]);
   const status = Number(total_paid) >= Number(invoice.amount) ? "Paid" : Number(total_paid) > 0 ? "Partially Paid" : "Sent";
   await query("UPDATE invoices SET status = ? WHERE id = ?", [status, req.params.id]);
@@ -114,17 +144,29 @@ router.post("/:id/payments", requireRole(["accounts", "admin_like"]), async (req
 // Correcting a payment already recorded (wrong amount/mode/date typed in) — a comment explaining
 // why is required so there's always a reason on record for a payment changing after the fact.
 router.patch("/:id/payments/:paymentId", requireRole(["accounts", "admin_like"]), async (req, res) => {
-  const { amount, mode, paidAt, note } = req.body;
+  const { amount, mode, paidAt, note, pfAmount, gfAmount } = req.body;
   if (!note || !note.trim()) return res.status(400).json({ error: "A comment explaining the correction is required" });
+  const [invoice] = await query("SELECT amount, professional_fee_amount FROM invoices WHERE id = ?", [req.params.id]);
+  if (!invoice) return res.status(404).json({ error: "Not found" });
+  const split = resolveFeeSplit({ amount, professionalFeeAmount: invoice.professional_fee_amount, invoiceAmount: invoice.amount, pfAmount, gfAmount });
+  if (!split) return res.status(400).json({ error: "Professional Fee + Government Fee portions must add up to the payment amount" });
   await query(
-    "UPDATE invoice_payments SET amount = ?, mode = ?, paid_at = COALESCE(?, paid_at), correction_note = ?, updated_by = ?, updated_at = NOW() WHERE id = ? AND invoice_id = ?",
-    [amount, mode, paidAt || null, note.trim(), req.user.id, req.params.paymentId, req.params.id]
+    "UPDATE invoice_payments SET amount = ?, pf_amount = ?, gf_amount = ?, mode = ?, paid_at = COALESCE(?, paid_at), correction_note = ?, updated_by = ?, updated_at = NOW() WHERE id = ? AND invoice_id = ?",
+    [amount, split.pf, split.gf, mode, paidAt || null, note.trim(), req.user.id, req.params.paymentId, req.params.id]
   );
-  const [invoice] = await query("SELECT amount FROM invoices WHERE id = ?", [req.params.id]);
   const [{ total_paid }] = await query("SELECT COALESCE(SUM(amount),0) AS total_paid FROM invoice_payments WHERE invoice_id = ?", [req.params.id]);
   const status = Number(total_paid) >= Number(invoice.amount) ? "Paid" : Number(total_paid) > 0 ? "Partially Paid" : "Sent";
   await query("UPDATE invoices SET status = ? WHERE id = ?", [status, req.params.id]);
   res.json({ ok: true, status });
+});
+
+// Standalone edit of the "next payment due" reminder — e.g. after a call with the client agreeing
+// a new date, with no new payment to record yet. Record Payment above can also set this in the
+// same request when there is one.
+router.patch("/:id/next-payment", requireRole(["accounts", "admin_like"]), async (req, res) => {
+  const { nextPaymentAmount, nextPaymentDate } = req.body;
+  await query("UPDATE invoices SET next_payment_amount = ?, next_payment_date = ? WHERE id = ?", [nextPaymentAmount || null, nextPaymentDate || null, req.params.id]);
+  res.json({ ok: true });
 });
 
 router.delete("/:id/payments/:paymentId", async (req, res) => {

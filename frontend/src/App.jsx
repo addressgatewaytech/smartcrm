@@ -610,6 +610,15 @@ const costForItems = (items, serviceCosts) => {
 };
 const quoteBusinessVolume = (q, serviceCosts) =>
   Math.max(0, professionalFeeAmount(q.items, q.orderDiscount, q.feeType, q.orderDiscountType) - costForItems(q.items, serviceCosts));
+// How much of what's been paid on an invoice actually counts toward its Professional Fee balance.
+// A payment on a Mixed (Professional + Government Fee) invoice can be split between the two (see
+// RecordInvoicePaymentModal) — only the Professional Fee portion should ever reduce what's being
+// chased for collection. Falls back to the full payment amount for any payment recorded before
+// that split existed (pfAmount null), preserving its original behavior exactly.
+const paidTowardProfessionalFee = (inv) => (inv.payments || []).reduce((a, p) => a + (p.pfAmount != null ? Number(p.pfAmount) : Number(p.amount)), 0);
+// True once an invoice's two fee types are both actually present — only then does a payment need
+// to be split between them (see RecordInvoicePaymentModal / EditInvoicePaymentModal).
+const isMixedFeeInvoice = (inv) => Math.max(0, Number(inv.amount) - Number(inv.professionalFeeAmount)) > 0.005 && Number(inv.professionalFeeAmount) > 0.005;
 // Single-quotation model: a quotation's real fee-type makeup can now be a mix — this reflects
 // that in badges/exports instead of a possibly-misleading single "Professional Fee" label.
 const quotationFeeTypeLabel = (q) => {
@@ -2044,7 +2053,7 @@ export default function App() {
 /* DASHBOARD                                                               */
 /* ---------------------------------------------------------------------- */
 
-function Dashboard({ state, dispatch, role, userId, setPage, onOpenExpiredCustomers, onViewQuotation, glassTheme }) {
+function Dashboard({ state, dispatch, role, userId, setPage, onOpenExpiredCustomers, onViewQuotation, onViewCustomer, glassTheme }) {
   // This user's own Google Drive folder (set on their HR Profile) — moved here from the sidebar
   // so it sits next to the attendance sign-in button instead of taking up permanent sidebar space.
   const myCloudLink = state.employees.find(e => e.id === userId)?.cloudLink;
@@ -2055,7 +2064,7 @@ function Dashboard({ state, dispatch, role, userId, setPage, onOpenExpiredCustom
   const pipelineValue = state.deals.filter(d => d.stage !== "Lost").reduce((a,d) => a + d.value, 0);
   // Pending collection only ever counts the Professional Fee portion of an invoice — Government
   // Fee is a pass-through the client owes regardless, never Address Gateway's own money to collect.
-  const outstanding = state.invoices.reduce((a,inv) => a + Math.max(0, inv.professionalFeeAmount - inv.payments.reduce((x,p)=>x+p.amount,0)), 0);
+  const outstanding = state.invoices.reduce((a,inv) => a + Math.max(0, inv.professionalFeeAmount - paidTowardProfessionalFee(inv)), 0);
   // Only the Professional Fee portion of a quotation counts as business volume — see
   // professionalFeeAmount above (handles quotations that mix Professional + Government Fee items).
   const quoteAmount = (q) => professionalFeeAmount(q.items, q.orderDiscount, q.feeType, q.orderDiscountType);
@@ -2111,7 +2120,7 @@ function Dashboard({ state, dispatch, role, userId, setPage, onOpenExpiredCustom
   const mySalesOrderIds = new Set(state.salesOrders.filter(so => myQuotationIds.has(so.quotationId)).map(so => so.id));
   const myOutstanding = state.invoices
     .filter(inv => inv.salesOrderId && mySalesOrderIds.has(inv.salesOrderId))
-    .reduce((a,inv) => a + Math.max(0, inv.professionalFeeAmount - inv.payments.reduce((x,p)=>x+p.amount,0)), 0);
+    .reduce((a,inv) => a + Math.max(0, inv.professionalFeeAmount - paidTowardProfessionalFee(inv)), 0);
 
   const jobsInProgress = state.jobCards.filter(j => ["Assigned","In Progress","On Hold"].includes(j.status)).length;
   const jobsCompleted = state.jobCards.filter(j => j.status === "Completed").length;
@@ -2217,12 +2226,34 @@ function Dashboard({ state, dispatch, role, userId, setPage, onOpenExpiredCustom
     const invoices = state.invoices.filter(inv => soIds.has(inv.salesOrderId) && inRange(inv.createdAt, range));
     const businessVol = quotes.filter(q => q.status==="Approved" && q.feeType!=="Government Fee").reduce((a,q)=>a+quoteBusinessVolume(q, state.serviceCosts),0);
     const collected = invoices.reduce((a,inv)=>a+inv.payments.reduce((x,p)=>x+p.amount,0),0);
-    const pendingCollection = invoices.reduce((a,inv)=>a+Math.max(0, inv.professionalFeeAmount - inv.payments.reduce((x,p)=>x+p.amount,0)),0);
+    const pendingCollection = invoices.reduce((a,inv)=>a+Math.max(0, inv.professionalFeeAmount - paidTowardProfessionalFee(inv)),0);
     const pendingLeads = leads.filter(l => !["Qualified","Unqualified","Converted"].includes(l.status)).length;
     const pendingQuotes = quotes.filter(q => !["Approved","Rejected","Expired"].includes(q.status)).length;
     return { owner, leadsCount: leads.length, dealsCount: deals.length, dealsWon, quotesCount: quotes.length,
       businessVolume: businessVol, collected, pendingCollection, pendingLeads, pendingQuotes };
   }).sort((a,b) => b.businessVolume - a.businessVolume);
+
+  // Customers with an outstanding Professional Fee balance, for the red "Balance due — follow up"
+  // box below — same scoping as myOutstanding/outstanding above (a sales_exec sees only their own
+  // customers; Sales Manager/Admin-tier see every customer). Grouped by customer, not invoice, so
+  // someone with several unpaid invoices shows up once with their combined balance.
+  const followUpInvoices = role === "sales_exec"
+    ? state.invoices.filter(inv => inv.salesOrderId && mySalesOrderIds.has(inv.salesOrderId))
+    : state.invoices;
+  const followUpByCustomer = {};
+  followUpInvoices.forEach(inv => {
+    const bal = Math.max(0, inv.professionalFeeAmount - paidTowardProfessionalFee(inv));
+    if (bal <= 0.005) return;
+    const key = inv.customerId || inv.customer;
+    if (!key) return;
+    if (!followUpByCustomer[key]) followUpByCustomer[key] = { customerId: inv.customerId, name: inv.customer, balance: 0, invoiceCount: 0, nextPaymentDate: null };
+    followUpByCustomer[key].balance += bal;
+    followUpByCustomer[key].invoiceCount += 1;
+    if (inv.nextPaymentDate && (!followUpByCustomer[key].nextPaymentDate || inv.nextPaymentDate < followUpByCustomer[key].nextPaymentDate)) {
+      followUpByCustomer[key].nextPaymentDate = inv.nextPaymentDate;
+    }
+  });
+  const followUpCustomers = Object.values(followUpByCustomer).sort((a,b) => b.balance - a.balance);
 
   // Sales Daily Tasks widget data — same shape userTaskSnapshot expects everywhere it's used
   // (this Dashboard block, the Reports tab, and the Sales Daily Tasks page itself).
@@ -2445,6 +2476,32 @@ function Dashboard({ state, dispatch, role, userId, setPage, onOpenExpiredCustom
         );
       })()}
       {showPostUpdate && <PostUpdateModal dispatch={dispatch} onClose={()=>setShowPostUpdate(false)} />}
+
+      {/* Always visible regardless of which chart tab is active — unpaid balances need to stay in
+          front of whoever owns the relationship, not hide behind a tab click. */}
+      {isSalesTeamRole && followUpCustomers.length > 0 && (
+        <div className="agw-card" style={{ marginBottom: 20, borderColor: "#EFC3BC", background: "var(--danger-tint)" }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 10, flexWrap:"wrap", gap:8 }}>
+            <strong style={{ fontSize: 14, color:"var(--danger)" }}><AlertTriangle size={14} style={{verticalAlign:-2, marginRight:6}}/>Balance due — follow up</strong>
+            <span className="pill" style={{ color:"var(--danger)", borderColor:"#EFC3BC" }}>{followUpCustomers.length} customer{followUpCustomers.length!==1?"s":""} · {money(followUpCustomers.reduce((a,c)=>a+c.balance,0))}</span>
+          </div>
+          <div>
+            {followUpCustomers.slice(0,8).map(c => (
+              <div key={c.customerId || c.name} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom:"1px solid #EFC3BC", cursor: c.customerId ? "pointer" : "default" }}
+                onClick={c.customerId ? () => onViewCustomer?.(c.customerId) : undefined}>
+                <div>
+                  <div style={{ fontSize:13, fontWeight:500 }}>{c.name}</div>
+                  <div style={{ fontSize:11.5, color:"var(--ink-soft)" }}>{c.invoiceCount} invoice{c.invoiceCount!==1?"s":""}{c.nextPaymentDate ? ` · Next payment ${fmtDate(c.nextPaymentDate)}` : ""}</div>
+                </div>
+                <div className="mono" style={{ fontSize:13.5, fontWeight:600, color:"var(--danger)" }}>{money(c.balance)}</div>
+              </div>
+            ))}
+          </div>
+          {followUpCustomers.length > 8 && (
+            <button className="btn btn-sm btn-ghost" style={{ marginTop:8 }} onClick={()=>setPage("invoices")}>View all in Invoices <ChevronRight size={14}/></button>
+          )}
+        </div>
+      )}
 
       {chartTab === "overview" && <>
       {role === "content_creator" && (
@@ -6280,6 +6337,9 @@ function CustomerDashboard({ customer: c, state, dispatch, role, userId }) {
   const [openJobId, setOpenJobId] = useState(null);
   const openJob = openJobId ? state.jobCards.find(j => j.id === openJobId) : null;
   const [downloadingStatement, setDownloadingStatement] = useState(false);
+  const [pay, setPay] = useState(null);
+  const [history, setHistory] = useState(null);
+  const canRecordPayment = isAccountsOrAdmin(role);
   const customerOptions = state.customers.map(cu => cu.name);
 
   const quoteTotal = (q) => quoteTotals(q.items, q.orderDiscount, q.orderDiscountType || "amount").total;
@@ -6287,7 +6347,7 @@ function CustomerDashboard({ customer: c, state, dispatch, role, userId }) {
   const totalPaid = invoices.reduce((a,inv) => a + inv.payments.reduce((x,p)=>x+p.amount,0), 0);
   // Outstanding/balance only ever counts the Professional Fee portion — Government Fee is a
   // pass-through the client owes regardless of what Address Gateway is chasing to collect.
-  const totalBalance = invoices.reduce((a,inv) => a + Math.max(0, inv.professionalFeeAmount - inv.payments.reduce((x,p)=>x+p.amount,0)), 0);
+  const totalBalance = invoices.reduce((a,inv) => a + Math.max(0, inv.professionalFeeAmount - paidTowardProfessionalFee(inv)), 0);
 
   const jobStatusCounts = jobCards.reduce((acc,j) => { acc[j.status] = (acc[j.status]||0)+1; return acc; }, {});
 
@@ -6340,7 +6400,7 @@ function CustomerDashboard({ customer: c, state, dispatch, role, userId }) {
           <tbody>
             {invoices.map(inv => {
               const paid = inv.payments.reduce((a,p)=>a+p.amount,0);
-              const balance = Math.max(0, inv.professionalFeeAmount - paid);
+              const balance = Math.max(0, inv.professionalFeeAmount - paidTowardProfessionalFee(inv));
               const invService = state.salesOrders.find(so=>so.id===inv.salesOrderId)?.service || state.subscriptions.find(s=>s.id===inv.subscriptionId)?.plan || "—";
               return (
                 <tr key={inv.id}>
@@ -6348,9 +6408,16 @@ function CustomerDashboard({ customer: c, state, dispatch, role, userId }) {
                   <td style={{maxWidth:160}}>{invService}</td>
                   <td className="mono">{money(inv.amount)}</td>
                   <td className="mono">{money(paid)}</td>
-                  <td className="mono" style={{ color: balance>0 ? "var(--danger)" : "var(--success)" }}>{money(balance)}</td>
+                  <td className="mono" style={{ color: balance>0 ? "var(--danger)" : "var(--success)" }}>
+                    {money(balance)}
+                    {inv.nextPaymentDate && <div style={{fontSize:10, color:"var(--ink-soft)", fontWeight:400}}>Next {fmtDate(inv.nextPaymentDate)}</div>}
+                  </td>
                   <td><Stamp tone={statusTone(inv.status)}>{inv.status}</Stamp></td>
-                  <td><button className="btn btn-sm btn-ghost" onClick={()=>setPdfInvoice(inv)}><FileText size={13}/> View</button></td>
+                  <td style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                    {balance > 0 && canRecordPayment && <button className="btn btn-sm" onClick={()=>setPay(inv)}>Record payment</button>}
+                    {inv.payments.length > 0 && <button className="btn btn-sm btn-ghost" onClick={()=>setHistory(inv)}>Payments</button>}
+                    <button className="btn btn-sm btn-ghost" onClick={()=>setPdfInvoice(inv)}><FileText size={13}/> View</button>
+                  </td>
                 </tr>
               );
             })}
@@ -6396,6 +6463,8 @@ function CustomerDashboard({ customer: c, state, dispatch, role, userId }) {
       })()}
       {openJob && <JobDetailModal job={openJob} state={state} dispatch={dispatch} role={role} userId={userId} employees={state.employees} approvalTypes={state.approvalTypes}
         onClose={()=>setOpenJobId(null)} onReassign={()=>setOpenJobId(null)} />}
+      {pay && <RecordInvoicePaymentModal invoice={pay} dispatch={dispatch} onClose={()=>setPay(null)} />}
+      {history && <PaymentHistoryModal invoice={history} dispatch={dispatch} onClose={()=>setHistory(null)} />}
     </div>
   );
 }
@@ -7236,10 +7305,6 @@ function SalesOrderPdfModal({ salesOrder: so, onboarded, items=[], role, onClose
 
 function InvoicesPage({ state, dispatch, role, highlightId, onHighlightHandled, setPage, onJobCardTarget, glassTheme }) {
   const [pay, setPay] = useState(null);
-  const [amount, setAmount] = useState(0);
-  const [mode, setMode] = useState("Bank Transfer");
-  const [paidAt, setPaidAt] = useState(daysFromNow(0));
-  const [payBusy, setPayBusy] = useState(false);
   const [history, setHistory] = useState(null);
   const [emailFor, setEmailFor] = useState(null);
   const [removeInvoice, setRemoveInvoice] = useState(null);
@@ -7294,7 +7359,7 @@ function InvoicesPage({ state, dispatch, role, highlightId, onHighlightHandled, 
           </div>
           <button className="btn btn-sm" onClick={()=>exportCSV("invoices.csv",
             ["Invoice ID","Created","Customer","Sales Person","Service","Fee Type","Amount","Paid","Balance","Due","Status"],
-            rows.map(inv=>{ const paid = inv.payments.reduce((a,p)=>a+p.amount,0); return [inv.id, inv.createdAt, inv.customer, inv.salesPerson||"", inv.service||"", inv.feeType||"Professional Fee", inv.amount, paid, Math.max(0, inv.professionalFeeAmount-paid), inv.dueDate, inv.status]; }))}>
+            rows.map(inv=>{ const paid = inv.payments.reduce((a,p)=>a+p.amount,0); return [inv.id, inv.createdAt, inv.customer, inv.salesPerson||"", inv.service||"", inv.feeType||"Professional Fee", inv.amount, paid, Math.max(0, inv.professionalFeeAmount-paidTowardProfessionalFee(inv)), inv.dueDate, inv.status]; }))}>
             <Download size={13}/> Export
           </button>
         </div>
@@ -7306,7 +7371,7 @@ function InvoicesPage({ state, dispatch, role, highlightId, onHighlightHandled, 
           <tbody>
             {pg.pageRows.map((inv, i) => {
               const paid = inv.payments.reduce((a,p)=>a+p.amount,0);
-              const balance = Math.max(0, inv.professionalFeeAmount - paid);
+              const balance = Math.max(0, inv.professionalFeeAmount - paidTowardProfessionalFee(inv));
               const isHighlighted = highlightId === inv.id;
               return (
                 <tr key={inv.id} id={`inv-row-${inv.id}`}
@@ -7324,11 +7389,14 @@ function InvoicesPage({ state, dispatch, role, highlightId, onHighlightHandled, 
                   <td><Stamp tone={inv.feeType==="Government Fee" ? "neutral" : "success"}>{inv.feeType || "Professional Fee"}</Stamp></td>
                   <td className="mono">{money(inv.amount)}</td>
                   <td className="mono">{money(paid)}</td>
-                  <td className="mono" style={{ color: balance>0 ? "var(--danger)" : "var(--success)" }}>{money(balance)}</td>
+                  <td className="mono" style={{ color: balance>0 ? "var(--danger)" : "var(--success)" }}>
+                    {money(balance)}
+                    {inv.nextPaymentDate && <div style={{fontSize:10, color:"var(--ink-soft)", fontWeight:400}}>Next {fmtDate(inv.nextPaymentDate)}</div>}
+                  </td>
                   <td className="mono" style={{fontSize:12}}>{fmtDate(inv.dueDate)}</td>
                   <td><Stamp tone={statusTone(inv.status)}>{inv.status}</Stamp></td>
                   <td style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-                    {balance > 0 && canRecordPayment && <button className="btn btn-sm" onClick={()=>{ setPay(inv); setAmount(balance); setPaidAt(daysFromNow(0)); }}>Record payment</button>}
+                    {balance > 0 && canRecordPayment && <button className="btn btn-sm" onClick={()=>setPay(inv)}>Record payment</button>}
                     {inv.payments.length > 0 && <button className="btn btn-sm btn-ghost" onClick={()=>setHistory(inv)}>Payments</button>}
                     <button className="btn btn-sm btn-ghost" onClick={()=>setEmailFor(inv)}>
                       {inv.emailedToClient ? <><BadgeCheck size={13}/> Emailed</> : <><Mail size={13}/> Email</>}
@@ -7367,31 +7435,11 @@ function InvoicesPage({ state, dispatch, role, highlightId, onHighlightHandled, 
       })()}
 
       {pay && (
-        <Modal title={`Record payment — ${pay.id}`} sub={pay.customer} onClose={()=>setPay(null)}>
-          <div className="row2">
-            <div className="field"><label>Amount (QAR)</label><input type="number" value={amount} onChange={e=>setAmount((e.target.value === "" ? "" : Number(e.target.value)))} /></div>
-            <div className="field"><label>Mode</label>
-              <select value={mode} onChange={e=>setMode(e.target.value)}>
-                {["Bank Transfer","Cash","Cheque","Card"].map(m=><option key={m}>{m}</option>)}
-              </select>
-            </div>
-          </div>
-          <div className="field"><label>Payment date</label><input type="date" max={daysFromNow(0)} value={paidAt} onChange={e=>setPaidAt(e.target.value)} /></div>
-          <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop: 16 }}>
-            <button className="btn" onClick={()=>setPay(null)}>Cancel</button>
-            <button className="btn btn-primary" disabled={!paidAt || payBusy} onClick={async ()=>{
-              setPayBusy(true);
-              try {
-                await dispatch({type:"RECORD_PAYMENT", invoiceId:pay.id, amount, mode, paidAt, by:"Accounts"});
-                const jc = pay.salesOrderId ? state.jobCards.find(j=>j.salesOrderId===pay.salesOrderId) : null;
-                setPay(null);
-                if (jc) { onJobCardTarget?.(jc.id); setPage?.("jobs"); }
-              } finally {
-                setPayBusy(false);
-              }
-            }}>{payBusy ? "Recording…" : "Record payment"}</button>
-          </div>
-        </Modal>
+        <RecordInvoicePaymentModal invoice={pay} dispatch={dispatch} onClose={()=>setPay(null)}
+          onRecorded={() => {
+            const jc = pay.salesOrderId ? state.jobCards.find(j=>j.salesOrderId===pay.salesOrderId) : null;
+            if (jc) { onJobCardTarget?.(jc.id); setPage?.("jobs"); }
+          }} />
       )}
       {pdfInvoice && (() => {
         const linkedSo = pdfInvoice.salesOrderId ? state.salesOrders.find(s=>s.id===pdfInvoice.salesOrderId) : null;
@@ -7519,9 +7567,93 @@ function InvoicePdfModal({ invoice: inv, items=[], role, onClose }) {
   );
 }
 
+// Shared by the Invoices page and a customer's own SOA (CustomerDashboard) — recording a payment
+// works identically from either place. A Mixed (Professional + Government Fee) invoice
+// additionally asks how this one payment splits between the two; a pure invoice of either kind
+// skips that entirely (the backend resolves it on its own — see resolveFeeSplit). The optional
+// "next payment due" reminder can be set in the same step, so following up doesn't need a
+// separate trip back here later.
+function RecordInvoicePaymentModal({ invoice, dispatch, onClose, onRecorded }) {
+  const balance = Math.max(0, invoice.professionalFeeAmount - paidTowardProfessionalFee(invoice));
+  const mixed = isMixedFeeInvoice(invoice);
+  const [amount, setAmount] = useState(balance);
+  const [mode, setMode] = useState("Bank Transfer");
+  const [paidAt, setPaidAt] = useState(daysFromNow(0));
+  const [pfAmount, setPfAmount] = useState(mixed ? 0 : balance);
+  const [gfAmount, setGfAmount] = useState(0);
+  const [addNextPayment, setAddNextPayment] = useState(false);
+  const [nextPaymentAmount, setNextPaymentAmount] = useState("");
+  const [nextPaymentDate, setNextPaymentDate] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const splitOk = !mixed || Math.abs((Number(pfAmount) || 0) + (Number(gfAmount) || 0) - (Number(amount) || 0)) < 0.01;
+
+  const save = async () => {
+    setError("");
+    setBusy(true);
+    try {
+      const payload = { amount: Number(amount) || 0, mode, paidAt };
+      if (mixed) { payload.pfAmount = Number(pfAmount) || 0; payload.gfAmount = Number(gfAmount) || 0; }
+      if (addNextPayment) { payload.nextPaymentAmount = nextPaymentAmount === "" ? null : Number(nextPaymentAmount); payload.nextPaymentDate = nextPaymentDate || null; }
+      const result = await dispatch({ type: "RECORD_PAYMENT", invoiceId: invoice.id, payload });
+      onRecorded?.(result);
+      onClose();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't record this payment — please try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal title={`Record payment — ${invoice.id}`} sub={invoice.customer} onClose={onClose}>
+      <div className="row2">
+        <div className="field"><label>Amount (QAR)</label><input type="number" value={amount} onChange={e=>setAmount(e.target.value === "" ? "" : Number(e.target.value))} /></div>
+        <div className="field"><label>Mode</label>
+          <select value={mode} onChange={e=>setMode(e.target.value)}>
+            {["Bank Transfer","Cash","Cheque","Card"].map(m=><option key={m}>{m}</option>)}
+          </select>
+        </div>
+      </div>
+      <div className="field"><label>Payment date</label><input type="date" max={daysFromNow(0)} value={paidAt} onChange={e=>setPaidAt(e.target.value)} /></div>
+
+      {mixed && (
+        <div className="field">
+          <label>Split between Professional Fee and Government Fee</label>
+          <div className="row2" style={{marginBottom:0}}>
+            <input type="number" placeholder="Professional Fee" value={pfAmount} onChange={e=>setPfAmount(e.target.value === "" ? "" : Number(e.target.value))} />
+            <input type="number" placeholder="Government Fee" value={gfAmount} onChange={e=>setGfAmount(e.target.value === "" ? "" : Number(e.target.value))} />
+          </div>
+          {!splitOk && <div className="side-note" style={{ borderColor:"var(--danger)", color:"var(--danger)", marginTop:8 }}>Professional Fee + Government Fee must add up to the payment amount.</div>}
+        </div>
+      )}
+
+      {addNextPayment ? (
+        <div className="field">
+          <label>Next payment due</label>
+          <div className="row2" style={{marginBottom:0}}>
+            <input type="number" placeholder="Amount (QAR)" value={nextPaymentAmount} onChange={e=>setNextPaymentAmount(e.target.value)} />
+            <input type="date" value={nextPaymentDate} onChange={e=>setNextPaymentDate(e.target.value)} />
+          </div>
+        </div>
+      ) : (
+        <button type="button" className="btn btn-sm btn-ghost" style={{marginBottom:12}} onClick={()=>setAddNextPayment(true)}><Plus size={13}/> Add a next payment reminder</button>
+      )}
+
+      {error && <div className="side-note" style={{ borderColor:"var(--danger)", color:"var(--danger)" }}>{error}</div>}
+      <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop: 16 }}>
+        <button className="btn" onClick={onClose}>Cancel</button>
+        <button className="btn btn-primary" disabled={!paidAt || busy || !splitOk} onClick={save}>{busy ? "Recording…" : "Record payment"}</button>
+      </div>
+    </Modal>
+  );
+}
+
 function PaymentHistoryModal({ invoice: inv, dispatch, onClose }) {
   const [removePmt, setRemovePmt] = useState(null);
   const [editPmt, setEditPmt] = useState(null);
+  const mixed = isMixedFeeInvoice(inv);
   return (
     <Modal title={`Payment history — ${inv.id}`} sub={inv.customer} onClose={onClose}>
       {inv.payments.length === 0 ? <div className="side-note">No payments recorded yet.</div> : (
@@ -7538,7 +7670,12 @@ function PaymentHistoryModal({ invoice: inv, dispatch, onClose }) {
                     </div>
                   )}
                 </td>
-                <td className="mono">{money(p.amount)}</td>
+                <td className="mono">
+                  {money(p.amount)}
+                  {mixed && p.pfAmount != null && (
+                    <div style={{fontSize:10.5, color:"var(--ink-soft)", fontWeight:400, marginTop:2}}>PF {money(p.pfAmount)} · GF {money(p.gfAmount || 0)}</div>
+                  )}
+                </td>
                 <td>{p.mode}</td>
                 <td>{p.by}</td>
                 <td><RowActions onEdit={()=>setEditPmt(p)} onRemove={()=>setRemovePmt(p)} /></td>
@@ -7558,17 +7695,28 @@ function PaymentHistoryModal({ invoice: inv, dispatch, onClose }) {
 // why is required every time, so there's always a reason logged for a payment changing after the
 // fact (not just a silent number swap), matching src/routes/invoices.routes.js's own enforcement.
 function EditInvoicePaymentModal({ invoice: inv, payment: p, dispatch, onClose }) {
+  const mixed = isMixedFeeInvoice(inv);
   const [amount, setAmount] = useState(p.amount);
   const [mode, setMode] = useState(p.mode || "Bank Transfer");
   const [paidAt, setPaidAt] = useState((p.date || "").slice(0, 10));
+  const [pfAmount, setPfAmount] = useState(p.pfAmount != null ? p.pfAmount : p.amount);
+  const [gfAmount, setGfAmount] = useState(p.gfAmount != null ? p.gfAmount : 0);
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const splitOk = !mixed || Math.abs((Number(pfAmount) || 0) + (Number(gfAmount) || 0) - (Number(amount) || 0)) < 0.01;
 
   const save = async () => {
+    setError("");
     setSaving(true);
     try {
-      await dispatch({ type:"EDIT_PAYMENT", invoiceId: inv.id, paymentId: p.id, payload: { amount: Number(amount) || 0, mode, paidAt, note: note.trim() } });
+      const payload = { amount: Number(amount) || 0, mode, paidAt, note: note.trim() };
+      if (mixed) { payload.pfAmount = Number(pfAmount) || 0; payload.gfAmount = Number(gfAmount) || 0; }
+      await dispatch({ type:"EDIT_PAYMENT", invoiceId: inv.id, paymentId: p.id, payload });
       onClose();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't save this correction — please try again.");
     } finally { setSaving(false); }
   };
 
@@ -7583,13 +7731,24 @@ function EditInvoicePaymentModal({ invoice: inv, payment: p, dispatch, onClose }
         </div>
       </div>
       <div className="field"><label>Payment date</label><input type="date" max={daysFromNow(0)} value={paidAt} onChange={e=>setPaidAt(e.target.value)} /></div>
+      {mixed && (
+        <div className="field">
+          <label>Split between Professional Fee and Government Fee</label>
+          <div className="row2" style={{marginBottom:0}}>
+            <input type="number" placeholder="Professional Fee" value={pfAmount} onChange={e=>setPfAmount(e.target.value === "" ? "" : Number(e.target.value))} />
+            <input type="number" placeholder="Government Fee" value={gfAmount} onChange={e=>setGfAmount(e.target.value === "" ? "" : Number(e.target.value))} />
+          </div>
+          {!splitOk && <div className="side-note" style={{ borderColor:"var(--danger)", color:"var(--danger)", marginTop:8 }}>Professional Fee + Government Fee must add up to the payment amount.</div>}
+        </div>
+      )}
       <div className="field">
         <label>Reason for correction (required)</label>
         <textarea rows={2} value={note} onChange={e=>setNote(e.target.value)} placeholder="e.g. Amount was entered wrong — corrected from 1,000 to 1,500 per bank statement" />
       </div>
+      {error && <div className="side-note" style={{ borderColor:"var(--danger)", color:"var(--danger)" }}>{error}</div>}
       <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop: 16 }}>
         <button className="btn" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" disabled={!note.trim() || !paidAt || saving} onClick={save}>{saving ? "Saving…" : "Save correction"}</button>
+        <button className="btn btn-primary" disabled={!note.trim() || !paidAt || saving || !splitOk} onClick={save}>{saving ? "Saving…" : "Save correction"}</button>
       </div>
     </Modal>
   );
@@ -8086,7 +8245,7 @@ function NewChequeModal({ state, dispatch, onClose }) {
   const [depositDate, setDepositDate] = useState(daysFromNow(0));
   const [notes, setNotes] = useState("");
 
-  const invoiceBalance = (i) => i.professionalFeeAmount - i.payments.reduce((a,p)=>a+p.amount,0);
+  const invoiceBalance = (i) => i.professionalFeeAmount - paidTowardProfessionalFee(i);
   const unpaidInvoices = state.invoices.filter(i => i.status !== "Paid" && (!partyName || i.customer === partyName));
 
   return (
@@ -11273,7 +11432,7 @@ function salesReportTotals(periodInvoices, allInvoicesInScope, range) {
   const totalSales = periodInvoices.reduce((a,inv)=>a+inv.amount,0);
   const profFee = periodInvoices.reduce((a,inv)=>a+inv.professionalFeeAmount,0);
   const collected = allInvoicesInScope.reduce((a,inv)=>a+inv.payments.filter(p=>inRange(p.date, range)).reduce((x,p)=>x+p.amount,0),0);
-  const balance = periodInvoices.reduce((a,inv)=>a+Math.max(0, inv.professionalFeeAmount - inv.payments.reduce((x,p)=>x+p.amount,0)),0);
+  const balance = periodInvoices.reduce((a,inv)=>a+Math.max(0, inv.professionalFeeAmount - paidTowardProfessionalFee(inv)),0);
   return { invoices: periodInvoices.length, totalSales, profFee, collected, balance, collectedPct: profFee > 0 ? Math.round((collected/profFee)*100) : null };
 }
 
@@ -11332,7 +11491,7 @@ function SalesReport({ state, range, periodLabel, salesFilter = [] }) {
   const invoiceRows = (invs) => invs.map(inv => {
     const paid = inv.payments.reduce((a,p)=>a+p.amount,0);
     return { id: inv.id, date: inv.createdAt, customer: inv.customer, salesPerson: inv.salesPerson, service: inv.service,
-      total: inv.amount, profFee: inv.professionalFeeAmount, paid, balance: Math.max(0, inv.professionalFeeAmount - paid) };
+      total: inv.amount, profFee: inv.professionalFeeAmount, paid, balance: Math.max(0, inv.professionalFeeAmount - paidTowardProfessionalFee(inv)) };
   });
 
   const scopeLabel = scoped ? (owners.length === 1 ? owners[0].name : `${owners.length} salespeople`) : "All salespeople";
@@ -11439,7 +11598,7 @@ function SalesReport({ state, range, periodLabel, salesFilter = [] }) {
           <tbody>
             {detailInvoices.map(inv => {
               const paid = inv.payments.reduce((a,p)=>a+p.amount,0);
-              const balance = Math.max(0, inv.professionalFeeAmount - paid);
+              const balance = Math.max(0, inv.professionalFeeAmount - paidTowardProfessionalFee(inv));
               return (
                 <tr key={inv.id}>
                   <td className="mono">{inv.id}</td>
@@ -11548,7 +11707,7 @@ function CollectionsReport({ state, range }) {
   const invoices = state.invoices.filter(inv => inv.feeType !== "Government Fee" && inRange(inv.createdAt, range));
   const totalInvoiced = invoices.reduce((a,inv)=>a+inv.amount,0);
   const totalPaid = state.invoices.reduce((a,inv) => a + inv.payments.filter(p=>inRange(p.date, range)).reduce((x,p)=>x+p.amount,0), 0);
-  const outstanding = invoices.reduce((a,inv) => a + Math.max(0, inv.professionalFeeAmount - inv.payments.reduce((x,p)=>x+p.amount,0)), 0);
+  const outstanding = invoices.reduce((a,inv) => a + Math.max(0, inv.professionalFeeAmount - paidTowardProfessionalFee(inv)), 0);
 
   return (
     <div>
@@ -11560,15 +11719,15 @@ function CollectionsReport({ state, range }) {
       ]} />
       <ReportTableCard title="Professional Fee invoices" empty={invoices.length===0 ? "No Professional Fee invoices in this period." : null}
         onExport={invoices.length ? ()=>exportCSV("collections.csv", ["Invoice","Customer","Amount","Professional Fee","Paid","Balance","Status","Date"],
-          invoices.map(inv=>{ const paid=inv.payments.reduce((a,p)=>a+p.amount,0); return [inv.id, inv.customer, inv.amount, inv.professionalFeeAmount, paid, Math.max(0, inv.professionalFeeAmount-paid), inv.status, fmtDate(inv.createdAt)]; })) : null}
+          invoices.map(inv=>{ const paid=inv.payments.reduce((a,p)=>a+p.amount,0); return [inv.id, inv.customer, inv.amount, inv.professionalFeeAmount, paid, Math.max(0, inv.professionalFeeAmount-paidTowardProfessionalFee(inv)), inv.status, fmtDate(inv.createdAt)]; })) : null}
         onExportExcel={invoices.length ? ()=>exportExcel("collections.xlsx", ["Invoice","Customer","Amount","Professional Fee","Paid","Balance","Status","Date"],
-          invoices.map(inv=>{ const paid=inv.payments.reduce((a,p)=>a+p.amount,0); return [inv.id, inv.customer, inv.amount, inv.professionalFeeAmount, paid, Math.max(0, inv.professionalFeeAmount-paid), inv.status, fmtDate(inv.createdAt)]; })) : null}>
+          invoices.map(inv=>{ const paid=inv.payments.reduce((a,p)=>a+p.amount,0); return [inv.id, inv.customer, inv.amount, inv.professionalFeeAmount, paid, Math.max(0, inv.professionalFeeAmount-paidTowardProfessionalFee(inv)), inv.status, fmtDate(inv.createdAt)]; })) : null}>
         <table className="agw-table">
           <thead><tr><th>Invoice</th><th>Customer</th><th>Amount</th><th>Professional Fee</th><th>Paid</th><th>Balance</th><th>Status</th><th>Date</th></tr></thead>
           <tbody>
             {invoices.map(inv => {
               const paid = inv.payments.reduce((a,p)=>a+p.amount,0);
-              const balance = Math.max(0, inv.professionalFeeAmount - paid);
+              const balance = Math.max(0, inv.professionalFeeAmount - paidTowardProfessionalFee(inv));
               return (
                 <tr key={inv.id}>
                   <td className="mono">{inv.id}</td><td>{inv.customer}</td>
@@ -11595,8 +11754,9 @@ function CustomersReport({ state, range }) {
     const invoiced = invoices.reduce((a,inv)=>a+inv.amount,0);
     const paid = invoices.reduce((a,inv)=>a+inv.payments.reduce((x,p)=>x+p.amount,0),0);
     const profFeeInvoiced = invoices.reduce((a,inv)=>a+inv.professionalFeeAmount,0);
+    const paidTowardProfFee = invoices.reduce((a,inv)=>a+paidTowardProfessionalFee(inv),0);
     const jobCards = state.jobCards.filter(j => j.customer===c.name && (j.statusLog?.[0]?.at) && inRange(j.statusLog[0].at, range));
-    return { customer: c.name, quotedValue: quotes.reduce((a,q)=>a+quoteBusinessVolume(q, state.serviceCosts),0), invoiced, paid, balance: Math.max(0, profFeeInvoiced-paid), jobCards: jobCards.length };
+    return { customer: c.name, quotedValue: quotes.reduce((a,q)=>a+quoteBusinessVolume(q, state.serviceCosts),0), invoiced, paid, balance: Math.max(0, profFeeInvoiced-paidTowardProfFee), jobCards: jobCards.length };
   }).filter(r => r.quotedValue > 0 || r.invoiced > 0 || r.jobCards > 0)
     .sort((a,b) => b.invoiced - a.invoiced);
 

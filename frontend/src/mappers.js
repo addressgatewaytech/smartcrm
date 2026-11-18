@@ -82,6 +82,10 @@ export const mapSalesOrder = (so) => ({
 
 export const mapPayment = (p) => ({
   id: p.id, amount: Number(p.amount), mode: p.mode, date: p.paid_at, by: p.recorded_by,
+  // null for any payment recorded before the Professional/Government Fee split existed — callers
+  // fall back to the full `amount` in that case (see paidTowardProfessionalFee in App.jsx).
+  pfAmount: p.pf_amount != null ? Number(p.pf_amount) : null,
+  gfAmount: p.gf_amount != null ? Number(p.gf_amount) : null,
   correctionNote: p.correction_note || "", updatedAt: p.updated_at,
 });
 
@@ -93,6 +97,8 @@ export const mapInvoice = (inv) => ({
   emailedToClient: !!inv.emailed_to_client, emailedAt: inv.emailed_at, emailCc: inv.email_cc || [],
   payments: (inv.payments || []).map(mapPayment), customerId: inv.customer_id,
   salesPerson: inv.salesPerson || "",
+  nextPaymentAmount: inv.next_payment_amount != null ? Number(inv.next_payment_amount) : null,
+  nextPaymentDate: inv.next_payment_date || null,
 });
 
 export const mapStatusLogEntry = (l) => ({ status: l.status, at: l.at, by: l.by_user, note: l.note });

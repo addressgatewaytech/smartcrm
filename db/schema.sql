@@ -456,6 +456,12 @@ CREATE TABLE IF NOT EXISTS invoices (
   emailed_at        TIMESTAMP NULL,
   email_cc          JSON,
   customer_id       VARCHAR(20) NULL,  -- see leads.customer_id
+  -- Optional "expect the rest on..." reminder, set from Record Payment or edited standalone (see
+  -- PATCH /invoices/:id/next-payment) — shown on the Customer SOA and is what a sales/accounts
+  -- person uses to know when to chase the remaining balance next. Independent of status/balance;
+  -- left in place even after the invoice is fully paid, it just stops being shown.
+  next_payment_amount DECIMAL(12,2) NULL,
+  next_payment_date   DATE NULL,
   created_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (sales_order_id) REFERENCES sales_orders(id) ON DELETE SET NULL,
   FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL
@@ -465,6 +471,13 @@ CREATE TABLE IF NOT EXISTS invoice_payments (
   id         VARCHAR(30) PRIMARY KEY,
   invoice_id VARCHAR(20) NOT NULL,
   amount     DECIMAL(12,2) NOT NULL,
+  -- How this one payment splits across the invoice's two fee types — only meaningful (and only
+  -- ever asked for in the UI) when the invoice mixes Professional Fee and Government Fee; for a
+  -- pure invoice of either kind, the backend fills both in itself (see POST /:id/payments). Always
+  -- sum to `amount`. Introduced so a payment that's mostly a Government Fee pass-through doesn't
+  -- silently read as Professional Fee collected — see the pf_amount-based balance everywhere else.
+  pf_amount  DECIMAL(12,2) NULL,
+  gf_amount  DECIMAL(12,2) NULL,
   mode       VARCHAR(50),
   paid_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   recorded_by VARCHAR(20),

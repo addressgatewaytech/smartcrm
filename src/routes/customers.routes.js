@@ -372,6 +372,14 @@ router.get("/:id/statement/pdf", async (req, res) => {
 
   const totalInvoiced = invoices.reduce((a, i) => a + Number(i.amount), 0);
   const totalPaid = payments.reduce((a, p) => a + Number(p.amount), 0);
+  // Balance Due only ever counts the Professional Fee portion still unpaid — Government Fee is a
+  // pass-through the client owes regardless, same rule as everywhere else in the app (see
+  // Dashboard/Customer SOA/Invoices). A payment's pf_amount is null for anything recorded before
+  // that split existed, in which case its full amount is assumed to have gone toward Professional
+  // Fee, preserving the original behavior for old payments exactly.
+  const totalProfFee = invoices.reduce((a, i) => a + Number(i.professional_fee_amount ?? i.amount), 0);
+  const totalPaidTowardProfFee = payments.reduce((a, p) => a + Number(p.pf_amount != null ? p.pf_amount : p.amount), 0);
+  const balance = Math.max(0, totalProfFee - totalPaidTowardProfFee);
 
   const invoicesWithService = invoices.map((inv) => ({
     ...inv,
@@ -380,8 +388,12 @@ router.get("/:id/statement/pdf", async (req, res) => {
       || subscriptions.find((s) => s.id === inv.subscription_id)?.plan_name
       || null,
   }));
+  // Soonest upcoming "next payment due" reminder across this customer's invoices, if any have one set.
+  const nextPayment = invoices
+    .filter((i) => i.next_payment_date)
+    .sort((a, b) => new Date(a.next_payment_date) - new Date(b.next_payment_date))[0] || null;
 
-  generateAccountStatementPdf(customer, invoicesWithService, { totalInvoiced, totalPaid, balance: totalInvoiced - totalPaid }, res);
+  generateAccountStatementPdf(customer, invoicesWithService, { totalInvoiced, totalPaid, balance, nextPayment }, res);
 });
 
 // --- Onboarding Form (company-formation data collection) -----------------------------------

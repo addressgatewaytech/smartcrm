@@ -246,9 +246,10 @@ export function useApiStore(enabled) {
       case "ONBOARD_CLIENT": { const r = await api.salesOrders.onboard(action.salesOrderId); await refresh(["salesOrders", "invoices", "jobCards", "notifications"]); return r; }
       case "UPDATE_SALES_ORDER": await api.salesOrders.update(action.id, action.payload); return refresh(["salesOrders"]);
       case "DELETE_SALES_ORDER": await api.salesOrders.remove(action.id); return refresh(["salesOrders"]);
-      case "RECORD_PAYMENT": await api.invoices.recordPayment(action.invoiceId, action.amount, action.mode, action.paidAt); return refresh(["invoices"]);
+      case "RECORD_PAYMENT": await api.invoices.recordPayment(action.invoiceId, action.payload); return refresh(["invoices"]);
       case "EDIT_PAYMENT": await api.invoices.editPayment(action.invoiceId, action.paymentId, action.payload); return refresh(["invoices"]);
       case "REMOVE_PAYMENT": await api.invoices.removePayment(action.invoiceId, action.paymentId); return refresh(["invoices"]);
+      case "SET_INVOICE_NEXT_PAYMENT": await api.invoices.setNextPayment(action.invoiceId, action.payload); return refresh(["invoices"]);
       case "UPDATE_INVOICE": await api.invoices.update(action.id, action.payload); return refresh(["invoices"]);
       case "DELETE_INVOICE": await api.invoices.remove(action.id); return refresh(["invoices"]);
 

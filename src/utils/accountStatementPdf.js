@@ -42,7 +42,7 @@ function drawPoweredByAddressGateway(doc, x, y) {
 /**
  * @param {object} customer - { id, name }
  * @param {object[]} invoices - invoice rows plus `.payments` (array) and `.service` (resolved)
- * @param {{ totalInvoiced:number, totalPaid:number, balance:number }} statement
+ * @param {{ totalInvoiced:number, totalPaid:number, balance:number, nextPayment:object|null }} statement
  * @param {import('express').Response} res
  */
 function generateAccountStatementPdf(customer, invoices, statement, res) {
@@ -89,6 +89,13 @@ function generateAccountStatementPdf(customer, invoices, statement, res) {
   summaryBox("Balance Due", statement.balance, MARGIN + sumColW * 2, statement.balance > 0 ? "#C0392B" : "#1E8E5A");
   y = doc.y + 20;
 
+  if (statement.nextPayment) {
+    doc.font("Inter-SemiBold").fontSize(8.5).fillColor("#C0392B")
+      .text(`Next payment due: QAR ${money2(statement.nextPayment.next_payment_amount || 0)} on ${fmtDate(statement.nextPayment.next_payment_date)} (Invoice ${statement.nextPayment.id})`, MARGIN, y);
+    doc.fillColor(INK);
+    y = doc.y + 12;
+  }
+
   // Invoice table
   ensureRoom(24);
   const col = { id: MARGIN, date: MARGIN + 90, service: MARGIN + 160, amt: MARGIN + 340, paid: MARGIN + 400, bal: MARGIN + 460 };
@@ -113,7 +120,10 @@ function generateAccountStatementPdf(customer, invoices, statement, res) {
 
   invoices.forEach((inv, i) => {
     const paid = (inv.payments || []).reduce((a, p) => a + Number(p.amount), 0);
-    const balance = Number(inv.amount) - paid;
+    // Same Professional-Fee-only balance rule as the summary strip above (see its comment).
+    const profFee = Number(inv.professional_fee_amount ?? inv.amount);
+    const paidTowardProfFee = (inv.payments || []).reduce((a, p) => a + Number(p.pf_amount != null ? p.pf_amount : p.amount), 0);
+    const balance = Math.max(0, profFee - paidTowardProfFee);
     const serviceWidth = col.amt - col.service - 5;
     const serviceHeight = doc.font("Inter").fontSize(8.5).heightOfString(inv.service || "—", { width: serviceWidth });
     const rowHeight = Math.max(18, serviceHeight + 10);

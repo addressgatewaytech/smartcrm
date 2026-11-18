@@ -177,9 +177,13 @@ export const api = {
   },
   invoices: {
     list: () => get("/invoices"),
-    recordPayment: (id, amount, mode, paidAt) => post(`/invoices/${id}/payments`, { amount, mode, paidAt }),
+    // payload: { amount, mode, paidAt, pfAmount?, gfAmount?, nextPaymentAmount?, nextPaymentDate? }
+    // — pfAmount/gfAmount only matter (and are only ever sent) for a Mixed Professional+Government
+    // Fee invoice; the backend fills both in itself for a pure invoice of either kind.
+    recordPayment: (id, payload) => post(`/invoices/${id}/payments`, payload),
     editPayment: (id, paymentId, payload) => patch(`/invoices/${id}/payments/${paymentId}`, payload),
     removePayment: (id, paymentId) => del(`/invoices/${id}/payments/${paymentId}`),
+    setNextPayment: (id, payload) => patch(`/invoices/${id}/next-payment`, payload),
     markEmailed: (id, cc) => post(`/invoices/${id}/emailed`, { cc }),
     update: (id, payload) => patch(`/invoices/${id}`, payload),
     remove: (id) => del(`/invoices/${id}`),
