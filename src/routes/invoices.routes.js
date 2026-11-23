@@ -112,6 +112,30 @@ function resolveFeeSplit({ amount, professionalFeeAmount, invoiceAmount, pfAmoun
   return { pf, gf };
 }
 
+// An invoice's status reflects whether its Professional Fee has been collected, not the full
+// invoice amount — a mixed invoice's Government Fee portion is a pass-through the business was
+// never actually chasing to collect, so it should never keep an otherwise-settled invoice stuck
+// at "Partially Paid". A pure Government Fee invoice (professionalFeeAmount 0) has nothing
+// Professional Fee to collect, so it falls back to the full amount instead, same as before this
+// distinction existed. A payment's pf_amount is null for anything recorded before that column
+// existed, in which case its full amount counts toward Professional Fee (see paidTowardProfessionalFee,
+// its exact frontend counterpart).
+async function recalcInvoiceStatus(invoiceId, { amount, professionalFeeAmount }) {
+  const payments = await query("SELECT amount, pf_amount FROM invoice_payments WHERE invoice_id = ?", [invoiceId]);
+  const pf = Number(professionalFeeAmount || 0);
+  let paid, target;
+  if (pf > 0.005) {
+    paid = payments.reduce((a, p) => a + Number(p.pf_amount != null ? p.pf_amount : p.amount), 0);
+    target = pf;
+  } else {
+    paid = payments.reduce((a, p) => a + Number(p.amount), 0);
+    target = Number(amount);
+  }
+  const status = paid >= target ? "Paid" : paid > 0 ? "Partially Paid" : "Sent";
+  await query("UPDATE invoices SET status = ? WHERE id = ?", [status, invoiceId]);
+  return status;
+}
+
 // A refund (money going back to the client) is stored as this exact same kind of row, just with a
 // negative amount — every balance/collected figure across the app already sums these payment rows,
 // so a refund nets itself out everywhere automatically with no separate accounting path. Reusing
@@ -145,9 +169,7 @@ router.post("/:id/payments", requireRole(["accounts", "admin_like"]), async (req
       [nextPaymentAmount || null, nextPaymentDate || null, req.params.id]);
   }
 
-  const [{ total_paid }] = await query("SELECT COALESCE(SUM(amount),0) AS total_paid FROM invoice_payments WHERE invoice_id = ?", [req.params.id]);
-  const status = Number(total_paid) >= Number(invoice.amount) ? "Paid" : Number(total_paid) > 0 ? "Partially Paid" : "Sent";
-  await query("UPDATE invoices SET status = ? WHERE id = ?", [status, req.params.id]);
+  const status = await recalcInvoiceStatus(req.params.id, { amount: invoice.amount, professionalFeeAmount: invoice.professional_fee_amount });
   res.json({ ok: true, status });
 });
 
@@ -164,9 +186,7 @@ router.patch("/:id/payments/:paymentId", requireRole(["accounts", "admin_like"])
     "UPDATE invoice_payments SET amount = ?, pf_amount = ?, gf_amount = ?, mode = ?, paid_at = COALESCE(?, paid_at), correction_note = ?, updated_by = ?, updated_at = NOW() WHERE id = ? AND invoice_id = ?",
     [amount, split.pf, split.gf, mode, paidAt || null, note.trim(), req.user.id, req.params.paymentId, req.params.id]
   );
-  const [{ total_paid }] = await query("SELECT COALESCE(SUM(amount),0) AS total_paid FROM invoice_payments WHERE invoice_id = ?", [req.params.id]);
-  const status = Number(total_paid) >= Number(invoice.amount) ? "Paid" : Number(total_paid) > 0 ? "Partially Paid" : "Sent";
-  await query("UPDATE invoices SET status = ? WHERE id = ?", [status, req.params.id]);
+  const status = await recalcInvoiceStatus(req.params.id, { amount: invoice.amount, professionalFeeAmount: invoice.professional_fee_amount });
   res.json({ ok: true, status });
 });
 
@@ -181,10 +201,8 @@ router.patch("/:id/next-payment", requireRole(["accounts", "admin_like"]), async
 
 router.delete("/:id/payments/:paymentId", async (req, res) => {
   await query("DELETE FROM invoice_payments WHERE id = ? AND invoice_id = ?", [req.params.paymentId, req.params.id]);
-  const [invoice] = await query("SELECT amount FROM invoices WHERE id = ?", [req.params.id]);
-  const [{ total_paid }] = await query("SELECT COALESCE(SUM(amount),0) AS total_paid FROM invoice_payments WHERE invoice_id = ?", [req.params.id]);
-  const status = Number(total_paid) >= Number(invoice.amount) ? "Paid" : Number(total_paid) > 0 ? "Partially Paid" : "Sent";
-  await query("UPDATE invoices SET status = ? WHERE id = ?", [status, req.params.id]);
+  const [invoice] = await query("SELECT amount, professional_fee_amount FROM invoices WHERE id = ?", [req.params.id]);
+  const status = await recalcInvoiceStatus(req.params.id, { amount: invoice.amount, professionalFeeAmount: invoice.professional_fee_amount });
   res.json({ ok: true, status });
 });
 
@@ -216,10 +234,9 @@ router.patch("/:id", requireRole(["accounts", "admin_like"]), async (req, res) =
   params.push(req.params.id);
   await query(`UPDATE invoices SET ${fields.join(", ")} WHERE id = ?`, params);
 
-  if (amount !== undefined) {
-    const [{ total_paid }] = await query("SELECT COALESCE(SUM(amount),0) AS total_paid FROM invoice_payments WHERE invoice_id = ?", [req.params.id]);
-    const status = Number(total_paid) >= Number(amount) ? "Paid" : Number(total_paid) > 0 ? "Partially Paid" : "Sent";
-    await query("UPDATE invoices SET status = ? WHERE id = ?", [status, req.params.id]);
+  if (amount !== undefined || professionalFeeAmount !== undefined) {
+    const [updated] = await query("SELECT amount, professional_fee_amount FROM invoices WHERE id = ?", [req.params.id]);
+    await recalcInvoiceStatus(req.params.id, { amount: updated.amount, professionalFeeAmount: updated.professional_fee_amount });
   }
   res.json({ ok: true });
 });

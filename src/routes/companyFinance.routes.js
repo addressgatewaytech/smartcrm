@@ -32,13 +32,27 @@ router.post("/cheques", requireRole(["admin_like", "accounts"]), async (req, res
 });
 
 // Recomputes an invoice's paid/balance status the same way invoices.routes.js's own payment
-// routes do — kept local rather than shared, since this is the only place outside that file
-// that needs to touch invoice_payments.
+// routes do (see recalcInvoiceStatus there) — kept local rather than shared, since this is the
+// only place outside that file that needs to touch invoice_payments. Status reflects whether the
+// Professional Fee portion is collected, not the full invoice amount (a mixed invoice's
+// Government Fee is a pass-through never actually being chased) — falls back to the full amount
+// for a pure Government Fee invoice (professional_fee_amount 0), same as before this distinction
+// existed. A payment's pf_amount is null for a cheque auto-recorded here (no split support yet) or
+// anything predating that column, in which case its full amount counts toward Professional Fee.
 async function recomputeInvoiceStatus(conn, invoiceId) {
-  const [[invoice]] = await conn.execute("SELECT amount FROM invoices WHERE id = ?", [invoiceId]);
+  const [[invoice]] = await conn.execute("SELECT amount, professional_fee_amount FROM invoices WHERE id = ?", [invoiceId]);
   if (!invoice) return;
-  const [[{ total_paid }]] = await conn.execute("SELECT COALESCE(SUM(amount),0) AS total_paid FROM invoice_payments WHERE invoice_id = ?", [invoiceId]);
-  const status = Number(total_paid) >= Number(invoice.amount) ? "Paid" : Number(total_paid) > 0 ? "Partially Paid" : "Sent";
+  const [payments] = await conn.execute("SELECT amount, pf_amount FROM invoice_payments WHERE invoice_id = ?", [invoiceId]);
+  const pf = Number(invoice.professional_fee_amount || 0);
+  let paid, target;
+  if (pf > 0.005) {
+    paid = payments.reduce((a, p) => a + Number(p.pf_amount != null ? p.pf_amount : p.amount), 0);
+    target = pf;
+  } else {
+    paid = payments.reduce((a, p) => a + Number(p.amount), 0);
+    target = Number(invoice.amount);
+  }
+  const status = paid >= target ? "Paid" : paid > 0 ? "Partially Paid" : "Sent";
   await conn.execute("UPDATE invoices SET status = ? WHERE id = ?", [status, invoiceId]);
 }
 
