@@ -6349,8 +6349,10 @@ function CustomerDashboard({ customer: c, state, dispatch, role, userId }) {
   const [pay, setPay] = useState(null);
   const [refundFor, setRefundFor] = useState(null);
   const [editInvoice, setEditInvoice] = useState(null);
+  const [removeInvoice, setRemoveInvoice] = useState(null);
   const [history, setHistory] = useState(null);
   const canRecordPayment = isAccountsOrAdmin(role);
+  const isAdmin = ADMIN_LIKE.includes(role);
   const customerOptions = state.customers.map(cu => cu.name);
 
   const quoteTotal = (q) => quoteTotals(q.items, q.orderDiscount, q.orderDiscountType || "amount").total;
@@ -6428,8 +6430,8 @@ function CustomerDashboard({ customer: c, state, dispatch, role, userId }) {
                     {balance > 0 && canRecordPayment && <button className="btn btn-sm" onClick={()=>setPay(inv)}>Record payment</button>}
                     {paid > 0 && canRecordPayment && <button className="btn btn-sm btn-ghost" style={{color:"var(--danger)"}} onClick={()=>setRefundFor(inv)}>Issue refund</button>}
                     {inv.payments.length > 0 && <button className="btn btn-sm btn-ghost" onClick={()=>setHistory(inv)}>Payments</button>}
-                    {canRecordPayment && <button className="btn btn-sm btn-ghost" onClick={()=>setEditInvoice(inv)}><Pencil size={13}/></button>}
                     <button className="btn btn-sm btn-ghost" onClick={()=>setPdfInvoice(inv)}><FileText size={13}/> View</button>
+                    <RowActions onEdit={canRecordPayment ? ()=>setEditInvoice(inv) : null} onRemove={isAdmin ? ()=>setRemoveInvoice(inv) : null} />
                   </td>
                 </tr>
               );
@@ -6479,6 +6481,8 @@ function CustomerDashboard({ customer: c, state, dispatch, role, userId }) {
       {pay && <RecordInvoicePaymentModal invoice={pay} dispatch={dispatch} onClose={()=>setPay(null)} />}
       {refundFor && <RecordInvoicePaymentModal invoice={refundFor} dispatch={dispatch} onClose={()=>setRefundFor(null)} isRefund />}
       {editInvoice && <EditInvoiceModal invoice={editInvoice} dispatch={dispatch} onClose={()=>setEditInvoice(null)} />}
+      {removeInvoice && <ConfirmModal title={`Remove invoice ${removeInvoice.id}?`} body={`${removeInvoice.customer} — ${money(removeInvoice.amount)}. Any recorded payments are removed with it. This can't be undone.`}
+        onConfirm={()=>{ dispatch({type:"DELETE_INVOICE", id:removeInvoice.id}); setRemoveInvoice(null); }} onClose={()=>setRemoveInvoice(null)} />}
       {history && <PaymentHistoryModal invoice={history} dispatch={dispatch} onClose={()=>setHistory(null)} />}
     </div>
   );
