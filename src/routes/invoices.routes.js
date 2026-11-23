@@ -112,18 +112,28 @@ function resolveFeeSplit({ amount, professionalFeeAmount, invoiceAmount, pfAmoun
   return { pf, gf };
 }
 
+// A refund (money going back to the client) is stored as this exact same kind of row, just with a
+// negative amount — every balance/collected figure across the app already sums these payment rows,
+// so a refund nets itself out everywhere automatically with no separate accounting path. Reusing
+// correction_note to hold the required reason, since a brand-new refund row has no updated_at yet
+// to distinguish it from an actual later correction (see PaymentHistoryModal's own reading of this).
 router.post("/:id/payments", requireRole(["accounts", "admin_like"]), async (req, res) => {
-  const { amount, mode, paidAt, pfAmount, gfAmount, nextPaymentAmount, nextPaymentDate } = req.body;
+  const { amount, mode, paidAt, pfAmount, gfAmount, nextPaymentAmount, nextPaymentDate, isRefund, reason } = req.body;
+  if (isRefund && !reason?.trim()) return res.status(400).json({ error: "A reason is required for a refund" });
   const [invoice] = await query("SELECT amount, professional_fee_amount FROM invoices WHERE id = ?", [req.params.id]);
   if (!invoice) return res.status(404).json({ error: "Not found" });
-  const split = resolveFeeSplit({ amount, professionalFeeAmount: invoice.professional_fee_amount, invoiceAmount: invoice.amount, pfAmount, gfAmount });
-  if (!split) return res.status(400).json({ error: "Professional Fee + Government Fee portions must add up to the payment amount" });
+  const sign = isRefund ? -1 : 1;
+  const signedAmount = sign * Math.abs(Number(amount) || 0);
+  const signedPf = pfAmount !== undefined ? sign * Math.abs(Number(pfAmount) || 0) : undefined;
+  const signedGf = gfAmount !== undefined ? sign * Math.abs(Number(gfAmount) || 0) : undefined;
+  const split = resolveFeeSplit({ amount: signedAmount, professionalFeeAmount: invoice.professional_fee_amount, invoiceAmount: invoice.amount, pfAmount: signedPf, gfAmount: signedGf });
+  if (!split) return res.status(400).json({ error: `Professional Fee + Government Fee portions must add up to the ${isRefund ? "refund" : "payment"} amount` });
   // paidAt lets Accounts record when a payment was actually received (e.g. logging it a day or
   // two late, or reconciling an older bank statement) instead of always stamping "now" — falls
   // back to the current moment when not given, same as before this existed.
   await query(
-    "INSERT INTO invoice_payments (id, invoice_id, amount, pf_amount, gf_amount, mode, recorded_by, paid_at) VALUES (?,?,?,?,?,?,?,COALESCE(?, NOW()))",
-    [nextId("PMT"), req.params.id, amount, split.pf, split.gf, mode, req.user.id, paidAt || null]
+    "INSERT INTO invoice_payments (id, invoice_id, amount, pf_amount, gf_amount, mode, recorded_by, paid_at, correction_note) VALUES (?,?,?,?,?,?,?,COALESCE(?, NOW()),?)",
+    [nextId("PMT"), req.params.id, signedAmount, split.pf, split.gf, mode, req.user.id, paidAt || null, isRefund ? reason.trim() : null]
   );
 
   // The "next payment due" reminder is set from here (Record Payment) alongside recording the

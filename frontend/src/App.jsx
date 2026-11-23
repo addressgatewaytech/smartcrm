@@ -6347,6 +6347,7 @@ function CustomerDashboard({ customer: c, state, dispatch, role, userId }) {
   const openJob = openJobId ? state.jobCards.find(j => j.id === openJobId) : null;
   const [downloadingStatement, setDownloadingStatement] = useState(false);
   const [pay, setPay] = useState(null);
+  const [refundFor, setRefundFor] = useState(null);
   const [history, setHistory] = useState(null);
   const canRecordPayment = isAccountsOrAdmin(role);
   const customerOptions = state.customers.map(cu => cu.name);
@@ -6424,6 +6425,7 @@ function CustomerDashboard({ customer: c, state, dispatch, role, userId }) {
                   <td><Stamp tone={statusTone(inv.status)}>{inv.status}</Stamp></td>
                   <td style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
                     {balance > 0 && canRecordPayment && <button className="btn btn-sm" onClick={()=>setPay(inv)}>Record payment</button>}
+                    {paid > 0 && canRecordPayment && <button className="btn btn-sm btn-ghost" style={{color:"var(--danger)"}} onClick={()=>setRefundFor(inv)}>Issue refund</button>}
                     {inv.payments.length > 0 && <button className="btn btn-sm btn-ghost" onClick={()=>setHistory(inv)}>Payments</button>}
                     <button className="btn btn-sm btn-ghost" onClick={()=>setPdfInvoice(inv)}><FileText size={13}/> View</button>
                   </td>
@@ -6473,6 +6475,7 @@ function CustomerDashboard({ customer: c, state, dispatch, role, userId }) {
       {openJob && <JobDetailModal job={openJob} state={state} dispatch={dispatch} role={role} userId={userId} employees={state.employees} approvalTypes={state.approvalTypes}
         onClose={()=>setOpenJobId(null)} onReassign={()=>setOpenJobId(null)} />}
       {pay && <RecordInvoicePaymentModal invoice={pay} dispatch={dispatch} onClose={()=>setPay(null)} />}
+      {refundFor && <RecordInvoicePaymentModal invoice={refundFor} dispatch={dispatch} onClose={()=>setRefundFor(null)} isRefund />}
       {history && <PaymentHistoryModal invoice={history} dispatch={dispatch} onClose={()=>setHistory(null)} />}
     </div>
   );
@@ -7314,6 +7317,7 @@ function SalesOrderPdfModal({ salesOrder: so, onboarded, items=[], role, onClose
 
 function InvoicesPage({ state, dispatch, role, highlightId, onHighlightHandled, setPage, onJobCardTarget, glassTheme }) {
   const [pay, setPay] = useState(null);
+  const [refundFor, setRefundFor] = useState(null);
   const [history, setHistory] = useState(null);
   const [emailFor, setEmailFor] = useState(null);
   const [removeInvoice, setRemoveInvoice] = useState(null);
@@ -7406,6 +7410,7 @@ function InvoicesPage({ state, dispatch, role, highlightId, onHighlightHandled, 
                   <td><Stamp tone={statusTone(inv.status)}>{inv.status}</Stamp></td>
                   <td style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
                     {balance > 0 && canRecordPayment && <button className="btn btn-sm" onClick={()=>setPay(inv)}>Record payment</button>}
+                    {paid > 0 && canRecordPayment && <button className="btn btn-sm btn-ghost" style={{color:"var(--danger)"}} onClick={()=>setRefundFor(inv)}>Issue refund</button>}
                     {inv.payments.length > 0 && <button className="btn btn-sm btn-ghost" onClick={()=>setHistory(inv)}>Payments</button>}
                     <button className="btn btn-sm btn-ghost" onClick={()=>setEmailFor(inv)}>
                       {inv.emailedToClient ? <><BadgeCheck size={13}/> Emailed</> : <><Mail size={13}/> Email</>}
@@ -7450,6 +7455,7 @@ function InvoicesPage({ state, dispatch, role, highlightId, onHighlightHandled, 
             if (jc) { onJobCardTarget?.(jc.id); setPage?.("jobs"); }
           }} />
       )}
+      {refundFor && <RecordInvoicePaymentModal invoice={refundFor} dispatch={dispatch} onClose={()=>setRefundFor(null)} isRefund />}
       {pdfInvoice && (() => {
         const linkedSo = pdfInvoice.salesOrderId ? state.salesOrders.find(s=>s.id===pdfInvoice.salesOrderId) : null;
         const linkedQuotation = linkedSo?.quotationId ? state.quotations.find(q=>q.id===linkedSo.quotationId) : null;
@@ -7582,14 +7588,20 @@ function InvoicePdfModal({ invoice: inv, items=[], role, onClose }) {
 // skips that entirely (the backend resolves it on its own — see resolveFeeSplit). The optional
 // "next payment due" reminder can be set in the same step, so following up doesn't need a
 // separate trip back here later.
-function RecordInvoicePaymentModal({ invoice, dispatch, onClose, onRecorded }) {
+// Also doubles as "Issue refund" (isRefund=true) — money going back to the client (job cancelled,
+// overpaid, discount applied after the fact, ...). Stored as the exact same kind of row but with a
+// negative amount, so every balance/collected figure across the app nets it out automatically
+// without needing its own separate accounting. A reason is required, same spirit as a payment
+// correction always needing one.
+function RecordInvoicePaymentModal({ invoice, dispatch, onClose, onRecorded, isRefund = false }) {
   const balance = Math.max(0, invoice.professionalFeeAmount - paidTowardProfessionalFee(invoice));
   const mixed = isMixedFeeInvoice(invoice);
-  const [amount, setAmount] = useState(balance);
+  const [amount, setAmount] = useState(isRefund ? "" : balance);
   const [mode, setMode] = useState("Bank Transfer");
   const [paidAt, setPaidAt] = useState(daysFromNow(0));
-  const [pfAmount, setPfAmount] = useState(mixed ? 0 : balance);
+  const [pfAmount, setPfAmount] = useState(mixed || isRefund ? 0 : balance);
   const [gfAmount, setGfAmount] = useState(0);
+  const [reason, setReason] = useState("");
   const [addNextPayment, setAddNextPayment] = useState(false);
   const [nextPaymentAmount, setNextPaymentAmount] = useState("");
   const [nextPaymentDate, setNextPaymentDate] = useState("");
@@ -7604,19 +7616,20 @@ function RecordInvoicePaymentModal({ invoice, dispatch, onClose, onRecorded }) {
     try {
       const payload = { amount: Number(amount) || 0, mode, paidAt };
       if (mixed) { payload.pfAmount = Number(pfAmount) || 0; payload.gfAmount = Number(gfAmount) || 0; }
+      if (isRefund) { payload.isRefund = true; payload.reason = reason.trim(); }
       if (addNextPayment) { payload.nextPaymentAmount = nextPaymentAmount === "" ? null : Number(nextPaymentAmount); payload.nextPaymentDate = nextPaymentDate || null; }
       const result = await dispatch({ type: "RECORD_PAYMENT", invoiceId: invoice.id, payload });
       onRecorded?.(result);
       onClose();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Couldn't record this payment — please try again.");
+      setError(err instanceof ApiError ? err.message : `Couldn't ${isRefund ? "issue this refund" : "record this payment"} — please try again.`);
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <Modal title={`Record payment — ${invoice.id}`} sub={invoice.customer} onClose={onClose}>
+    <Modal title={`${isRefund ? "Issue refund" : "Record payment"} — ${invoice.id}`} sub={invoice.customer} onClose={onClose}>
       <div className="row2">
         <div className="field"><label>Amount (QAR)</label><input type="number" value={amount} onChange={e=>setAmount(e.target.value === "" ? "" : Number(e.target.value))} /></div>
         <div className="field"><label>Mode</label>
@@ -7625,7 +7638,7 @@ function RecordInvoicePaymentModal({ invoice, dispatch, onClose, onRecorded }) {
           </select>
         </div>
       </div>
-      <div className="field"><label>Payment date</label><input type="date" max={daysFromNow(0)} value={paidAt} onChange={e=>setPaidAt(e.target.value)} /></div>
+      <div className="field"><label>{isRefund ? "Refund date" : "Payment date"}</label><input type="date" max={daysFromNow(0)} value={paidAt} onChange={e=>setPaidAt(e.target.value)} /></div>
 
       {mixed && (
         <div className="field">
@@ -7634,26 +7647,35 @@ function RecordInvoicePaymentModal({ invoice, dispatch, onClose, onRecorded }) {
             <input type="number" placeholder="Professional Fee" value={pfAmount} onChange={e=>setPfAmount(e.target.value === "" ? "" : Number(e.target.value))} />
             <input type="number" placeholder="Government Fee" value={gfAmount} onChange={e=>setGfAmount(e.target.value === "" ? "" : Number(e.target.value))} />
           </div>
-          {!splitOk && <div className="side-note" style={{ borderColor:"var(--danger)", color:"var(--danger)", marginTop:8 }}>Professional Fee + Government Fee must add up to the payment amount.</div>}
+          {!splitOk && <div className="side-note" style={{ borderColor:"var(--danger)", color:"var(--danger)", marginTop:8 }}>Professional Fee + Government Fee must add up to the {isRefund ? "refund" : "payment"} amount.</div>}
         </div>
       )}
 
-      {addNextPayment ? (
+      {isRefund ? (
         <div className="field">
-          <label>Next payment due</label>
-          <div className="row2" style={{marginBottom:0}}>
-            <input type="number" placeholder="Amount (QAR)" value={nextPaymentAmount} onChange={e=>setNextPaymentAmount(e.target.value)} />
-            <input type="date" value={nextPaymentDate} onChange={e=>setNextPaymentDate(e.target.value)} />
-          </div>
+          <label>Reason for refund (required)</label>
+          <textarea rows={2} value={reason} onChange={e=>setReason(e.target.value)} placeholder="e.g. Job cancelled before work started — full refund issued" />
         </div>
       ) : (
-        <button type="button" className="btn btn-sm btn-ghost" style={{marginBottom:12}} onClick={()=>setAddNextPayment(true)}><Plus size={13}/> Add a next payment reminder</button>
+        addNextPayment ? (
+          <div className="field">
+            <label>Next payment due</label>
+            <div className="row2" style={{marginBottom:0}}>
+              <input type="number" placeholder="Amount (QAR)" value={nextPaymentAmount} onChange={e=>setNextPaymentAmount(e.target.value)} />
+              <input type="date" value={nextPaymentDate} onChange={e=>setNextPaymentDate(e.target.value)} />
+            </div>
+          </div>
+        ) : (
+          <button type="button" className="btn btn-sm btn-ghost" style={{marginBottom:12}} onClick={()=>setAddNextPayment(true)}><Plus size={13}/> Add a next payment reminder</button>
+        )
       )}
 
       {error && <div className="side-note" style={{ borderColor:"var(--danger)", color:"var(--danger)" }}>{error}</div>}
       <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop: 16 }}>
         <button className="btn" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" disabled={!paidAt || busy || !splitOk} onClick={save}>{busy ? "Recording…" : "Record payment"}</button>
+        <button className="btn btn-primary" disabled={!paidAt || busy || !splitOk || !amount || (isRefund && !reason.trim())} onClick={save}>
+          {busy ? (isRefund ? "Issuing…" : "Recording…") : (isRefund ? "Issue refund" : "Record payment")}
+        </button>
       </div>
     </Modal>
   );
@@ -7669,17 +7691,24 @@ function PaymentHistoryModal({ invoice: inv, dispatch, onClose }) {
         <table className="agw-table">
           <thead><tr><th>Date</th><th>Amount</th><th>Mode</th><th>Recorded by</th><th></th></tr></thead>
           <tbody>
-            {inv.payments.map(p => (
+            {inv.payments.map(p => {
+              const isRefund = p.amount < 0;
+              // A refund's correctionNote holds its reason (set once, at creation) — only a
+              // genuine edit afterward stamps updatedAt, so only then does this read as a
+              // correction on top of that refund rather than the refund's own original reason.
+              const isCorrection = p.correctionNote && p.updatedAt;
+              return (
               <tr key={p.id}>
                 <td>
                   <span className="mono" style={{fontSize:12}}>{fmtDate(p.date)}</span>
+                  {isRefund && <div style={{marginTop:2}}><Stamp tone="danger">Refund</Stamp></div>}
                   {p.correctionNote && (
                     <div style={{fontSize:11, color:"var(--ink-soft)", marginTop:2}}>
-                      Corrected{p.updatedAt ? ` ${fmtDate(p.updatedAt)}` : ""}: {p.correctionNote}
+                      {isCorrection ? `Corrected ${fmtDate(p.updatedAt)}: ${p.correctionNote}` : `Reason: ${p.correctionNote}`}
                     </div>
                   )}
                 </td>
-                <td className="mono">
+                <td className="mono" style={isRefund ? { color:"var(--danger)" } : undefined}>
                   {money(p.amount)}
                   {mixed && p.pfAmount != null && (
                     <div style={{fontSize:10.5, color:"var(--ink-soft)", fontWeight:400, marginTop:2}}>PF {money(p.pfAmount)} · GF {money(p.gfAmount || 0)}</div>
@@ -7689,7 +7718,8 @@ function PaymentHistoryModal({ invoice: inv, dispatch, onClose }) {
                 <td>{p.by}</td>
                 <td><RowActions onEdit={()=>setEditPmt(p)} onRemove={()=>setRemovePmt(p)} /></td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       )}
