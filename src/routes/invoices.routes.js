@@ -194,13 +194,33 @@ router.post("/:id/emailed", async (req, res) => {
   res.json({ ok: true });
 });
 
-// Backdating — Accounts/Admin correcting the recorded date to match when the invoice actually
-// happened (e.g. entering an older paper record, or fixing a data-entry mistake), same reasoning
-// as this invoice's own payments' paidAt override.
+// Accounts/Admin correcting invoice details after the fact — the recorded date (backdating, same
+// reasoning as this invoice's own payments' paidAt override), due date, service label, fee type,
+// or the amount/Professional Fee amount itself (e.g. a wrong total carried over from the sales
+// order). Only touches fields actually present in the payload, same pattern as PATCH
+// /customers/:id — EditableCreatedDate's own save sends just {createdAt}. Editing the amount
+// recalculates status against whatever's already been paid, same as recording/removing a payment.
 router.patch("/:id", requireRole(["accounts", "admin_like"]), async (req, res) => {
-  const { createdAt } = req.body;
-  if (!createdAt) return res.status(400).json({ error: "createdAt is required" });
-  await query("UPDATE invoices SET created_at = ? WHERE id = ?", [createdAt, req.params.id]);
+  const { createdAt, dueDate, service, feeType, amount, professionalFeeAmount } = req.body;
+  const [invoice] = await query("SELECT id FROM invoices WHERE id = ?", [req.params.id]);
+  if (!invoice) return res.status(404).json({ error: "Not found" });
+  const fields = [];
+  const params = [];
+  if (createdAt !== undefined) { fields.push("created_at = ?"); params.push(createdAt); }
+  if (dueDate !== undefined) { fields.push("due_date = ?"); params.push(dueDate || null); }
+  if (service !== undefined) { fields.push("service = ?"); params.push(service || null); }
+  if (feeType !== undefined) { fields.push("fee_type = ?"); params.push(feeType); }
+  if (amount !== undefined) { fields.push("amount = ?"); params.push(amount); }
+  if (professionalFeeAmount !== undefined) { fields.push("professional_fee_amount = ?"); params.push(professionalFeeAmount); }
+  if (!fields.length) return res.status(400).json({ error: "Nothing to update" });
+  params.push(req.params.id);
+  await query(`UPDATE invoices SET ${fields.join(", ")} WHERE id = ?`, params);
+
+  if (amount !== undefined) {
+    const [{ total_paid }] = await query("SELECT COALESCE(SUM(amount),0) AS total_paid FROM invoice_payments WHERE invoice_id = ?", [req.params.id]);
+    const status = Number(total_paid) >= Number(amount) ? "Paid" : Number(total_paid) > 0 ? "Partially Paid" : "Sent";
+    await query("UPDATE invoices SET status = ? WHERE id = ?", [status, req.params.id]);
+  }
   res.json({ ok: true });
 });
 

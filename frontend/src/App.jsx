@@ -6348,6 +6348,7 @@ function CustomerDashboard({ customer: c, state, dispatch, role, userId }) {
   const [downloadingStatement, setDownloadingStatement] = useState(false);
   const [pay, setPay] = useState(null);
   const [refundFor, setRefundFor] = useState(null);
+  const [editInvoice, setEditInvoice] = useState(null);
   const [history, setHistory] = useState(null);
   const canRecordPayment = isAccountsOrAdmin(role);
   const customerOptions = state.customers.map(cu => cu.name);
@@ -6427,6 +6428,7 @@ function CustomerDashboard({ customer: c, state, dispatch, role, userId }) {
                     {balance > 0 && canRecordPayment && <button className="btn btn-sm" onClick={()=>setPay(inv)}>Record payment</button>}
                     {paid > 0 && canRecordPayment && <button className="btn btn-sm btn-ghost" style={{color:"var(--danger)"}} onClick={()=>setRefundFor(inv)}>Issue refund</button>}
                     {inv.payments.length > 0 && <button className="btn btn-sm btn-ghost" onClick={()=>setHistory(inv)}>Payments</button>}
+                    {canRecordPayment && <button className="btn btn-sm btn-ghost" onClick={()=>setEditInvoice(inv)}><Pencil size={13}/></button>}
                     <button className="btn btn-sm btn-ghost" onClick={()=>setPdfInvoice(inv)}><FileText size={13}/> View</button>
                   </td>
                 </tr>
@@ -6476,6 +6478,7 @@ function CustomerDashboard({ customer: c, state, dispatch, role, userId }) {
         onClose={()=>setOpenJobId(null)} onReassign={()=>setOpenJobId(null)} />}
       {pay && <RecordInvoicePaymentModal invoice={pay} dispatch={dispatch} onClose={()=>setPay(null)} />}
       {refundFor && <RecordInvoicePaymentModal invoice={refundFor} dispatch={dispatch} onClose={()=>setRefundFor(null)} isRefund />}
+      {editInvoice && <EditInvoiceModal invoice={editInvoice} dispatch={dispatch} onClose={()=>setEditInvoice(null)} />}
       {history && <PaymentHistoryModal invoice={history} dispatch={dispatch} onClose={()=>setHistory(null)} />}
     </div>
   );
@@ -7318,6 +7321,7 @@ function SalesOrderPdfModal({ salesOrder: so, onboarded, items=[], role, onClose
 function InvoicesPage({ state, dispatch, role, highlightId, onHighlightHandled, setPage, onJobCardTarget, glassTheme }) {
   const [pay, setPay] = useState(null);
   const [refundFor, setRefundFor] = useState(null);
+  const [editInvoice, setEditInvoice] = useState(null);
   const [history, setHistory] = useState(null);
   const [emailFor, setEmailFor] = useState(null);
   const [removeInvoice, setRemoveInvoice] = useState(null);
@@ -7416,7 +7420,7 @@ function InvoicesPage({ state, dispatch, role, highlightId, onHighlightHandled, 
                       {inv.emailedToClient ? <><BadgeCheck size={13}/> Emailed</> : <><Mail size={13}/> Email</>}
                     </button>
                     <button className="btn btn-sm btn-ghost" onClick={()=>setPdfInvoice(inv)}><FileText size={13}/> PDF</button>
-                    {isAdmin && <RowActions onRemove={()=>setRemoveInvoice(inv)} />}
+                    <RowActions onEdit={canRecordPayment ? ()=>setEditInvoice(inv) : null} onRemove={isAdmin ? ()=>setRemoveInvoice(inv) : null} />
                   </td>
                 </tr>
               );
@@ -7456,6 +7460,7 @@ function InvoicesPage({ state, dispatch, role, highlightId, onHighlightHandled, 
           }} />
       )}
       {refundFor && <RecordInvoicePaymentModal invoice={refundFor} dispatch={dispatch} onClose={()=>setRefundFor(null)} isRefund />}
+      {editInvoice && <EditInvoiceModal invoice={editInvoice} dispatch={dispatch} onClose={()=>setEditInvoice(null)} />}
       {pdfInvoice && (() => {
         const linkedSo = pdfInvoice.salesOrderId ? state.salesOrders.find(s=>s.id===pdfInvoice.salesOrderId) : null;
         const linkedQuotation = linkedSo?.quotationId ? state.quotations.find(q=>q.id===linkedSo.quotationId) : null;
@@ -7578,6 +7583,60 @@ function InvoicePdfModal({ invoice: inv, items=[], role, onClose }) {
       ) : (
         <div className="side-note" style={{marginTop:14}}>Internal viewing only — this document isn't available for download on your account.</div>
       )}
+    </Modal>
+  );
+}
+
+// Correcting an invoice's own details after the fact (due date, service label, fee type, amount,
+// or Professional Fee amount) — previously only its created date (backdating) could be changed at
+// all. Editing the amount recalculates status against whatever's already been paid, same as
+// recording/removing a payment — see PATCH /invoices/:id.
+function EditInvoiceModal({ invoice, dispatch, onClose }) {
+  const [dueDate, setDueDate] = useState((invoice.dueDate || "").slice(0, 10));
+  const [service, setService] = useState(invoice.service || "");
+  const [feeType, setFeeType] = useState(invoice.feeType || "Professional Fee");
+  const [amount, setAmount] = useState(invoice.amount);
+  const [professionalFeeAmount, setProfessionalFeeAmount] = useState(invoice.professionalFeeAmount);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const save = async () => {
+    setError("");
+    setSaving(true);
+    try {
+      await dispatch({ type: "UPDATE_INVOICE", id: invoice.id, payload: {
+        dueDate: dueDate || null, service: service.trim(), feeType,
+        amount: Number(amount) || 0, professionalFeeAmount: Number(professionalFeeAmount) || 0,
+      } });
+      onClose();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't save — please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal title={`Edit invoice — ${invoice.id}`} sub={invoice.customer} onClose={onClose}>
+      <div className="row2">
+        <div className="field"><label>Due date</label><input type="date" value={dueDate} onChange={e=>setDueDate(e.target.value)} /></div>
+        <div className="field"><label>Fee type</label>
+          <select value={feeType} onChange={e=>setFeeType(e.target.value)}>
+            <option>Professional Fee</option><option>Government Fee</option>
+          </select>
+        </div>
+      </div>
+      <div className="field"><label>Service</label><input value={service} onChange={e=>setService(e.target.value)} /></div>
+      <div className="row2">
+        <div className="field"><label>Amount (QAR)</label><input type="number" value={amount} onChange={e=>setAmount(e.target.value === "" ? "" : Number(e.target.value))} /></div>
+        <div className="field"><label>Professional Fee amount (QAR)</label><input type="number" value={professionalFeeAmount} onChange={e=>setProfessionalFeeAmount(e.target.value === "" ? "" : Number(e.target.value))} /></div>
+      </div>
+      <div className="side-note">The Government Fee portion is Amount minus Professional Fee amount — set them so the difference matches the actual pass-through charge.</div>
+      {error && <div className="side-note" style={{ borderColor:"var(--danger)", color:"var(--danger)" }}>{error}</div>}
+      <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop: 16 }}>
+        <button className="btn" onClick={onClose}>Cancel</button>
+        <button className="btn btn-primary" disabled={saving || amount === ""} onClick={save}>{saving ? "Saving…" : "Save changes"}</button>
+      </div>
     </Modal>
   );
 }
