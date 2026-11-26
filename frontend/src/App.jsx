@@ -4149,8 +4149,8 @@ function QuoteBuilderModal({ dealId=null, customerName="", defaultService=SERVIC
             <div key={i} className="field" style={{ display:"flex", gap:6, alignItems:"flex-end" }}>
               <div style={{ flex:1 }}>
                 <label>{`Activity ${i + 1}`}</label>
-                <input value={a} autoFocus={i===0}
-                  onChange={e=>setActivityPrompt(p=>({ ...p, activities: p.activities.map((x,idx)=>idx===i?e.target.value:x) }))}
+                <ActivityTextInput value={a} autoFocus={i===0}
+                  onChange={val=>setActivityPrompt(p=>({ ...p, activities: p.activities.map((x,idx)=>idx===i?val:x) }))}
                   placeholder="e.g. Retail Sale of Fire Protection and Safety Equipment, Tools, and Materials" />
               </div>
               {activityPrompt.activities.length > 1 && (
@@ -9830,6 +9830,70 @@ function searchActivities(items, rawQuery, category, list) {
     if (matchedAll) matches.push({ item, score });
   }
   return matches.sort((a, b) => b.score - a.score || a.item.code.localeCompare(b.item.code));
+}
+
+// Cached across every ActivityTextInput on the page (and re-opens of the Business activities
+// prompt) — it's the same small reference list ActivityFinderPage loads, no reason to refetch it
+// per input or per prompt open.
+let cachedActivityItems = null;
+
+// A plain text field that doubles as a search-and-select against the same business-activity
+// reference list Activity Finder uses (see searchActivities) — type any related word and pick a
+// match, or just keep typing/pasting freehand if nothing in the list fits (the database only
+// covers E-commerce and Facility Management activities right now; every other service's
+// activities still have to come from the Ministry of Commerce website). Selecting a suggestion
+// fills in its exact wording, same as typing it by hand would.
+function ActivityTextInput({ value, onChange, autoFocus, placeholder }) {
+  const [items, setItems] = useState(cachedActivityItems);
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
+
+  useEffect(() => {
+    if (items) return;
+    let alive = true;
+    api.activities.list()
+      .then(data => {
+        if (!alive) return;
+        const mapped = data.map(i => ({ ...i, _act: i.activity.toLowerCase(), _cat: i.category.toLowerCase(), _note: (i.note || "").toLowerCase() }));
+        cachedActivityItems = mapped;
+        setItems(mapped);
+      })
+      .catch(() => {}); // Search just quietly stays unavailable — the field is still a perfectly usable free-text input either way.
+    return () => { alive = false; };
+  }, [items]);
+
+  useEffect(() => {
+    const onDocMouseDown = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
+  }, []);
+
+  const query = value.trim();
+  const results = query && items ? searchActivities(items, query, null, null).slice(0, 8) : [];
+
+  return (
+    <div ref={wrapRef} style={{ position: "relative" }}>
+      <input value={value} autoFocus={autoFocus} placeholder={placeholder} autoComplete="off"
+        onChange={e => { onChange(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)} />
+      {open && query && (
+        <div className="agw-card" style={{ position: "absolute", zIndex: 20, top: "100%", left: 0, right: 0, marginTop: 4, padding: 6, maxHeight: 220, overflowY: "auto", boxShadow: "0 8px 24px rgba(0,0,0,.12)" }}>
+          {results.length > 0 ? results.map(({ item }) => (
+            <div key={item.code} style={{ padding: "7px 8px", borderRadius: 6, cursor: "pointer" }}
+              onMouseDown={e => { e.preventDefault(); onChange(item.activity); setOpen(false); }}>
+              <div style={{ fontSize: 12.5 }}>{item.activity}</div>
+              <div style={{ fontSize: 11, color: "var(--ink-soft)", marginTop: 1 }}>{item.code} · {item.category}</div>
+            </div>
+          )) : (
+            <div style={{ padding: "8px", fontSize: 12, color: "var(--ink-soft)", lineHeight: 1.5 }}>
+              <AlertTriangle size={12} style={{verticalAlign:-2,marginRight:4}}/>
+              No match in the database — check the Ministry of Commerce website for the exact wording and paste it here.
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function ActivityFinderPage({ glassTheme } = {}) {
