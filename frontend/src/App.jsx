@@ -3789,9 +3789,11 @@ function AddActivityControl({ onAdd }) {
     setValue("");
   };
   return (
-    <div style={{ display:"flex", gap:6, marginTop:6 }}>
-      <input value={value} onChange={e=>setValue(e.target.value)} placeholder="Add an activity…"
-        onKeyDown={e=>{ if (e.key==="Enter") { e.preventDefault(); add(); } }} style={{ flex:1 }} />
+    <div style={{ display:"flex", gap:6, marginTop:6, alignItems:"flex-start" }}>
+      <div style={{ flex:1 }}>
+        <ActivityTextInput value={value} onChange={setValue} placeholder="Add an activity…"
+          onKeyDown={e=>{ if (e.key==="Enter") { e.preventDefault(); add(); } }} />
+      </div>
       <button type="button" className="btn btn-sm" disabled={!value.trim()} onClick={add}><Plus size={13}/> Activity</button>
     </div>
   );
@@ -9843,7 +9845,7 @@ let cachedActivityItems = null;
 // covers E-commerce and Facility Management activities right now; every other service's
 // activities still have to come from the Ministry of Commerce website). Selecting a suggestion
 // fills in its exact wording, same as typing it by hand would.
-function ActivityTextInput({ value, onChange, autoFocus, placeholder }) {
+function ActivityTextInput({ value, onChange, autoFocus, placeholder, onKeyDown }) {
   const [items, setItems] = useState(cachedActivityItems);
   const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);
@@ -9875,7 +9877,7 @@ function ActivityTextInput({ value, onChange, autoFocus, placeholder }) {
     <div ref={wrapRef} style={{ position: "relative" }}>
       <input value={value} autoFocus={autoFocus} placeholder={placeholder} autoComplete="off"
         onChange={e => { onChange(e.target.value); setOpen(true); }}
-        onFocus={() => setOpen(true)} />
+        onFocus={() => setOpen(true)} onKeyDown={onKeyDown} />
       {open && query && (
         <div className="agw-card" style={{ position: "absolute", zIndex: 20, top: "100%", left: 0, right: 0, marginTop: 4, padding: 6, maxHeight: 220, overflowY: "auto", boxShadow: "0 8px 24px rgba(0,0,0,.12)" }}>
           {results.length > 0 ? results.map(({ item }) => (
